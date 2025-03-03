@@ -1,0 +1,199 @@
+{
+  "$schema": "https://raw.githubusercontent.com/spdx/spdx-spec/v2.2.1/schemas/spdx-schema.json",
+  "spdxVersion": "SPDX-2.2",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "documentNamespace": "https://spdx.org/spdxdocs/glew-x64-windows-2.2.0#5-72e97a85-2602-4cd0-aab8-a5c7dba5b444",
+  "name": "glew:x64-windows@2.2.0#5 11ba44f301b723cb8278095b4081b0c56fc60b9a8a881a652aac18c6e08ef71f",
+  "creationInfo": {
+    "creators": [
+      "Tool: vcpkg-2024-12-09-1005b78fa1bf1dde1a20c2734cba4ea61ca94d9a"
+    ],
+    "created": "2025-03-03T03:34:08Z"
+  },
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-port",
+      "relationshipType": "GENERATES",
+      "relatedSpdxElement": "SPDXRef-binary"
+    },
+    {
+      "spdxElementId": "SPDXRef-port",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-file-0"
+    },
+    {
+      "spdxElementId": "SPDXRef-port",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-file-1"
+    },
+    {
+      "spdxElementId": "SPDXRef-port",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-file-2"
+    },
+    {
+      "spdxElementId": "SPDXRef-port",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-file-3"
+    },
+    {
+      "spdxElementId": "SPDXRef-port",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-file-4"
+    },
+    {
+      "spdxElementId": "SPDXRef-port",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-file-5"
+    },
+    {
+      "spdxElementId": "SPDXRef-binary",
+      "relationshipType": "GENERATED_FROM",
+      "relatedSpdxElement": "SPDXRef-port"
+    },
+    {
+      "spdxElementId": "SPDXRef-file-0",
+      "relationshipType": "CONTAINED_BY",
+      "relatedSpdxElement": "SPDXRef-port"
+    },
+    {
+      "spdxElementId": "SPDXRef-file-1",
+      "relationshipType": "CONTAINED_BY",
+      "relatedSpdxElement": "SPDXRef-port"
+    },
+    {
+      "spdxElementId": "SPDXRef-file-2",
+      "relationshipType": "CONTAINED_BY",
+      "relatedSpdxElement": "SPDXRef-port"
+    },
+    {
+      "spdxElementId": "SPDXRef-file-3",
+      "relationshipType": "CONTAINED_BY",
+      "relatedSpdxElement": "SPDXRef-port"
+    },
+    {
+      "spdxElementId": "SPDXRef-file-4",
+      "relationshipType": "CONTAINED_BY",
+      "relatedSpdxElement": "SPDXRef-port"
+    },
+    {
+      "spdxElementId": "SPDXRef-file-5",
+      "relationshipType": "CONTAINED_BY",
+      "relatedSpdxElement": "SPDXRef-port"
+    }
+  ],
+  "packages": [
+    {
+      "name": "glew",
+      "SPDXID": "SPDXRef-port",
+      "versionInfo": "2.2.0#5",
+      "downloadLocation": "git+https://github.com/microsoft/vcpkg@deee148de63ca706630edc3408d1c9a471f8884f",
+      "homepage": "https://github.com/nigels-com/glew",
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION",
+      "description": "The OpenGL Extension Wrangler Library (GLEW) is a cross-platform open-source C/C++ extension loading library.",
+      "comment": "This is the port (recipe) consumed by vcpkg."
+    },
+    {
+      "name": "glew:x64-windows",
+      "SPDXID": "SPDXRef-binary",
+      "versionInfo": "11ba44f301b723cb8278095b4081b0c56fc60b9a8a881a652aac18c6e08ef71f",
+      "downloadLocation": "NONE",
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION",
+      "comment": "This is a binary package built by vcpkg."
+    },
+    {
+      "SPDXID": "SPDXRef-resource-0",
+      "name": "glew-2.2.0.tgz",
+      "packageFileName": "glew-2.2.0.tgz",
+      "downloadLocation": "https://github.com/nigels-com/glew/releases/download/glew-2.2.0/glew-2.2.0.tgz",
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION",
+      "checksums": [
+        {
+          "algorithm": "SHA512",
+          "checksumValue": "57453646635609d54f62fb32a080b82b601fd471fcfd26e109f479b3fef6dfbc24b83f4ba62916d07d62cd06d1409ad7aa19bc1cd7cf3639c103c815b8be31d1"
+        }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "fileName": "./C:/Users/jwood/AppData/Local/vcpkg/registries/git-trees/deee148de63ca706630edc3408d1c9a471f8884f/base_address.patch",
+      "SPDXID": "SPDXRef-file-0",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "91d276024d8cadc85270035b0a54a028db7804c9d7e1e919b10a2bdb6dbe0af4"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./C:/Users/jwood/AppData/Local/vcpkg/registries/git-trees/deee148de63ca706630edc3408d1c9a471f8884f/fix-LNK2019.patch",
+      "SPDXID": "SPDXRef-file-1",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "1cef07d7e458842badc2954da9862216b2efde42cd1459c367bbe3c50f7f6625"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./C:/Users/jwood/AppData/Local/vcpkg/registries/git-trees/deee148de63ca706630edc3408d1c9a471f8884f/portfile.cmake",
+      "SPDXID": "SPDXRef-file-2",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "20b6cdf6c1a6502a6ba534dc4d8cb7ddbf319ce7f8d8d6e9386427279598eff3"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./C:/Users/jwood/AppData/Local/vcpkg/registries/git-trees/deee148de63ca706630edc3408d1c9a471f8884f/usage",
+      "SPDXID": "SPDXRef-file-3",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "c79d8674ed71ebb1d90f1a684a7276ca2480e0c7ae64934c14c45df547068153"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./C:/Users/jwood/AppData/Local/vcpkg/registries/git-trees/deee148de63ca706630edc3408d1c9a471f8884f/vcpkg-cmake-wrapper.cmake",
+      "SPDXID": "SPDXRef-file-4",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "8a5f7ae6b0f3ddac45595a1edeb4f3c0d1a612280eaf2d029904e99b6c03816c"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "fileName": "./C:/Users/jwood/AppData/Local/vcpkg/registries/git-trees/deee148de63ca706630edc3408d1c9a471f8884f/vcpkg.json",
+      "SPDXID": "SPDXRef-file-5",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "c69727a1749401429c92191c305305f709146ad10aae0ecbb381b5431017f6c4"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "copyrightText": "NOASSERTION"
+    }
+  ]
+}

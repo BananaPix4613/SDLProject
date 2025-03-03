@@ -1,0 +1,8 @@
+C:/Users/jwood/source/repos/SDLProject/vcpkg_installed/vcpkg/blds/glew/x64-windows-dbg/CMakeFiles/glew.dir
+C:/Users/jwood/source/repos/SDLProject/vcpkg_installed/vcpkg/blds/glew/x64-windows-dbg/CMakeFiles/glew_s.dir
+C:/Users/jwood/source/repos/SDLProject/vcpkg_installed/vcpkg/blds/glew/x64-windows-dbg/CMakeFiles/uninstall.dir
+C:/Users/jwood/source/repos/SDLProject/vcpkg_installed/vcpkg/blds/glew/x64-windows-dbg/CMakeFiles/edit_cache.dir
+C:/Users/jwood/source/repos/SDLProject/vcpkg_installed/vcpkg/blds/glew/x64-windows-dbg/CMakeFiles/rebuild_cache.dir
+C:/Users/jwood/source/repos/SDLProject/vcpkg_installed/vcpkg/blds/glew/x64-windows-dbg/CMakeFiles/list_install_components.dir
+C:/Users/jwood/source/repos/SDLProject/vcpkg_installed/vcpkg/blds/glew/x64-windows-dbg/CMakeFiles/install.dir
+C:/Users/jwood/source/repos/SDLProject/vcpkg_installed/vcpkg/blds/glew/x64-windows-dbg/CMakeFiles/install/local.dir
