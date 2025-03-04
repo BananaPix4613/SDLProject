@@ -17,9 +17,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="hello.c">
-      <Filter>Source</Filter>
-    </ClCompile>
     <ClCompile Include="Source\asset_manager.c">
       <Filter>Source</Filter>
     </ClCompile>
@@ -43,6 +40,7 @@
     <None Include="Shaders\vertex_shader.glsl">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Include\asset_manager.h">
