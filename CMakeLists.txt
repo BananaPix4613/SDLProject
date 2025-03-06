@@ -14,7 +14,6 @@ project ("SDLProject")
 # Add source to this project's executable.
 add_executable (SDLProject
 	src/SDLProject.cpp
-	include/SDLProject.h
 )
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
@@ -27,9 +26,9 @@ set(GLFW_DIR "${CMAKE_SOURCE_DIR}/deps/GLFW")
 set(GLEW_DIR "${CMAKE_SOURCE_DIR}/deps/GLEW")
 
 # Include directories
-include_directories("${SDL3_DIR}/include" "${GLFW_DIR}/include" "${GLEW_DIR}/include")
+include_directories("${CMAKE_SOURCE_DIR}/include" "${SDL3_DIR}/include" "${GLFW_DIR}/include" "${GLEW_DIR}/include")
 
 # Link libraries
-target_link_libraries(SDLProject "${GLEW_DIR}/lib/Release/x64/glew32.lib")
+target_link_libraries(SDLProject "${GLEW_DIR}/lib/Release/x64/glew32.lib" "${SDL3_DIR}/lib/x64/SDL3.lib")
 
 # TODO: Add tests and install targets if needed.
