@@ -49,11 +49,11 @@ cmake_ninja_workdir = C$:\dev\SDLProject\out\build\x64-debug\
 
 build cmake_object_order_depends_target_SDLProject: phony || .
 
-build CMakeFiles\SDLProject.dir\SDLProject.cpp.obj: CXX_COMPILER__SDLProject_unscanned_Debug C$:\dev\SDLProject\SDLProject.cpp || cmake_object_order_depends_target_SDLProject
+build CMakeFiles\SDLProject.dir\src\SDLProject.cpp.obj: CXX_COMPILER__SDLProject_unscanned_Debug C$:\dev\SDLProject\src\SDLProject.cpp || cmake_object_order_depends_target_SDLProject
   FLAGS = /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Ob0 /Od /RTC1 -std:c++20 -ZI
   INCLUDES = -IC:\dev\SDLProject\deps\SDL\include -IC:\dev\SDLProject\deps\GLFW\include -IC:\dev\SDLProject\deps\GLEW\include
   OBJECT_DIR = CMakeFiles\SDLProject.dir
-  OBJECT_FILE_DIR = CMakeFiles\SDLProject.dir
+  OBJECT_FILE_DIR = CMakeFiles\SDLProject.dir\src
   TARGET_COMPILE_PDB = CMakeFiles\SDLProject.dir\
   TARGET_PDB = SDLProject.pdb
 
@@ -65,7 +65,7 @@ build CMakeFiles\SDLProject.dir\SDLProject.cpp.obj: CXX_COMPILER__SDLProject_uns
 #############################################
 # Link the executable SDLProject.exe
 
-build SDLProject.exe: CXX_EXECUTABLE_LINKER__SDLProject_Debug CMakeFiles\SDLProject.dir\SDLProject.cpp.obj | C$:\dev\SDLProject\deps\GLEW\lib\Release\x64\glew32.lib
+build SDLProject.exe: CXX_EXECUTABLE_LINKER__SDLProject_Debug CMakeFiles\SDLProject.dir\src\SDLProject.cpp.obj | C$:\dev\SDLProject\deps\GLEW\lib\Release\x64\glew32.lib
   FLAGS = /DWIN32 /D_WINDOWS /W3 /GR /EHsc /MDd /Ob0 /Od /RTC1 -ZI
   LINK_FLAGS = /machine:x64 /debug /INCREMENTAL /subsystem:console
   LINK_LIBRARIES = C:\dev\SDLProject\deps\GLEW\lib\Release\x64\glew32.lib  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib

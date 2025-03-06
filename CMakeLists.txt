@@ -12,7 +12,10 @@ endif()
 project ("SDLProject")
 
 # Add source to this project's executable.
-add_executable (SDLProject "SDLProject.cpp" "SDLProject.h")
+add_executable (SDLProject
+	src/SDLProject.cpp
+	include/SDLProject.h
+)
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET SDLProject PROPERTY CXX_STANDARD 20)
