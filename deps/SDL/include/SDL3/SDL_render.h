@@ -2236,43 +2236,6 @@ extern SDL_DECLSPEC bool SDLCALL SDL_RenderTextureTiled(SDL_Renderer *renderer, 
 extern SDL_DECLSPEC bool SDLCALL SDL_RenderTexture9Grid(SDL_Renderer *renderer, SDL_Texture *texture, const SDL_FRect *srcrect, float left_width, float right_width, float top_height, float bottom_height, float scale, const SDL_FRect *dstrect);
 
 /**
- * Perform a scaled copy using the 9-grid algorithm to the current rendering
- * target at subpixel precision.
- *
- * The pixels in the texture are split into a 3x3 grid, using the different
- * corner sizes for each corner, and the sides and center making up the
- * remaining pixels. The corners are then scaled using `scale` and fit into
- * the corners of the destination rectangle. The sides and center are then
- * tiled into place to cover the remaining destination rectangle.
- *
- * \param renderer the renderer which should copy parts of a texture.
- * \param texture the source texture.
- * \param srcrect the SDL_Rect structure representing the rectangle to be used
- *                for the 9-grid, or NULL to use the entire texture.
- * \param left_width the width, in pixels, of the left corners in `srcrect`.
- * \param right_width the width, in pixels, of the right corners in `srcrect`.
- * \param top_height the height, in pixels, of the top corners in `srcrect`.
- * \param bottom_height the height, in pixels, of the bottom corners in
- *                      `srcrect`.
- * \param scale the scale used to transform the corner of `srcrect` into the
- *              corner of `dstrect`, or 0.0f for an unscaled copy.
- * \param dstrect a pointer to the destination rectangle, or NULL for the
- *                entire rendering target.
- * \param tileScale the scale used to transform the borders and center of
- *                  `srcrect` into the borders and middle of `dstrect`, or
- *                  1.0f for an unscaled copy.
- * \returns true on success or false on failure; call SDL_GetError() for more
- *          information.
- *
- * \threadsafety This function should only be called on the main thread.
- *
- * \since This function is available since SDL 3.4.0.
- *
- * \sa SDL_RenderTexture
- */
-extern SDL_DECLSPEC bool SDLCALL SDL_RenderTexture9GridTiled(SDL_Renderer *renderer, SDL_Texture *texture, const SDL_FRect *srcrect, float left_width, float right_width, float top_height, float bottom_height, float scale, const SDL_FRect *dstrect, float tileScale);
-
-/**
  * Render a list of triangles, optionally using a texture and indices into the
  * vertex array Color and alpha modulation is done per vertex
  * (SDL_SetTextureColorMod and SDL_SetTextureAlphaMod are ignored).
@@ -2673,42 +2636,6 @@ extern SDL_DECLSPEC bool SDLCALL SDL_RenderDebugText(SDL_Renderer *renderer, flo
  * \sa SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE
  */
 extern SDL_DECLSPEC bool SDLCALL SDL_RenderDebugTextFormat(SDL_Renderer *renderer, float x, float y, SDL_PRINTF_FORMAT_STRING const char *fmt, ...) SDL_PRINTF_VARARG_FUNC(4);
-
-/**
- * Set default scale mode for new textures for given renderer.
- *
- * When a renderer is created, scale_mode defaults to SDL_SCALEMODE_LINEAR.
- *
- * \param renderer the renderer to update.
- * \param scale_mode the scale mode to change to for new textures.
- * \returns true on success or false on failure; call SDL_GetError() for more
- *          information.
- *
- * \threadsafety This function should only be called on the main thread.
- *
- * \since This function is available since SDL 3.4.0.
- *
- * \sa SDL_GetDefaultTextureScaleMode
- */
-extern SDL_DECLSPEC bool SDLCALL SDL_SetDefaultTextureScaleMode(SDL_Renderer *renderer, SDL_ScaleMode scale_mode);
-
-/**
- * Get default texture scale mode of the given renderer.
- *
- * \param renderer the renderer to get data from.
- * \param scale_mode a SDL_ScaleMode filled with current default scale mode.
- *                   See SDL_SetDefaultTextureScaleMode() for the meaning of
- *                   the value.
- * \returns true on success or false on failure; call SDL_GetError() for more
- *          information.
- *
- * \threadsafety This function should only be called on the main thread.
- *
- * \since This function is available since SDL 3.4.0.
- *
- * \sa SDL_SetDefaultTextureScaleMode
- */
-extern SDL_DECLSPEC bool SDLCALL SDL_GetDefaultTextureScaleMode(SDL_Renderer *renderer, SDL_ScaleMode *scale_mode);
 
 /* Ends C function definitions when using C++ */
 #ifdef __cplusplus
