@@ -1,19 +1,73 @@
 ﻿#include <string.h>
 #include <math.h>
 #include <stdlib.h>
-#ifdef __EMSCRIPTEN__
-#include <emscripten/emscripten.h>
-#endif
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
 int* gFrameBuffer;
+int* gTempBuffer;
 SDL_Window* gSDLWindow;
 SDL_Renderer* gSDLRenderer;
 SDL_Texture* gSDLTexture;
 static int gDone;
 const int WINDOW_WIDTH = 1920 / 2;
 const int WINDOW_HEIGHT = 1080 / 2;
+
+bool initializeWindow(const char* title, int width, int height)
+{
+	// Initialize SDL
+	if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS))
+	{
+		SDL_Log("SDL initialization failed: %s", SDL_GetError());
+		return false;
+	}
+
+	// Set OpenGL attributes before window creation
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+
+	// Create window with SDL_WINDOW_RESIZABLE flag
+	gSDLWindow = SDL_CreateWindow(
+		title,                         // Window title
+		width,                         // Width
+		height,                        // Height
+		SDL_WINDOW_OPENGL |            // OpenGL context
+		SDL_WINDOW_RESIZABLE |         // Resizable window
+		SDL_WINDOW_HIGH_PIXEL_DENSITY  // High DPI support
+	);
+
+	if (!gSDLWindow) {
+		SDL_Log("Window creation failed: %s", SDL_GetError());
+		SDL_Quit();
+		return false;
+	}
+
+	// Create OpenGL context
+	SDL_GLContext gl_context = SDL_GL_CreateContext(gSDLWindow);
+	if (!gl_context) {
+		SDL_Log("OpenGL context creation failed: %s", SDL_GetError());
+		SDL_DestroyWindow(gSDLWindow);
+		SDL_Quit();
+		return false;
+	}
+
+	return true;
+}
+
+bool initialize()
+{
+	initializeWindow("SDL3 window", WINDOW_WIDTH, WINDOW_HEIGHT);
+
+	return true;
+}
+
+void deinitialize()
+{
+    SDL_DestroyWindow(gSDLWindow);
+}
 
 bool update()
 {
@@ -30,29 +84,14 @@ bool update()
 		}
 	}
 
-	char* pix;
-	int pitch;
-
-    SDL_LockTexture(gSDLTexture, NULL, (void**)&pix, &pitch);
-    for (int i = 0, sp = 0, dp = 0; i < WINDOW_HEIGHT; i++, dp += WINDOW_WIDTH, sp += pitch)
-        memcpy(pix + sp, gFrameBuffer + dp, WINDOW_WIDTH * 4);
-
-    SDL_UnlockTexture(gSDLTexture);
-	SDL_RenderTexture(gSDLRenderer, gSDLTexture, NULL, NULL);
-    SDL_RenderPresent(gSDLRenderer);
-	SDL_Delay(1);
 	return true;
 }
 
 void render(Uint64 aTicks)
 {
-	for (int i = 0, c = 0; i < WINDOW_HEIGHT; i++)
-	{
-		for (int j = 0; j < WINDOW_WIDTH; j++, c++)
-		{
-			gFrameBuffer[c] = (int)(i * i + j * j + aTicks) | 0xff000000;
-		}
-	}
+	// Clear the screen with a green color
+	//for (int i = 0; i < WINDOW_WIDTH * WINDOW_HEIGHT; i++)
+	//	gFrameBuffer[i] = 0xff005f00;
 }
 
 void loop()
@@ -60,9 +99,6 @@ void loop()
 	if (!update())
 	{
 		gDone = 1;
-#ifdef __EMSCRIPTEN__
-		emscripten_cancel_main_loop();
-#endif
 	}
 	else
 	{
@@ -72,32 +108,13 @@ void loop()
 
 int main(int argc, char** argv)
 {
-	if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS))
-	{
-		return -1;
-	}
-
-    gFrameBuffer = new int[WINDOW_WIDTH * WINDOW_HEIGHT];
-	gSDLWindow = SDL_CreateWindow("SDL3 window", WINDOW_WIDTH, WINDOW_HEIGHT, 0);
-	gSDLRenderer = SDL_CreateRenderer(gSDLWindow, NULL);
-    gSDLTexture = SDL_CreateTexture(gSDLRenderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, WINDOW_WIDTH, WINDOW_HEIGHT);
-
-	if (!gFrameBuffer || !gSDLWindow || !gSDLRenderer || !gSDLTexture)
-		return -1;
-
+	initialize();
 	gDone = 0;
-#ifdef __EMSCRIPTEN__
-	emscripten_set_main_loop(loop, 0, 1);
-#else
-    while (!gDone)
-    {
-        loop();
-    }
-#endif
-
-    SDL_DestroyTexture(gSDLTexture);
-	SDL_DestroyRenderer(gSDLRenderer);
-	SDL_DestroyWindow(gSDLWindow);
+	while (!gDone)
+	{
+		loop();
+	}
+	deinitialize();
 	SDL_Quit();
 
 	return 0;
