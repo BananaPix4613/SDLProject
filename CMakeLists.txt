@@ -14,6 +14,7 @@ project ("SDLProject")
 # Add source to this project's executable.
 add_executable (SDLProject
 	src/SDLProject.cpp
+	deps/GLAD/src/glad.c
 )
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
@@ -24,9 +25,10 @@ endif()
 set(SDL3_DIR "${CMAKE_SOURCE_DIR}/deps/SDL")
 set(GLFW_DIR "${CMAKE_SOURCE_DIR}/deps/GLFW")
 set(GLEW_DIR "${CMAKE_SOURCE_DIR}/deps/GLEW")
+set(GLAD_DIR "${CMAKE_SOURCE_DIR}/deps/GLAD")
 
 # Include directories
-include_directories("${CMAKE_SOURCE_DIR}/include" "${SDL3_DIR}/include" "${GLFW_DIR}/include" "${GLEW_DIR}/include")
+include_directories("${CMAKE_SOURCE_DIR}/include" "${SDL3_DIR}/include" "${GLFW_DIR}/include" "${GLEW_DIR}/include" "${GLAD_DIR}/include")
 
 # Link libraries
 target_link_libraries(SDLProject "${GLEW_DIR}/lib/Release/x64/glew32.lib" "${SDL3_DIR}/lib/x64/SDL3.lib")

@@ -3,12 +3,14 @@
 #include <stdlib.h>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+#include <GLAD/glad.h>
 
 int* gFrameBuffer;
 int* gTempBuffer;
 SDL_Window* gSDLWindow;
 SDL_Renderer* gSDLRenderer;
 SDL_Texture* gSDLTexture;
+SDL_GLContext gl_context;
 static int gDone;
 const int WINDOW_WIDTH = 1920 / 2;
 const int WINDOW_HEIGHT = 1080 / 2;
@@ -46,13 +48,31 @@ bool initializeWindow(const char* title, int width, int height)
 	}
 
 	// Create OpenGL context
-	SDL_GLContext gl_context = SDL_GL_CreateContext(gSDLWindow);
+	gl_context = SDL_GL_CreateContext(gSDLWindow);
 	if (!gl_context) {
 		SDL_Log("OpenGL context creation failed: %s", SDL_GetError());
 		SDL_DestroyWindow(gSDLWindow);
 		SDL_Quit();
 		return false;
 	}
+
+	if (!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress))
+	{
+		SDL_Log("Failed to initialize GLAD");
+		SDL_GL_DestroyContext(gl_context);
+		SDL_DestroyWindow(gSDLWindow);
+		SDL_Quit();
+		return false;
+	}
+
+	// Enable VSync (optional)
+	SDL_GL_SetSwapInterval(1);
+
+	// Setup OpenGL viewport
+	glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+
+	// Enable depth testing
+    glEnable(GL_DEPTH_TEST);
 
 	return true;
 }
@@ -66,6 +86,7 @@ bool initialize()
 
 void deinitialize()
 {
+	SDL_GL_DestroyContext(gl_context);
     SDL_DestroyWindow(gSDLWindow);
 }
 
