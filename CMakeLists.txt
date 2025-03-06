@@ -14,7 +14,6 @@ project ("SDLProject")
 # Add source to this project's executable.
 add_executable (SDLProject
 	src/SDLProject.cpp
-	include/SDLProject.h
 )
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
