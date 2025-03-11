@@ -1,9 +1,13 @@
-﻿#include <string.h>
+﻿#include <windows.h>
+#include <string.h>
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
+
+#include <GLAD/glad.h>
+#include <GLFW/glfw3.h>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
-#include <GLAD/glad.h>
 
 int* gFrameBuffer;
 int* gTempBuffer;
@@ -15,6 +19,36 @@ static int gDone;
 const int WINDOW_WIDTH = 1920 / 2;
 const int WINDOW_HEIGHT = 1080 / 2;
 
+void GLAPIENTRY errorCallback(GLenum source, GLenum type, GLuint id,
+	GLenum severity, GLsizei length, const GLchar* message, const void* userParam)
+{
+	fprintf(stderr, "GL Error: type = 0x%x, severity = 0x%x, message = %s\n",
+		type, severity, message);
+}
+
+const char* getGLErrorString(GLenum error)
+{
+	switch (error)
+	{
+	case GL_NO_ERROR:
+		return "No error";
+	case GL_INVALID_ENUM:
+		return "Invalid enum";
+	case GL_INVALID_VALUE:
+		return "Invalid value";
+	case GL_STACK_OVERFLOW:
+		return "Stack overflow";
+	case GL_STACK_UNDERFLOW:
+		return "Stack underflow";
+	case GL_OUT_OF_MEMORY:
+		return "Out of memory";
+	case GL_INVALID_FRAMEBUFFER_OPERATION:
+		return "Invalid framebuffer operation";
+	default:
+		return "Unknown error";
+	}
+}
+
 bool initializeWindow(const char* title, int width, int height)
 {
 	// Initialize SDL
@@ -25,11 +59,16 @@ bool initializeWindow(const char* title, int width, int height)
 	}
 
 	// Set OpenGL attributes before window creation
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+	if (SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3) < 0 ||
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3) < 0 ||
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE) < 0 ||
+		SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1) < 0 ||
+		SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24) < 0)
+	{
+		SDL_Log("Failed to set OpenGL attributes: %s", SDL_GetError());
+		SDL_Quit();
+		return false;
+	}
 
 	// Create window with SDL_WINDOW_RESIZABLE flag
 	gSDLWindow = SDL_CreateWindow(
@@ -66,20 +105,91 @@ bool initializeWindow(const char* title, int width, int height)
 	}
 
 	// Enable VSync (optional)
-	SDL_GL_SetSwapInterval(1);
+	if (SDL_GL_SetSwapInterval(1) < 0)
+	{
+		SDL_Log("Failed to set VSync: %s", SDL_GetError());
+		// Continue without VSync
+	}
 
 	// Setup OpenGL viewport
 	glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+	GLenum error = glGetError();
+	if (error != GL_NO_ERROR)
+	{
+		SDL_Log("Failed to set viewport: %s", getGLErrorString(error));
+		SDL_GL_DestroyContext(gl_context);
+		SDL_DestroyWindow(gSDLWindow);
+		SDL_Quit();
+		return false;
+	}
 
 	// Enable depth testing
     glEnable(GL_DEPTH_TEST);
+	error = glGetError();
+	if (error != GL_NO_ERROR)
+	{
+		SDL_Log("Failed to enable depth test: %s", getGLErrorString(error));
+		SDL_GL_DestroyContext(gl_context);
+		SDL_DestroyWindow(gSDLWindow);
+		SDL_Quit();
+		return false;
+	}
 
 	return true;
 }
 
 bool initialize()
 {
-	initializeWindow("SDL3 window", WINDOW_WIDTH, WINDOW_HEIGHT);
+	// Set before context creation
+	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+	SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
+
+	if (!initializeWindow("SDL3 window", WINDOW_WIDTH, WINDOW_HEIGHT))
+	{
+		return false;
+	}
+
+	// Set after context creation
+	int major, minor;
+	SDL_GL_GetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, &major);
+	SDL_GL_GetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, &minor);
+	printf("OpenGL %d.%d context created\n", major, minor);
+
+	// Get OpenGL vendor and renderer info
+	const GLubyte* vendor = glGetString(GL_VENDOR);
+	const GLubyte* renderer = glGetString(GL_RENDERER);
+	const GLubyte* version = glGetString(GL_VERSION);
+	const GLubyte* glslVersion = glGetString(GL_SHADING_LANGUAGE_VERSION);
+
+	if (!vendor || !renderer || !version || !glslVersion)
+	{
+		SDL_Log("Failed to get OpenGL info");
+		SDL_GL_DestroyContext(gl_context);
+		SDL_DestroyWindow(gSDLWindow);
+		SDL_Quit();
+		return false;
+	}
+
+	printf("OpenGL Vendor: %s\n", vendor);
+	printf("OpenGL Renderer: %s\n", renderer);
+	printf("OpenGL Version: %s\n", version);
+	printf("GLSL Version: %s\n", glslVersion);
+
+	// Enable debug output
+	if (GLAD_GL_VERSION_4_3)
+	{
+		glEnable(GL_DEBUG_OUTPUT);
+		glDebugMessageCallback(errorCallback, 0);
+	}
+	else
+	{
+		SDL_Log("OpenGL 4.3 or higher is required for debug output");
+	}
 
 	return true;
 }
@@ -129,7 +239,10 @@ void loop()
 
 int main(int argc, char** argv)
 {
-	initialize();
+	if (!initialize())
+	{
+		return -1;
+	}
 	gDone = 0;
 	while (!gDone)
 	{
