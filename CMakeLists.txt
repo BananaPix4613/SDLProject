@@ -11,26 +11,31 @@ endif()
 
 project ("SDLProject")
 
-# Add source to this project's executable.
-add_executable (SDLProject
+find_package(OpenGL REQUIRED)
+
+include_directories(${OPENGL_INCLUDE_DIRS})
+
+set(GLFW_BUILD_DOCS OFF CACHE BOOL  "GLFW lib only")
+set(GLFW_INSTALL OFF CACHE BOOL  "GLFW lib only")
+set(GLAD_GL "")
+
+add_subdirectory(deps/glfw)
+add_subdirectory(DEPS/SDL EXCLUDE_FROM_ALL)
+
+option(SDLPROJECT-USE-GLFW-GLAD "Use GLAD from GLFW" ON)
+
+if (SDLPROJECT-USE-GLFW-GLAD)
+    include_directories("${GLFW_SOURCE_DIR}/deps")
+    set(GLAD_GL "${GLFW_SOURCE_DIR}/deps/glad/gl.h")
+endif()
+
+set (SOURCES
 	src/SDLProject.cpp
-	deps/GLAD/src/glad.c
 )
+
+add_executable(SDLProject ${SOURCES} ${GLAD_GL})
+target_link_libraries(SDLProject ${OPENGL_LIBRARIES} glfw SDL3::SDL3)
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET SDLProject PROPERTY CXX_STANDARD 20)
 endif()
-
-# Define paths to the pre-built libraries
-set(SDL3_DIR "${CMAKE_SOURCE_DIR}/deps/SDL")
-set(GLFW_DIR "${CMAKE_SOURCE_DIR}/deps/GLFW")
-set(GLEW_DIR "${CMAKE_SOURCE_DIR}/deps/GLEW")
-set(GLAD_DIR "${CMAKE_SOURCE_DIR}/deps/GLAD")
-
-# Include directories
-include_directories("${CMAKE_SOURCE_DIR}/include" "${SDL3_DIR}/include" "${GLFW_DIR}/include" "${GLEW_DIR}/include" "${GLAD_DIR}/include")
-
-# Link libraries
-target_link_libraries(SDLProject "${GLEW_DIR}/lib/Release/x64/glew32.lib" "${SDL3_DIR}/lib/x64/SDL3.lib")
-
-# TODO: Add tests and install targets if needed.

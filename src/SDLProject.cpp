@@ -1,23 +1,52 @@
 ﻿#include <windows.h>
-#include <string.h>
+#include <string>
+#include <fstream>
+#include <sstream>
+#include <vector>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <GLAD/glad.h>
+#define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
-#include <SDL3/SDL.h>
-#include <SDL3/SDL_main.h>
+#include <glad/gl.h>
 
 int* gFrameBuffer;
 int* gTempBuffer;
-SDL_Window* gSDLWindow;
-SDL_Renderer* gSDLRenderer;
-SDL_Texture* gSDLTexture;
-SDL_GLContext gl_context;
+GLFWwindow* gWindow;
 static int gDone;
 const int WINDOW_WIDTH = 1920 / 2;
 const int WINDOW_HEIGHT = 1080 / 2;
+
+const char* vertexShaderSource = R"(
+#version 330 core
+layout(location = 0) in vec3 aPos;
+
+out vec4 vertexColor;
+
+void main()
+{
+	gl_Position = vec4(aPos, 1.0);
+	vertexColor = vec4(0.5, 0.0, 0.0, 1.0);
+}
+)";
+
+const char* fragmentShaderSource = R"(
+#version 330 core
+out vec4 FragColor;
+
+uniform vec4 ourColor;
+
+void main()
+{
+	FragColor = ourColor;
+}
+)";
+
+unsigned int shaderProgram;
+unsigned int VAO, VBO, EBO;
+
+using namespace std;
 
 void GLAPIENTRY errorCallback(GLenum source, GLenum type, GLuint id,
 	GLenum severity, GLsizei length, const GLchar* message, const void* userParam)
@@ -51,87 +80,61 @@ const char* getGLErrorString(GLenum error)
 
 bool initializeWindow(const char* title, int width, int height)
 {
-	// Initialize SDL
-	if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS))
+	// Initialize GLFW
+	if (!glfwInit())
 	{
-		SDL_Log("SDL initialization failed: %s", SDL_GetError());
+		fprintf(stderr, "GLFW initialization failed\n");
 		return false;
 	}
 
-	// Set OpenGL attributes before window creation
-	if (SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3) < 0 ||
-		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3) < 0 ||
-		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE) < 0 ||
-		SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1) < 0 ||
-		SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24) < 0)
+	// Set GLFW version and profile
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+	// Create window
+	gWindow = glfwCreateWindow(width, height, title, NULL, NULL);
+	if (!gWindow)
 	{
-		SDL_Log("Failed to set OpenGL attributes: %s", SDL_GetError());
-		SDL_Quit();
-		return false;
-	}
-
-	// Create window with SDL_WINDOW_RESIZABLE flag
-	gSDLWindow = SDL_CreateWindow(
-		title,                         // Window title
-		width,                         // Width
-		height,                        // Height
-		SDL_WINDOW_OPENGL |            // OpenGL context
-		SDL_WINDOW_RESIZABLE |         // Resizable window
-		SDL_WINDOW_HIGH_PIXEL_DENSITY  // High DPI support
-	);
-
-	if (!gSDLWindow) {
-		SDL_Log("Window creation failed: %s", SDL_GetError());
-		SDL_Quit();
+		fprintf(stderr, "Window creation failed\n");
+		glfwTerminate();
 		return false;
 	}
 
 	// Create OpenGL context
-	gl_context = SDL_GL_CreateContext(gSDLWindow);
-	if (!gl_context) {
-		SDL_Log("OpenGL context creation failed: %s", SDL_GetError());
-		SDL_DestroyWindow(gSDLWindow);
-		SDL_Quit();
-		return false;
-	}
+	glfwMakeContextCurrent(gWindow);
 
-	if (!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress))
+	// Load OpenGL functions using GLAD
+	/*if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
 	{
-		SDL_Log("Failed to initialize GLAD");
-		SDL_GL_DestroyContext(gl_context);
-		SDL_DestroyWindow(gSDLWindow);
-		SDL_Quit();
+		fprintf(stderr, "Failed to initialize GLAD\n");
+		glfwDestroyWindow(gWindow);
+		glfwTerminate();
 		return false;
-	}
+	}*/
 
 	// Enable VSync (optional)
-	if (SDL_GL_SetSwapInterval(1) < 0)
-	{
-		SDL_Log("Failed to set VSync: %s", SDL_GetError());
-		// Continue without VSync
-	}
+	glfwSwapInterval(1);
 
 	// Setup OpenGL viewport
 	glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
 	GLenum error = glGetError();
 	if (error != GL_NO_ERROR)
 	{
-		SDL_Log("Failed to set viewport: %s", getGLErrorString(error));
-		SDL_GL_DestroyContext(gl_context);
-		SDL_DestroyWindow(gSDLWindow);
-		SDL_Quit();
+		fprintf(stderr, "Failed to set viewport: %s\n", getGLErrorString(error));
+		glfwDestroyWindow(gWindow);
+		glfwTerminate();
 		return false;
 	}
 
 	// Enable depth testing
-    glEnable(GL_DEPTH_TEST);
+	glEnable(GL_DEPTH_TEST);
 	error = glGetError();
 	if (error != GL_NO_ERROR)
 	{
-		SDL_Log("Failed to enable depth test: %s", getGLErrorString(error));
-		SDL_GL_DestroyContext(gl_context);
-		SDL_DestroyWindow(gSDLWindow);
-		SDL_Quit();
+		fprintf(stderr, "Failed to enable depth test: %s\n", getGLErrorString(error));
+		glfwDestroyWindow(gWindow);
+		glfwTerminate();
 		return false;
 	}
 
@@ -140,25 +143,10 @@ bool initializeWindow(const char* title, int width, int height)
 
 bool initialize()
 {
-	// Set before context creation
-	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
-	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
-	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
-	SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
-	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
-	SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
-	SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
-
-	if (!initializeWindow("SDL3 window", WINDOW_WIDTH, WINDOW_HEIGHT))
+	if (!initializeWindow("GLFW window", WINDOW_WIDTH, WINDOW_HEIGHT))
 	{
 		return false;
 	}
-
-	// Set after context creation
-	int major, minor;
-	SDL_GL_GetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, &major);
-	SDL_GL_GetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, &minor);
-	printf("OpenGL %d.%d context created\n", major, minor);
 
 	// Get OpenGL vendor and renderer info
 	const GLubyte* vendor = glGetString(GL_VENDOR);
@@ -168,10 +156,9 @@ bool initialize()
 
 	if (!vendor || !renderer || !version || !glslVersion)
 	{
-		SDL_Log("Failed to get OpenGL info");
-		SDL_GL_DestroyContext(gl_context);
-		SDL_DestroyWindow(gSDLWindow);
-		SDL_Quit();
+		fprintf(stderr, "Failed to get OpenGL info\n");
+		glfwDestroyWindow(gWindow);
+		glfwTerminate();
 		return false;
 	}
 
@@ -181,48 +168,61 @@ bool initialize()
 	printf("GLSL Version: %s\n", glslVersion);
 
 	// Enable debug output
-	if (GLAD_GL_VERSION_4_3)
+	/*if (GLAD_GL_VERSION_4_3)
 	{
 		glEnable(GL_DEBUG_OUTPUT);
 		glDebugMessageCallback(errorCallback, 0);
 	}
 	else
 	{
-		SDL_Log("OpenGL 4.3 or higher is required for debug output");
-	}
+		fprintf(stderr, "OpenGL 4.3 or higher is required for debug output\n");
+	}*/
 
 	return true;
 }
 
 void deinitialize()
 {
-	SDL_GL_DestroyContext(gl_context);
-    SDL_DestroyWindow(gSDLWindow);
+	glfwDestroyWindow(gWindow);
+	glfwTerminate();
 }
 
 bool update()
 {
-	SDL_Event e;
-	if (SDL_PollEvent(&e))
+	if (glfwWindowShouldClose(gWindow))
 	{
-		if (e.type == SDL_EVENT_QUIT)
-		{
-			return false;
-		}
-		if (e.type == SDL_EVENT_KEY_UP && e.key.key == SDLK_ESCAPE)
-		{
-			return false;
-		}
+		return false;
 	}
 
 	return true;
 }
 
-void render(Uint64 aTicks)
+void render(unsigned int aTicks)
 {
 	// Clear the screen with a green color
-	//for (int i = 0; i < WINDOW_WIDTH * WINDOW_HEIGHT; i++)
-	//	gFrameBuffer[i] = 0xff005f00;
+	glClearColor(0.0f, 0.5f, 0.0f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	float timeValue = glfwGetTime();
+	float greenValue = (sin(timeValue) / 2.0f) + 0.5f;
+	int vertexColorLocation = glGetUniformLocation(shaderProgram, "ourColor");
+
+	// Use the shader program
+	glUseProgram(shaderProgram);
+	glUniform4f(vertexColorLocation, 0.0f, greenValue, 0.0f, 1.0f);
+
+	// Bind the VA0
+	glBindVertexArray(VAO);
+
+	// Render the triangle
+	//glDrawArrays(GL_TRIANGLES, 0, 3);
+	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+	// Unbind the VAO
+	glBindVertexArray(0);
+
+	glfwSwapBuffers(gWindow);
+	glfwPollEvents();
 }
 
 void loop()
@@ -233,8 +233,94 @@ void loop()
 	}
 	else
 	{
-		render(SDL_GetTicks());
+		render(glfwGetTime());
 	}
+}
+
+void setupTriangle()
+{
+	// Vertex data
+	float vertices[] = {
+			0.5f,  0.5f, 0.0f,  // Top right
+			0.5f, -0.5f, 0.0f,  // Bottom right
+		-0.5f, -0.5f, 0.0f,  // Bottom left
+		-0.5f,  0.5f, 0.0f   // Top left
+	};
+	unsigned int indices[] = {
+		0, 1, 3,  // First triangle
+		1, 2, 3   // Second triangle
+	};
+
+	// Create vertex array object and vertex buffer object
+	glGenVertexArrays(1, &VAO);
+	glGenBuffers(1, &VBO);
+	glGenBuffers(1, &EBO);
+
+	// Bind VAO
+	glBindVertexArray(VAO);
+
+	// Bind VBO and upload vertex data
+	glBindBuffer(GL_ARRAY_BUFFER, VBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+	// Bind EBO and upload indices data
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+	// Set vertex attribute pointers
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+	glEnableVertexAttribArray(0);
+
+	// Unbind VBO and VAO
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	//glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
+
+	// Compile vertex shader
+	unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
+	glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
+	glCompileShader(vertexShader);
+
+	// Check for vertex shader compile errors
+	int success;
+	char infoLog[512];
+	glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
+	if (!success)
+	{
+		glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
+		fprintf(stderr, "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n%s\n", infoLog);
+	}
+
+	// Compile fragment shader
+	unsigned int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+	glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
+	glCompileShader(fragmentShader);
+
+	// Check for fragment shader compile errors
+	glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
+	if (!success)
+	{
+		glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
+		fprintf(stderr, "ERROR::SHADER::FRAGMENT::COMPILATION_FAILED\n%s\n", infoLog);
+	}
+
+	// Link shaders into a shader program
+	shaderProgram = glCreateProgram();
+	glAttachShader(shaderProgram, vertexShader);
+	glAttachShader(shaderProgram, fragmentShader);
+	glLinkProgram(shaderProgram);
+
+	// Check for linking errors
+	glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
+	if (!success)
+	{
+		glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
+		fprintf(stderr, "ERROR::SHADER::PROGRAM::LINKING_FAILED\n%s\n", infoLog);
+	}
+
+	// Delete the shaders as they're linked into our program now and no longer necessary
+	glDeleteShader(vertexShader);
+	glDeleteShader(fragmentShader);
 }
 
 int main(int argc, char** argv)
@@ -243,13 +329,16 @@ int main(int argc, char** argv)
 	{
 		return -1;
 	}
+
+	setupTriangle();
+
 	gDone = 0;
 	while (!gDone)
 	{
 		loop();
 	}
+
 	deinitialize();
-	SDL_Quit();
 
 	return 0;
 }
