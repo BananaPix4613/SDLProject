@@ -17,24 +17,33 @@ include_directories(${OPENGL_INCLUDE_DIRS})
 
 set(GLFW_BUILD_DOCS OFF CACHE BOOL  "GLFW lib only")
 set(GLFW_INSTALL OFF CACHE BOOL  "GLFW lib only")
-set(GLAD_GL "")
 
 add_subdirectory(deps/glfw)
-add_subdirectory(DEPS/SDL EXCLUDE_FROM_ALL)
-
-option(SDLPROJECT-USE-GLFW-GLAD "Use GLAD from GLFW" ON)
-
-if (SDLPROJECT-USE-GLFW-GLAD)
-    include_directories("${GLFW_SOURCE_DIR}/deps")
-    set(GLAD_GL "${GLFW_SOURCE_DIR}/deps/glad/gl.h")
-endif()
 
 set (SOURCES
 	src/SDLProject.cpp
+	deps/glad/src/glad.c
+ )
+
+include_directories(SYSTEM
+	include
+	deps/glm/
+	deps/glad/include
 )
 
-add_executable(SDLProject ${SOURCES} ${GLAD_GL})
-target_link_libraries(SDLProject ${OPENGL_LIBRARIES} glfw SDL3::SDL3)
+# Copy necessary resources to build
+file (COPY
+	assets/container.jpg
+	assets/awesomeface.png
+	DESTINATION "${CMAKE_BINARY_DIR}/assets")
+
+file (COPY
+	shaders/FragmentShader.glsl
+	shaders/VertexShader.glsl
+	DESTINATION "${CMAKE_BINARY_DIR}/shaders")
+
+add_executable(SDLProject ${SOURCES})
+target_link_libraries(SDLProject ${OPENGL_LIBRARIES} glfw)
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET SDLProject PROPERTY CXX_STANDARD 20)
