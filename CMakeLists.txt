@@ -35,14 +35,20 @@ include_directories(SYSTEM
 file (COPY
 	assets/container.jpg
 	assets/awesomeface.png
+	assets/container2.png
+	assets/container2_specular.png
 	DESTINATION "${CMAKE_BINARY_DIR}/assets")
 
 file (COPY
 	shaders/FragmentShader.glsl
 	shaders/VertexShader.glsl
+	shaders/BasicLightingFragmentShader.glsl
+	shaders/BasicLightingVertexShader.glsl
+	shaders/LightCubeFragmentShader.glsl
+	shaders/LightCubeVertexShader.glsl
 	DESTINATION "${CMAKE_BINARY_DIR}/shaders")
 
-add_executable(SDLProject ${SOURCES})
+add_executable(SDLProject ${SOURCES} "include/camera.h")
 target_link_libraries(SDLProject ${OPENGL_LIBRARIES} glfw)
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)

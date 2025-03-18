@@ -10,6 +10,7 @@
 #include <gtc/matrix_transform.hpp>
 #include <gtc/type_ptr.hpp>
 #include "shader.h"
+#include "camera.h"
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
@@ -19,363 +20,485 @@
 #include "stb_image.h"
 
 // Function declarations
-void framebuffer_size_callback(GLFWwindow* window, int width, int height);
-void GLAPIENTRY errorCallback(GLenum source, GLenum type, GLuint id,
-	GLenum severity, GLsizei length, const GLchar* message, const void* userParam);
-const char* getGLErrorString(GLenum error);
+void framebuffer_size_callback(GLFWwindow *window, int width, int height);
+void GLAPIENTRY error_callback(GLenum source, GLenum type, GLuint id,
+                               GLenum severity, GLsizei length,
+                               const GLchar *message, const void *userParam);
+void mouse_callback(GLFWwindow *window, double xposIn, double yposIn);
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
+void processInput();
+unsigned int loadTexture(const char* path);
+const char *getGLErrorString(GLenum error);
 
-bool initializeWindow(const char* title, int width, int height);
+bool initializeWindow(const char *title, int width, int height);
 bool initialize();
 void deinitialize();
 bool update();
-void processInput();
-void render(Shader &shader);
-void loop(Shader &shader);
-void setupTriangle(Shader &shader);
+void render(Shader& lightingShader, Shader& lightSourceShader);
+void loop(Shader& lightingShader, Shader& lightSourceShader);
+void setupTriangle(Shader &lightingShader, Shader &lightSourceShader);
 
 // Global variables
-int* gFrameBuffer;
-int* gTempBuffer;
-GLFWwindow* gWindow;
+int *gFrameBuffer;
+int *gTempBuffer;
+GLFWwindow *gWindow;
 static int gDone;
-const int WINDOW_WIDTH = 1920 / 2;
-const int WINDOW_HEIGHT = 1080 / 2;
+constexpr int WINDOW_WIDTH = 1920 / 2;
+constexpr int WINDOW_HEIGHT = 1080 / 2;
 
 unsigned int shaderProgram;
-unsigned int VAO, VBO, EBO;
+unsigned int VBO, cubeVAO, lightVAO;
 unsigned int texture1, texture2;
+
+unsigned int diffuseMap;
+unsigned int specularMap;
+
+// Camera
+Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
+float lastX = WINDOW_WIDTH / 2;
+float lastY = WINDOW_HEIGHT / 2;
+bool firstMouse = true;
+
+// Timing
+float deltaTime = 0.0f;	// Time between current frame and last frame
+float lastFrame = 0.0f; // Time of last frame
+
+// Lighting
+glm::vec3 lightPos(1.2f, 1.0f, 2.0f);
+
+float vertices[] = {
+    // positions          // normals           // texture coords
+    -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f,
+    0.5f, -0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 1.0f, 0.0f,
+    0.5f, 0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f,
+    0.5f, 0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f,
+    -0.5f, 0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f,
+
+    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+    0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f,
+    0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    -0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,
+    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+
+    -0.5f, 0.5f, 0.5f, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+    -0.5f, 0.5f, -0.5f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+    -0.5f, -0.5f, 0.5f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+    -0.5f, 0.5f, 0.5f, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+
+    0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+    0.5f, 0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f,
+    0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+    0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+    0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+    0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+
+    -0.5f, -0.5f, -0.5f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f,
+    0.5f, -0.5f, -0.5f, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f,
+    0.5f, -0.5f, 0.5f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f,
+    0.5f, -0.5f, 0.5f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f,
+    -0.5f, -0.5f, 0.5f, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f,
+    -0.5f, -0.5f, -0.5f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f,
+
+    -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,
+    0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f,
+    0.5f, 0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f,
+    0.5f, 0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f,
+    -0.5f, 0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+    -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f
+};
 
 using namespace std;
 
-int main(int argc, char** argv)
+int main(int argc, char **argv)
 {
-	if (!initialize())
-	{
-		return -1;
-	}
+    if (!initialize())
+    {
+        return -1;
+    }
 
-	Shader shader("shaders/VertexShader.glsl", "shaders/FragmentShader.glsl");
-	setupTriangle(shader);
+    //Shader shader("shaders/VertexShader.glsl", "shaders/FragmentShader.glsl");
+    Shader lightingShader("shaders/BasicLightingVertexShader.glsl", "shaders/BasicLightingFragmentShader.glsl");
+    Shader lightSourceShader("shaders/LightCubeVertexShader.glsl", "shaders/LightCubeFragmentShader.glsl");
+    setupTriangle(lightingShader, lightSourceShader);
 
-	gDone = 0;
-	while (!gDone)
-	{
-		loop(shader);
-	}
+    gDone = 0;
+    while (!gDone)
+    {
+        loop(lightingShader, lightSourceShader);
+    }
 
-	deinitialize();
+    deinitialize();
 
-	return 0;
+    return 0;
 }
 
-bool initializeWindow(const char* title, int width, int height)
+bool initializeWindow(const char *title, int width, int height)
 {
-	// Initialize GLFW
-	if (!glfwInit())
-	{
-		fprintf(stderr, "GLFW initialization failed\n");
-		return false;
-	}
+    // Initialize GLFW
+    if (!glfwInit())
+    {
+        fprintf(stderr, "GLFW initialization failed\n");
+        return false;
+    }
 
-	// Set GLFW version and profile
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    // Set GLFW version and profile
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-	// Create window
-	gWindow = glfwCreateWindow(width, height, title, NULL, NULL);
-	if (!gWindow)
-	{
-		fprintf(stderr, "Window creation failed\n");
-		glfwTerminate();
-		return false;
-	}
+    // Create window
+    gWindow = glfwCreateWindow(width, height, title, nullptr, nullptr);
+    if (!gWindow)
+    {
+        fprintf(stderr, "Window creation failed\n");
+        glfwTerminate();
+        return false;
+    }
 
-	// Create OpenGL context
-	glfwMakeContextCurrent(gWindow);
-	glfwSetFramebufferSizeCallback(gWindow, framebuffer_size_callback);
+    // Create OpenGL context
+    glfwMakeContextCurrent(gWindow);
+    glfwSetFramebufferSizeCallback(gWindow, framebuffer_size_callback);
+    glfwSetCursorPosCallback(gWindow, mouse_callback);
+    glfwSetScrollCallback(gWindow, scroll_callback);
 
-	// Load OpenGL functions using GLAD
-	if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
-	{
-		fprintf(stderr, "Failed to initialize GLAD\n");
-		glfwDestroyWindow(gWindow);
-		glfwTerminate();
-		return false;
-	}
+    // Load OpenGL functions using GLAD
+    if (!gladLoadGLLoader((GLADloadproc) glfwGetProcAddress))
+    {
+        fprintf(stderr, "Failed to initialize GLAD\n");
+        glfwDestroyWindow(gWindow);
+        glfwTerminate();
+        return false;
+    }
 
-	// Enable VSync (optional)
-	glfwSwapInterval(1);
+    // Enable VSync (optional)
+    glfwSwapInterval(1);
 
-	// Setup OpenGL viewport
-	glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
-	GLenum error = glGetError();
-	if (error != GL_NO_ERROR)
-	{
-		fprintf(stderr, "Failed to set viewport: %s\n", getGLErrorString(error));
-		glfwDestroyWindow(gWindow);
-		glfwTerminate();
-		return false;
-	}
+    // Setup OpenGL viewport
+    glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+    GLenum error = glGetError();
+    if (error != GL_NO_ERROR)
+    {
+        fprintf(stderr, "Failed to set viewport: %s\n",
+                getGLErrorString(error));
+        glfwDestroyWindow(gWindow);
+        glfwTerminate();
+        return false;
+    }
 
-	// Enable depth testing
-	glEnable(GL_DEPTH_TEST);
-	error = glGetError();
-	if (error != GL_NO_ERROR)
-	{
-		fprintf(stderr, "Failed to enable depth test: %s\n", getGLErrorString(error));
-		glfwDestroyWindow(gWindow);
-		glfwTerminate();
-		return false;
-	}
+    // Enable depth testing
+    glEnable(GL_DEPTH_TEST);
+    error = glGetError();
+    if (error != GL_NO_ERROR)
+    {
+        fprintf(stderr, "Failed to enable depth test: %s\n",
+                getGLErrorString(error));
+        glfwDestroyWindow(gWindow);
+        glfwTerminate();
+        return false;
+    }
 
-	return true;
+    return true;
 }
 
 bool initialize()
 {
-	if (!initializeWindow("GLFW window", WINDOW_WIDTH, WINDOW_HEIGHT))
-	{
-		return false;
-	}
+    if (!initializeWindow("GLFW window", WINDOW_WIDTH, WINDOW_HEIGHT))
+    {
+        return false;
+    }
 
-	// Get OpenGL vendor and renderer info
-	const GLubyte* vendor = glGetString(GL_VENDOR);
-	const GLubyte* renderer = glGetString(GL_RENDERER);
-	const GLubyte* version = glGetString(GL_VERSION);
-	const GLubyte* glslVersion = glGetString(GL_SHADING_LANGUAGE_VERSION);
 
-	if (!vendor || !renderer || !version || !glslVersion)
-	{
-		fprintf(stderr, "Failed to get OpenGL info\n");
-		glfwDestroyWindow(gWindow);
-		glfwTerminate();
-		return false;
-	}
+    // Set input mode
+    glfwSetInputMode(gWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-	printf("OpenGL Vendor: %s\n", vendor);
-	printf("OpenGL Renderer: %s\n", renderer);
-	printf("OpenGL Version: %s\n", version);
-	printf("GLSL Version: %s\n", glslVersion);
+    // Get OpenGL vendor and renderer info
+    const GLubyte *vendor = glGetString(GL_VENDOR);
+    const GLubyte *renderer = glGetString(GL_RENDERER);
+    const GLubyte *version = glGetString(GL_VERSION);
+    const GLubyte *glslVersion = glGetString(GL_SHADING_LANGUAGE_VERSION);
 
-	// Enable debug output
-	if (GLAD_GL_VERSION_4_3)
-	{
-		glEnable(GL_DEBUG_OUTPUT);
-		glDebugMessageCallback(errorCallback, 0);
-	}
-	else
-	{
-		fprintf(stderr, "OpenGL 4.3 or higher is required for debug output\n");
-	}
+    if (!vendor || !renderer || !version || !glslVersion)
+    {
+        fprintf(stderr, "Failed to get OpenGL info\n");
+        glfwDestroyWindow(gWindow);
+        glfwTerminate();
+        return false;
+    }
 
-	return true;
+    printf("OpenGL Vendor: %s\n", vendor);
+    printf("OpenGL Renderer: %s\n", renderer);
+    printf("OpenGL Version: %s\n", version);
+    printf("GLSL Version: %s\n", glslVersion);
+
+    // Enable debug output
+    if (GLAD_GL_VERSION_4_3)
+    {
+        glEnable(GL_DEBUG_OUTPUT);
+        glDebugMessageCallback(error_callback, nullptr);
+    }
+    else
+    {
+        fprintf(
+            stderr, "OpenGL 4.3 or higher is required for debug output\n");
+    }
+
+    return true;
 }
 
 void deinitialize()
 {
-	glDeleteVertexArrays(1, &VAO);
-	glDeleteBuffers(1, &VBO);
-	glDeleteBuffers(1, &EBO);
+    glDeleteVertexArrays(1, &cubeVAO);
+    glDeleteVertexArrays(1, &lightVAO);
+    glDeleteBuffers(1, &VBO);
+    //glDeleteBuffers(1, &EBO);
 
-	glfwDestroyWindow(gWindow);
-	glfwTerminate();
+    glfwDestroyWindow(gWindow);
+    glfwTerminate();
 }
 
 bool update()
 {
-	processInput();
-	if (glfwWindowShouldClose(gWindow))
-	{
-		return false;
-	}
+    float currentFrame = static_cast<float>(glfwGetTime());
+    deltaTime = currentFrame - lastFrame;
+    lastFrame = currentFrame;
 
-	return true;
+    processInput();
+    if (glfwWindowShouldClose(gWindow))
+    {
+        return false;
+    }
+
+    return true;
+}
+
+void render(Shader& lightingShader, Shader& lightSourceShader)
+{
+    // Clear the screen with a green color
+    glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    // Be sure to activate shader when setting uniforms/drawing objects
+    lightingShader.use();
+    lightingShader.setVec3("light.position", lightPos);
+    lightingShader.setVec3("viewPos", camera.Position);
+
+    // Light properties
+    lightingShader.setVec3("light.ambient", 0.2f, 0.2f, 0.2f);
+    lightingShader.setVec3("light.diffuse", 0.5f, 0.5f, 0.5f);
+    lightingShader.setVec3("light.specular", 1.0f, 1.0f, 1.0f);
+
+    // Material properties
+    lightingShader.setFloat("material.shininess", 64.0f);
+
+    // Camera/View transformations
+    glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom),
+                                            static_cast<float>(WINDOW_WIDTH)
+                                            / static_cast<float>(
+                                                WINDOW_HEIGHT), 0.1f,
+                                            100.0f);
+    glm::mat4 view = camera.GetViewMatrix();
+    lightingShader.setMat4("projection", projection);
+    lightingShader.setMat4("view", view);
+
+    // World transformation
+    glm::mat4 model = glm::mat4(1.0f);
+    lightingShader.setMat4("model", model);
+
+    // Bind diffuse map
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, diffuseMap);
+
+    // Bind specular map
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, specularMap);
+
+    // Render the cube
+    glBindVertexArray(cubeVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 36);
+
+    // Also draw the lamp object
+    lightSourceShader.use();
+    lightSourceShader.setMat4("projection", projection);
+    lightSourceShader.setMat4("view", view);
+    model = glm::mat4(1.0f);
+    model = glm::translate(model, lightPos);
+    model = glm::scale(model, glm::vec3(0.2f)); // A smaller cube
+    lightSourceShader.setMat4("model", model);
+
+    glBindVertexArray(lightVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 36);
+
+    glfwSwapBuffers(gWindow);
+    glfwPollEvents();
+}
+
+void loop(Shader& lightingShader, Shader& lightSourceShader)
+{
+    if (!update())
+    {
+        gDone = 1;
+    }
+    else
+    {
+        render(lightingShader, lightSourceShader);
+    }
+}
+
+void setupTriangle(Shader& lightingShader, Shader& lightSourceShader)
+{
+    // Configure VAO (and VBO)
+    glGenVertexArrays(1, &cubeVAO);
+    glGenBuffers(1, &VBO);
+    //glGenBuffers(1, &EBO);
+
+    // Bind VBO and upload vertex data
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices,
+                 GL_STATIC_DRAW);
+
+    // Bind VAO
+    glBindVertexArray(cubeVAO);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+
+    // Configure the light VAO (VBO stays the same)
+    glGenVertexArrays(1, &lightVAO);
+    glBindVertexArray(lightVAO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    // Set the vertex attribute
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    diffuseMap = loadTexture("assets/container2.png");
+    specularMap = loadTexture("assets/container2_specular.png");
+
+    lightingShader.use();
+    lightingShader.setInt("material.diffuse", 0);
+    lightingShader.setInt("material.specular", 1);
+}
+
+void framebuffer_size_callback(GLFWwindow *window, int width, int height)
+{
+    // make sure the viewport matches the new window dimensions; note that width and
+    // height will be significantly larger than specified on retina displays
+    glViewport(0, 0, width, height);
+}
+
+void GLAPIENTRY error_callback(GLenum source, GLenum type, GLuint id,
+                               GLenum severity, GLsizei length,
+                               const GLchar *message, const void *userParam)
+{
+    fprintf(stderr, "GL Error: type = 0x%x, severity = 0x%x, message = %s\n",
+            type, severity, message);
+}
+
+void mouse_callback(GLFWwindow *window, double xposIn, double yposIn)
+{
+    float xpos = static_cast<float>(xposIn);
+    float ypos = static_cast<float>(yposIn);
+
+    if (firstMouse)
+    {
+        lastX = xpos;
+        lastY = ypos;
+        firstMouse = false;
+    }
+
+    float xoffset = xpos - lastX;
+    float yoffset = lastY -
+        ypos; // reversed since y-coordinates range from bottom to top
+    lastX = xpos;
+    lastY = ypos;
+
+    camera.ProcessMouseMovement(xoffset, yoffset);
+}
+
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
+{
+    camera.ProcessMouseScroll(static_cast<float>(yoffset));
 }
 
 void processInput()
 {
-	if (glfwGetKey(gWindow, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-	{
-		glfwSetWindowShouldClose(gWindow, true);
-	}
+    if (glfwGetKey(gWindow, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+        glfwSetWindowShouldClose(gWindow, true);
+
+    if (glfwGetKey(gWindow, GLFW_KEY_W) == GLFW_PRESS)
+        camera.ProcessKeyboard(FORWARD, deltaTime);
+    if (glfwGetKey(gWindow, GLFW_KEY_S) == GLFW_PRESS)
+        camera.ProcessKeyboard(BACKWARD, deltaTime);
+    if (glfwGetKey(gWindow, GLFW_KEY_A) == GLFW_PRESS)
+        camera.ProcessKeyboard(LEFT, deltaTime);
+    if (glfwGetKey(gWindow, GLFW_KEY_D) == GLFW_PRESS)
+        camera.ProcessKeyboard(RIGHT, deltaTime);
 }
 
-void render(Shader &shader)
+unsigned int loadTexture(const char *path)
 {
-	// Clear the screen with a green color
-	glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    unsigned int textureID;
+    glGenTextures(1, &textureID);
 
-	// Bind texture
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, texture1);
-	glActiveTexture(GL_TEXTURE1);
-	glBindTexture(GL_TEXTURE_2D, texture2);
+    int width, height, nrComponents;
+    unsigned char* data = stbi_load(path, &width, &height, &nrComponents, 0);
+    if (data)
+    {
+        GLenum format;
+        if (nrComponents == 1)
+            format = GL_RED;
+        else if (nrComponents == 3)
+            format = GL_RGB;
+        else if (nrComponents == 4)
+            format = GL_RGBA;
 
-	shader.use();
+        glBindTexture(GL_TEXTURE_2D, textureID);
+        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
 
-	// Create transformations
-	glm::mat4 model = glm::mat4(1.0f);
-	glm::mat4 view = glm::mat4(1.0f);
-	glm::mat4 projection;
-	model = glm::rotate(model, glm::radians(-55.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-	view = glm::translate(view, glm::vec3(0.0f, 0.0f, -3.0f));
-	projection = glm::perspective(glm::radians(45.0f), (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.1f, 100.0f);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-	unsigned int modelLoc = glGetUniformLocation(shader.ID, "model");
-	unsigned int viewLoc = glGetUniformLocation(shader.ID, "view");
+        stbi_image_free(data);
+    }
+    else
+    {
+        std::cout << "Texture failed to load at path: " << path << std::endl;
+        stbi_image_free(data);
+    }
 
-	glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-	glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
-	shader.setMat4("projection", projection);
-
-	// Render container
-	glBindVertexArray(VAO);
-	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-
-	glfwSwapBuffers(gWindow);
-	glfwPollEvents();
+    return textureID;
 }
 
-void loop(Shader &shader)
+const char *getGLErrorString(GLenum error)
 {
-	if (!update())
-	{
-		gDone = 1;
-	}
-	else
-	{
-		render(shader);
-	}
-}
-
-void setupTriangle(Shader &shader)
-{
-	// Vertex data
-	float vertices[] = {
-		// positions          // colors           // texture coords
-		 0.5f,  0.5f, 0.0f,   1.0f, 1.0f, 1.0f,   1.0f, 1.0f,   // top right
-		 0.5f, -0.5f, 0.0f,   0.0f, 1.0f, 0.0f,   1.0f, 0.0f,   // bottom right
-		-0.5f, -0.5f, 0.0f,   0.0f, 0.0f, 1.0f,   0.0f, 0.0f,   // bottom left
-		-0.5f,  0.5f, 0.0f,   1.0f, 1.0f, 0.0f,   0.0f, 1.0f    // top left
-	};
-	unsigned int indices[] = {
-		0, 1, 3, // first triangle
-		1, 2, 3  // second triangle
-	};
-
-	// Create vertex array object and vertex buffer object
-	glGenVertexArrays(1, &VAO);
-	glGenBuffers(1, &VBO);
-	glGenBuffers(1, &EBO);
-
-	// Bind VAO
-	glBindVertexArray(VAO);
-
-	// Bind VBO and upload vertex data
-	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-	// Bind EBO and upload vertex data
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-
-	// Position attribute
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
-	glEnableVertexAttribArray(0);
-
-	// Color attribute
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-	glEnableVertexAttribArray(1);
-
-	// Texture coord attribute
-	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
-	glEnableVertexAttribArray(2);
-
-	// Load and create texture1
-	glGenTextures(1, &texture1);
-	glBindTexture(GL_TEXTURE_2D, texture1);
-	// Set the texture wrapping/filtering options (on the currently bound texture object)
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	// Load and generate the texture
-	int width, height, nrChannels;
-	stbi_set_flip_vertically_on_load(true);
-	unsigned char* data = stbi_load("assets/container.jpg", &width, &height, &nrChannels, 0);
-	if (data)
-	{
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
-		glGenerateMipmap(GL_TEXTURE_2D);
-	}
-	else
-	{
-		std::cout << "Failed to load texture1" << std::endl;
-	}
-	stbi_image_free(data);
-
-	// Load and create texture2
-	glGenTextures(1, &texture2);
-	glBindTexture(GL_TEXTURE_2D, texture2);
-	// Set the texture wrapping/filtering options (on the currently bound texture object)
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	// Load and generate the texture
-	data = stbi_load("assets/awesomeface.png", &width, &height, &nrChannels, 0);
-	if (data)
-	{
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-		glGenerateMipmap(GL_TEXTURE_2D);
-	}
-	else
-	{
-		std::cout << "Failed to load texture2" << std::endl;
-	}
-	stbi_image_free(data);
-
-	// Tell OpenGL for each sampler to which texture unit it belongs to (only has to be done once)
-	shader.use();
-	shader.setInt("texture1", 0);
-	shader.setInt("texture2", 1);
-}
-
-void framebuffer_size_callback(GLFWwindow* window, int width, int height)
-{
-	// make sure the viewport matches the new window dimensions; note that width and
-	// height will be significantly larger than specified on retina displays
-	glViewport(0, 0, width, height);
-}
-
-void GLAPIENTRY errorCallback(GLenum source, GLenum type, GLuint id,
-	GLenum severity, GLsizei length, const GLchar* message, const void* userParam)
-{
-	fprintf(stderr, "GL Error: type = 0x%x, severity = 0x%x, message = %s\n",
-		type, severity, message);
-}
-
-const char* getGLErrorString(GLenum error)
-{
-	switch (error)
-	{
-	case GL_NO_ERROR:
-		return "No error";
-	case GL_INVALID_ENUM:
-		return "Invalid enum";
-	case GL_INVALID_VALUE:
-		return "Invalid value";
-	case GL_STACK_OVERFLOW:
-		return "Stack overflow";
-	case GL_STACK_UNDERFLOW:
-		return "Stack underflow";
-	case GL_OUT_OF_MEMORY:
-		return "Out of memory";
-	case GL_INVALID_FRAMEBUFFER_OPERATION:
-		return "Invalid framebuffer operation";
-	default:
-		return "Unknown error";
-	}
+    switch (error)
+    {
+    case GL_NO_ERROR:
+        return "No error";
+    case GL_INVALID_ENUM:
+        return "Invalid enum";
+    case GL_INVALID_VALUE:
+        return "Invalid value";
+    case GL_STACK_OVERFLOW:
+        return "Stack overflow";
+    case GL_STACK_UNDERFLOW:
+        return "Stack underflow";
+    case GL_OUT_OF_MEMORY:
+        return "Out of memory";
+    case GL_INVALID_FRAMEBUFFER_OPERATION:
+        return "Invalid framebuffer operation";
+    default:
+        return "Unknown error";
+    }
 }
