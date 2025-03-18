@@ -15,10 +15,11 @@ find_package(OpenGL REQUIRED)
 
 include_directories(${OPENGL_INCLUDE_DIRS})
 
-set(GLFW_BUILD_DOCS OFF CACHE BOOL  "GLFW lib only")
-set(GLFW_INSTALL OFF CACHE BOOL  "GLFW lib only")
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "GLFW lib only")
+set(GLFW_INSTALL OFF CACHE BOOL "GLFW lib only")
 
 add_subdirectory(deps/glfw)
+add_subdirectory(deps/assimp)
 
 set (SOURCES
 	src/SDLProject.cpp
@@ -29,27 +30,16 @@ include_directories(SYSTEM
 	include
 	deps/glm/
 	deps/glad/include
+	deps/assimp/include
 )
 
 # Copy necessary resources to build
-file (COPY
-	assets/container.jpg
-	assets/awesomeface.png
-	assets/container2.png
-	assets/container2_specular.png
-	DESTINATION "${CMAKE_BINARY_DIR}/assets")
+file (COPY assets DESTINATION "${CMAKE_BINARY_DIR}")
 
-file (COPY
-	shaders/FragmentShader.glsl
-	shaders/VertexShader.glsl
-	shaders/BasicLightingFragmentShader.glsl
-	shaders/BasicLightingVertexShader.glsl
-	shaders/LightCubeFragmentShader.glsl
-	shaders/LightCubeVertexShader.glsl
-	DESTINATION "${CMAKE_BINARY_DIR}/shaders")
+file (COPY shaders DESTINATION "${CMAKE_BINARY_DIR}")
 
-add_executable(SDLProject ${SOURCES} "include/camera.h")
-target_link_libraries(SDLProject ${OPENGL_LIBRARIES} glfw)
+add_executable(SDLProject ${SOURCES} "include/CubeGrid.h" "include/CubeRenderer.h")
+target_link_libraries(SDLProject ${OPENGL_LIBRARIES} glfw assimp)
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET SDLProject PROPERTY CXX_STANDARD 20)
