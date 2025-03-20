@@ -22,7 +22,7 @@ add_subdirectory(deps/glfw)
 add_subdirectory(deps/assimp)
 
 set (SOURCES
-	src/SDLProject.cpp
+	"src/Application.cpp"
 	deps/glad/src/glad.c
  )
 
@@ -38,7 +38,7 @@ file (COPY assets DESTINATION "${CMAKE_BINARY_DIR}")
 
 file (COPY shaders DESTINATION "${CMAKE_BINARY_DIR}")
 
-add_executable(SDLProject ${SOURCES} "include/CubeGrid.h" "include/CubeRenderer.h")
+add_executable(SDLProject ${SOURCES} "include/CubeGrid.h" "include/CubeRenderer.h" "include/Application.h" "src/CubeGrid.cpp" "src/CubeRenderer.cpp" "include/IsometricCamera.h" "src/IsometricCamera.cpp" "src/Main.cpp")
 target_link_libraries(SDLProject ${OPENGL_LIBRARIES} glfw assimp)
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
