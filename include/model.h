@@ -13,7 +13,7 @@
 #include <stb_image.h>
 
 #include <mesh.h>
-#include <shader.h>
+#include <Shader.h>
 
 #include <fstream>
 #include <iostream>

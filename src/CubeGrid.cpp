@@ -28,24 +28,48 @@ void CubeGrid::initialize()
                     (z - size / 2.0f) * spacing
                 );
 
-                // Example pattern - modify as needed
-                bool shouldCreateCube = false;
+                // Default to inactive
+                grid[x][y][z] = Cube(position, glm::vec3(0.8f, 0.8f, 0.8f));
+                grid[x][y][z].active = false;
 
-                // Create some interesting pattern
-                if ((x + y + z) % 3 == 0 || (x == 0 && y == 0) || (y == 0 && z == 0) || (x == 0 && z == 0))
+                // Create base floor platform
+                if (y == 0)
                 {
-                    shouldCreateCube = true;
+                    grid[x][y][z].active = true;
+                    grid[x][y][z].color = glm::vec3(0.9f, 0.9f, 0.9f);
                 }
 
-                if (shouldCreateCube)
+                // Create some columns for shadow testing
+                if ((x == size / 4 || x == size / 2 || x == 3 * size / 4) &&
+                    (z == size / 4 || z == size / 2 || z == 3 * size / 4) &&
+                    y > 0 && y < size / 3)
                 {
-                    // Create gradient colors based on position
-                    float r = static_cast<float>(x) / size;
-                    float g = static_cast<float>(y) / size;
-                    float b = static_cast<float>(z) / size;
-                    glm::vec3 color = glm::vec3(r, g, b);
+                    grid[x][y][z].active = true;
+                    // Make columns different colors for better visualization
+                    if (x == size / 4) grid[x][y][z].color = glm::vec3(0.8f, 0.2f, 0.2f);
+                    else if (x == size / 2) grid[x][y][z].color = glm::vec3(0.2f, 0.8f, 0.2f);
+                    else grid[x][y][z].color = glm::vec3(0.2f, 0.2f, 0.8f);
+                }
 
-                    grid[x][y][z] = Cube(position, color);
+                // Create a wall for shadow casting
+                if (x == size / 3 && z > size / 3 && z < 2 * size / 3 && y > 0 && y < size / 4)
+                {
+                    grid[x][y][z].active = true;
+                    grid[x][y][z].color = glm::vec3(0.8f, 0.8f, 0.2f);
+                }
+
+                // Create an overhang/floating platform
+                if (y == size / 5 && x > size / 2 && x < 3 * size / 4 && z > size / 2 && z < 3 * size / 4)
+                {
+                    grid[x][y][z].active = true;
+                    grid[x][y][z].color = glm::vec3(0.2f, 0.8f, 0.8f);
+                }
+
+                // Create a staircase for testing shadows on different heights
+                if (z == 3 * size / 4 && x > size / 2 && x < 3 * size / 4 && y > 0 && y <= (x - size / 2))
+                {
+                    grid[x][y][z].active = true;
+                    grid[x][y][z].color = glm::vec3(0.7f, 0.4f, 0.7f);
                 }
             }
         }

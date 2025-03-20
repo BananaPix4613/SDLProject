@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CubeGrid.h"
-#include <shader.h>
+#include <Shader.h>
 #include <glad/glad.h>
 
 class CubeRenderer
@@ -16,4 +16,5 @@ public:
 
     void initialize();
     void render(Shader& shader);
+    void renderDepthOnly(Shader& depthShader);
 };

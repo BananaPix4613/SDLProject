@@ -21,16 +21,23 @@ set(GLFW_INSTALL OFF CACHE BOOL "GLFW lib only")
 add_subdirectory(deps/glfw)
 add_subdirectory(deps/assimp)
 
-set (SOURCES
-	"src/Application.cpp"
+file (GLOB SOURCES
+	src/*.cpp
 	deps/glad/src/glad.c
+	deps/imgui/*.cpp
+	deps/imgui/backends/imgui_impl_opengl3.cpp
+	deps/imgui/backends/imgui_impl_glfw.cpp
  )
 
 include_directories(SYSTEM
 	include
-	deps/glm/
+	deps/glm
 	deps/glad/include
 	deps/assimp/include
+	deps/imgui
+	deps/imgui/backends/imgui_impl_opengl3.h
+	deps/imgui/backends/imgui_impl_opengl3_loader.h
+	deps/imgui/backends/imgui_impl_glfw.h
 )
 
 # Copy necessary resources to build
@@ -38,7 +45,7 @@ file (COPY assets DESTINATION "${CMAKE_BINARY_DIR}")
 
 file (COPY shaders DESTINATION "${CMAKE_BINARY_DIR}")
 
-add_executable(SDLProject ${SOURCES} "include/CubeGrid.h" "include/CubeRenderer.h" "include/Application.h" "src/CubeGrid.cpp" "src/CubeRenderer.cpp" "include/IsometricCamera.h" "src/IsometricCamera.cpp" "src/Main.cpp")
+add_executable(SDLProject ${SOURCES})
 target_link_libraries(SDLProject ${OPENGL_LIBRARIES} glfw assimp)
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)

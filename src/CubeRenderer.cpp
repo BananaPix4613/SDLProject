@@ -114,3 +114,29 @@ void CubeRenderer::render(Shader &shader)
 
     glBindVertexArray(0);
 }
+
+void CubeRenderer::renderDepthOnly(Shader& depthShader)
+{
+    for (int x = 0; x < grid->getSize(); x++)
+    {
+        for (int y = 0; y < grid->getSize(); y++)
+        {
+            for (int z = 0; z < grid->getSize(); z++)
+            {
+                if (grid->isCubeActive(x, y, z))
+                {
+                    glm::vec3 position = grid->getCube(x, y, z).position;
+                    glm::mat4 model = glm::mat4(1.0f);
+                    model = glm::translate(model, position);
+                    model = glm::scale(model, glm::vec3(1.0f)); // Cube size
+
+                    depthShader.setMat4("model", model);
+
+                    // Draw the cube (only positions needed for depth)
+                    glBindVertexArray(cubeVAO);
+                    glDrawArrays(GL_TRIANGLES, 0, 36);
+                }
+            }
+        }
+    }
+}
