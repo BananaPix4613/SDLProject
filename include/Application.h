@@ -5,6 +5,7 @@
 #include "DebugRenderer.h"
 #include "IsometricCamera.h"
 #include "ImGuiWrapper.h"
+#include "Frustum.h"
 #include <Shader.h>
 #include <GLFW/glfw3.h>
 
@@ -21,17 +22,22 @@ private:
     Shader* shader;
     Shader* shadowShader;
     ImGuiWrapper* imGui;
+    Frustum viewFrustum;
 
     bool showDebugView;
     int currentDebugView; // 0 = normal, 1 = depth map, 2 = shadow map, etc.
     bool showUI;          // Toggle for UI visibility
+    bool enableFrustumCulling; // Toggle for frustum culling
 
     unsigned int depthMapFBO;
     unsigned int depthMap;
     const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
+    unsigned int debugLineVAO, debugLineVBO;
+    bool showFrustumDebug;
 
     float lastFrame;
     float deltaTime;
+    int visibleCubeCount;
 
     // UI state variables
     glm::vec3 selectedCubeColor;
@@ -46,6 +52,13 @@ public:
     bool initialize();
     void run();
 
+    void setVisibleCubeCount(int visibleCount);
+
+    // Make these methods public so CubeRenderer can access them
+    bool isCubeVisible(int x, int y, int z) const;
+    const Frustum& getViewFrustum() const { return viewFrustum; }
+    bool isFrustumCullingEnabled() const { return enableFrustumCulling; }
+
 private:
     bool initializeWindow();
     void setupShadowMap();
@@ -54,6 +67,11 @@ private:
     void render();
     void renderUI();
     void renderSceneDepth(Shader &depthShader);
+    void renderFrustumDebug();
+    void updateViewFrustum();
+
+    // Debug functions
+    std::vector<glm::vec3> getFrustumCorners() const;
 
     // Window size control
     void resizeWindow(int newWidth, int newHeight);

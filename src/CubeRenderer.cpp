@@ -1,8 +1,9 @@
 #include "CubeRenderer.h"
-
+#include "Application.h"
 #include "ext/matrix_transform.hpp"
 
-CubeRenderer::CubeRenderer(CubeGrid *cubeGrid) : grid(cubeGrid)
+CubeRenderer::CubeRenderer(CubeGrid *cubeGrid, Application* application)
+    : grid(cubeGrid), app(application)
 {
     
 }
@@ -84,6 +85,9 @@ void CubeRenderer::render(Shader &shader)
 {
     shader.use();
 
+    // Reset visible cube counter in the Application
+    int visibleCount = 0;
+
     // Loop through the grid and render active cubes
     const auto& gridData = grid->getGrid();
     for (int x = 0; x < grid->getSize(); x++)
@@ -96,27 +100,41 @@ void CubeRenderer::render(Shader &shader)
 
                 if (cube.active)
                 {
-                    // Set model matrix for this cube
-                    glm::mat4 model = glm::mat4(1.0f);
-                    model = glm::translate(model, cube.position);
-                    model = glm::scale(model, glm::vec3(1.0f)); // Uniform scaling
+                    // Check if the cube is visible before rendering
+                    if (!app->isFrustumCullingEnabled() || isCubeVisible(x, y, z))
+                    {
+                        // Set model matrix for this cube
+                        glm::mat4 model = glm::mat4(1.0f);
+                        model = glm::translate(model, cube.position);
+                        model = glm::scale(model, glm::vec3(1.0f)); // Uniform scaling
 
-                    shader.setMat4("model", model);
-                    shader.setVec3("color", cube.color);
+                        shader.setMat4("model", model);
+                        shader.setVec3("color", cube.color);
 
-                    // Draw the cube
-                    glBindVertexArray(cubeVAO);
-                    glDrawArrays(GL_TRIANGLES, 0, 36);
+                        // Draw the cube
+                        glBindVertexArray(cubeVAO);
+                        glDrawArrays(GL_TRIANGLES, 0, 36);
+
+                        // Increment visible cube counter
+                        visibleCount++;
+                    }
                 }
             }
         }
     }
+
+    // Update the Application's visible cube count variable
+    app->setVisibleCubeCount(visibleCount);
 
     glBindVertexArray(0);
 }
 
 void CubeRenderer::renderDepthOnly(Shader& depthShader)
 {
+    // For shadow mapping, we may want to disable frustum culling
+    // or use the light's frustum instead
+    // For simplicity, we'll just render all cubes for the shadow pass
+
     for (int x = 0; x < grid->getSize(); x++)
     {
         for (int y = 0; y < grid->getSize(); y++)
@@ -139,4 +157,9 @@ void CubeRenderer::renderDepthOnly(Shader& depthShader)
             }
         }
     }
+}
+
+bool CubeRenderer::isCubeVisible(int x, int y, int z) const
+{
+    return app->isCubeVisible(x, y, z);
 }

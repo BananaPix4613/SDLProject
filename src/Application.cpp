@@ -4,11 +4,11 @@
 Application::Application(int windowWidth, int windowHeight)
     : width(windowWidth), height(windowHeight),
       window(nullptr), grid(nullptr), renderer(nullptr), camera(nullptr),
-      shader(nullptr), showDebugView(false), currentDebugView(0),
+      shader(nullptr), showDebugView(false), currentDebugView(0), showFrustumDebug(false),
       lastFrame(0.0f), deltaTime(0.0f), showUI(true),
       selectedCubeColor(0.5f, 0.5f, 1.0f), isEditing(false), brushSize(1),
       selectedCubeX(-1), selectedCubeY(-1), selectedCubeZ(-1),
-      imGui(nullptr) // Initialize ImGui pointer
+      imGui(nullptr), enableFrustumCulling(true), visibleCubeCount(0)
 {
     
 }
@@ -21,6 +21,9 @@ Application::~Application()
     delete shader;
     delete debugRenderer;
     delete imGui;
+
+    glDeleteVertexArrays(1, &debugLineVAO);
+    glDeleteBuffers(1, &debugLineVBO);
 
     glfwDestroyWindow(window);
     glfwTerminate();
@@ -41,7 +44,7 @@ bool Application::initialize()
     camera = new IsometricCamera(aspect);
 
     // Create renderer
-    renderer = new CubeRenderer(grid);
+    renderer = new CubeRenderer(grid, this);
     renderer->initialize();
 
     // Load shader
@@ -57,6 +60,19 @@ bool Application::initialize()
     // Initialize ImGui
     imGui = new ImGuiWrapper();
     imGui->initialize(window);
+
+    // Generate buffers for debug lines (frustum visualization)
+    glGenVertexArrays(1, &debugLineVAO);
+    glGenBuffers(1, &debugLineVBO);
+
+    glBindVertexArray(debugLineVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, debugLineVBO);
+
+    // We'll update the buffer data when rendering
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    glBindVertexArray(0);
 
     // Add mouse button callback for cube picking
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
@@ -189,6 +205,25 @@ void Application::run()
         // Swap buffers
         glfwSwapBuffers(window);
     }
+}
+
+void Application::setVisibleCubeCount(int visibleCount)
+{
+    visibleCubeCount = visibleCount;
+}
+
+bool Application::isCubeVisible(int x, int y, int z) const
+{
+    if (!enableFrustumCulling)
+    {
+        return true; // Always visible when culling is disabled
+    }
+
+    // Get the cube's world position
+    const Cube& cube = grid->getCube(x, y, z);
+
+    // Use the frustum test to determine visibility
+    return viewFrustum.isCubeVisible(cube.position, grid->getSpacing());
 }
 
 void Application::processInput()
@@ -330,9 +365,12 @@ void Application::update()
 
 void Application::render()
 {
+    // Update the view frustum for culling
+    updateViewFrustum();
+
     // 1. First render to depth map (shadow pass)
     glm::mat4 lightProjection, lightView, lightSpaceMatrix;
-    float near_plane = 1.0f, far_plane = 40.0f;
+    float near_plane = 1.0f, far_plane = 100.0f;
 
     // Better orthographic projection dimensions for the light
     float orthoSize = 15.0f; // Adjust based on scene size
@@ -409,6 +447,12 @@ void Application::render()
     // Render the grid
     renderer->render(*shader);
 
+    // Render frustum wireframe for debugging
+    if (showFrustumDebug)
+    {
+        renderFrustumDebug();
+    }
+
     // 3. Debug visualization if enabled
     if (showDebugView)
     {
@@ -445,6 +489,8 @@ void Application::render()
             break;
         }
     }
+
+    visibleCubeCount = 0; // This will be updated by the renderer during render
 }
 
 void Application::renderUI()
@@ -565,6 +611,7 @@ void Application::renderUI()
     // Debug options
     if (ImGui::CollapsingHeader("Debug Options"))
     {
+        ImGui::Checkbox("Show Frustum Wireframe", &showFrustumDebug);
         ImGui::Checkbox("Show Debug View", &showDebugView);
 
         const char* debugViews[] = { "Shadow Map Corner", "Full Shadow Map", "Linearized Depth" };
@@ -576,6 +623,8 @@ void Application::renderUI()
     {
         ImGui::Text("FPS: %.1f", 1.0f / deltaTime);
         ImGui::Text("Frame Time: %.3f ms", deltaTime * 1000.0f);
+        ImGui::Checkbox("Enable Frustum Culling", &enableFrustumCulling);
+        ImGui::Text("Visible Cubes: %d", visibleCubeCount);
     }
 
     imGui->endWindow();
@@ -585,6 +634,105 @@ void Application::renderSceneDepth(Shader& depthShader)
 {
     // Similar to render, but only pass model matrices for depth rendering
     renderer->renderDepthOnly(depthShader);
+}
+
+void Application::renderFrustumDebug()
+{
+    if (!showFrustumDebug) return;
+
+    // Create simple shader for lines if needed
+    static Shader* lineShader = nullptr;
+    if (!lineShader)
+    {
+        lineShader = new Shader("shaders/LineVertexShader.glsl", "shaders/LineFragmentShader.glsl");
+    }
+
+    // Get frustum corners
+    std::vector<glm::vec3> corners = getFrustumCorners();
+
+    // Define line segments for frustum edges
+    std::vector<glm::vec3> lines = {
+        // Near face
+        corners[0], corners[1],
+        corners[1], corners[3],
+        corners[3], corners[2],
+        corners[2], corners[0],
+
+        // Far face
+        corners[4], corners[5],
+        corners[5], corners[7],
+        corners[7], corners[6],
+        corners[6], corners[4],
+
+        // Connecting edges
+        corners[0], corners[4],
+        corners[1], corners[5],
+        corners[2], corners[6],
+        corners[3], corners[7]
+    };
+
+    // Update VBO with line data
+    glBindBuffer(GL_ARRAY_BUFFER, debugLineVBO);
+    glBufferData(GL_ARRAY_BUFFER, lines.size() * sizeof(glm::vec3), lines.data(), GL_DYNAMIC_DRAW);
+
+    // Draw lines
+    lineShader->use();
+    lineShader->setMat4("view", camera->getViewMatrix());
+    lineShader->setMat4("projection", camera->getProjectionMatrix());
+    lineShader->setVec3("color", glm::vec3(1.0f, 0.0f, 0.0f)); // Red frustum wireframe
+
+    glBindVertexArray(debugLineVAO);
+    glLineWidth(2.0f); // Thicker lines for better visibility
+    glDrawArrays(GL_LINES, 0, lines.size());
+    glLineWidth(1.0f); // Reset line width
+
+    glBindVertexArray(0);
+}
+
+void Application::updateViewFrustum()
+{
+    if (!camera) return;
+
+    // Get the view-projection matrix from the camera
+    glm::mat4 viewProj = camera->getProjectionMatrix() * camera->getViewMatrix();
+
+    // Update the frustum planes
+    viewFrustum.extractFromMatrix(viewProj);
+}
+
+std::vector<glm::vec3> Application::getFrustumCorners() const
+{
+    std::vector<glm::vec3> corners(8);
+
+    // Get the inverse of the view-projection matrix
+    glm::mat4 viewProj = camera->getProjectionMatrix() * camera->getViewMatrix();
+    glm::mat4 invViewProj = glm::inverse(viewProj);
+
+    // Define corners in NDC space (-1 to 1 cube)
+    // Near face (CCW when looking at the near face from inside the frustum)
+    glm::vec4 ntl(-1.0f, 1.0f, -1.0f, 1.0f);  // Near top left
+    glm::vec4 ntr(1.0f, 1.0f, -1.0f, 1.0f);   // Near top right
+    glm::vec4 nbl(-1.0f, -1.0f, -1.0f, 1.0f); // Near bottom left
+    glm::vec4 nbr(1.0f, -1.0f, -1.0f, 1.0f);  // Near bottom right
+
+    // Far face (CCW when looking at the far face from inside the frustum)
+    glm::vec4 ftl(-1.0f, 1.0f, 1.0f, 1.0f);   // Far top left
+    glm::vec4 ftr(1.0f, 1.0f, 1.0f, 1.0f);    // Far top right
+    glm::vec4 fbl(-1.0f, -1.0f, 1.0f, 1.0f);  // Far bottom left
+    glm::vec4 fbr(1.0f, -1.0f, 1.0f, 1.0f);   // Far bottom right
+
+    // Transform all points to world space
+    std::vector<glm::vec4> ndc = { ntl, ntr, nbl, nbr, ftl, ftr, fbl, fbr };
+
+    for (int i = 0; i < 8; i++)
+    {
+        // Apply inverse view-projection to get world space corners
+        glm::vec4 worldPos = invViewProj * ndc[i];
+        worldPos /= worldPos.w; // Perspective divide
+        corners[i] = glm::vec3(worldPos);
+    }
+
+    return corners;
 }
 
 void Application::resizeWindow(int newWidth, int newHeight)
