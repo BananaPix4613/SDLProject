@@ -55,9 +55,14 @@ private:
     void renderUI();
     void renderSceneDepth(Shader &depthShader);
 
+    // Window size control
+    void resizeWindow(int newWidth, int newHeight);
+    void resizeWindow(float newWidth, float newHeight);
+
     // Editing functions
     void setCubeAt(int x, int y, int z, bool active, const glm::vec3& color);
     bool pickCube(int& outX, int& outY, int& outZ);
+    void clearGrid(bool resetFloor);
 
     // Static callbacks
     static void framebufferSizeCallback(GLFWwindow* window, int width, int height);

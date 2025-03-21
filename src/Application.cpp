@@ -215,39 +215,86 @@ void Application::processInput()
             camera->rotate(-deltaTime * 1.0f); // Rotate right
         }
 
-        // Camera panning
-        glm::vec3 panDirection(0.0f);
+        // Camera panning - improved to be view-relative
         float panSpeed = 5.0f * deltaTime;
+        glm::vec3 forward(0.0f), right(0.0f);
 
+        // Extract forward and right vectors from view matrix
+        glm::mat4 viewMatrix = camera->getViewMatrix();
+
+        // Forward is negative z-axis of view matrix (third row with sign flipped)
+        forward = -glm::vec3(viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2]);
+
+        // Right is positive x-axis of view matrix (first row)
+        right = glm::vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
+
+        // Normalize vectors to ensure consistent movement speed
+        forward = glm::normalize(forward);
+        right = glm::normalize(right);
+
+        // Force movement to be only on the xz-plane (horizontal)
+        forward.y = 0.0f;
+        right.y = 0.0f;
+
+        // Renormalize after zeroing y component
+        if (glm::length(forward) > 0.001f) forward = glm::normalize(forward);
+        if (glm::length(right) > 0.001f) right = glm::normalize(right);
+
+        glm::vec3 panDirection(0.0f);
+
+        // Apply movement based on WASD keys
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
         {
-            panDirection += glm::vec3(0.0f, 0.0f, -1.0f);
+            panDirection += forward;
         }
         if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
         {
-            panDirection += glm::vec3(0.0f, 0.0f, 1.0f);
+            panDirection -= forward;
         }
         if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
         {
-            panDirection += glm::vec3(-1.0f, 0.0f, 0.0f);
+            panDirection -= right;
         }
         if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         {
-            panDirection += glm::vec3(1.0f, 0.0f, 0.0f);
+            panDirection += right;
         }
 
-        if (glm::length(panDirection) > 0.0f)
+        if (glm::length(panDirection) > 0.001f)
         {
-            // Transform direction according to camera orientation
-            glm::mat4 viewMatrix = camera->getViewMatrix();
-            glm::mat3 rotationMatrix = glm::mat3(viewMatrix);
-            glm::vec3 transformedDirection = rotationMatrix * glm::normalize(panDirection);
+            panDirection = glm::normalize(panDirection) * panSpeed;
+            camera->pan(panDirection);
+        }
 
-            // Remove any vertical component for pure horizontal panning
-            transformedDirection.y = 0.0f;
-            transformedDirection = glm::normalize(transformedDirection);
+        // Window size hotkeys (optional)
+        // Hold Ctrl and press + to increase and - to decrease window size
+        if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+            glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS)
+        {
+            static bool plusReleased = true;
+            static bool minusReleased = true;
 
-            camera->pan(transformedDirection * panSpeed);
+            // Hold Ctrl and press + to increase window size
+            if (glfwGetKey(window, GLFW_KEY_EQUAL) == GLFW_PRESS && plusReleased)
+            {
+                resizeWindow(width * 1.25f, height * 1.25f);
+                plusReleased = false;
+            }
+            else if (glfwGetKey(window, GLFW_KEY_EQUAL) == GLFW_RELEASE)
+            {
+                plusReleased = true;
+            }
+
+            // Hold Ctrl and press - to decrease window size
+            if (glfwGetKey(window, GLFW_KEY_MINUS) == GLFW_PRESS && minusReleased)
+            {
+                resizeWindow(width * 0.75f, height * 0.75f);
+                minusReleased = false;
+            }
+            else if (glfwGetKey(window, GLFW_KEY_MINUS) == GLFW_RELEASE)
+            {
+                minusReleased = true;
+            }
         }
     }
 
@@ -341,7 +388,7 @@ void Application::render()
 
     // Set light position and view position
     shader->setVec3("lightPos", lightPos);
-    shader->setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f));
+    shader->setVec3("lightColor", glm::vec3(15.0f, 15.0f, 15.0f));
     shader->setVec3("viewPos", camera->getPosition());
 
     // Add additional lighting parameters for better control
@@ -405,6 +452,68 @@ void Application::renderUI()
     // Main control panel
     imGui->beginWindow("Control Panel");
 
+    // Window settings
+    if (ImGui::CollapsingHeader("Window Settings", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        // Display current window size
+        ImGui::Text("Current Size: %d x %d", width, height);
+
+        // Presets for common window sizes
+        if (ImGui::Button("720p (1280x720)"))
+        {
+            resizeWindow(1280, 720);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("1080p (1920x1080)"))
+        {
+            resizeWindow(1920, 1080);
+        }
+
+        if (ImGui::Button("1440p (2560x1440)"))
+        {
+            resizeWindow(2560, 1440);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("4K (3840x2160)"))
+        {
+            resizeWindow(3840, 2160);
+        }
+
+        // Custom window size input
+        static int customWidth = width;
+        static int customHeight = height;
+        ImGui::InputInt("Width", &customWidth, 10, 100);
+        ImGui::InputInt("Height", &customHeight, 10, 100);
+
+        if (ImGui::Button("Apply Custom Size"))
+        {
+            // Make sure we don't set ridiculous values
+            if (customWidth >= 320 && customWidth <= 7680 &&
+                customHeight >= 240 && customHeight <= 4320)
+            {
+                resizeWindow(customWidth, customHeight);
+            }
+        }
+
+        // Scale options for high-DPI displays
+        float scaleFactors[] = { 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f };
+        static int currentScaleIndex = 2; // Default to 1.0
+
+        ImGui::Text("Window Scale");
+        ImGui::PushItemWidth(200);
+        if (ImGui::Combo("##WindowScale", &currentScaleIndex, "50%\0""75%\0""100%\0""125%\0""150%\0""175%\0""200%\0""250%\0""300%\0"))
+        {
+            float scale = scaleFactors[currentScaleIndex];
+            int newWidth = static_cast<int>(1280 * scale);  // Base size of 1280x720
+            int newHeight = static_cast<int>(720 * scale);
+            resizeWindow(newWidth, newHeight);
+        }
+        ImGui::PopItemWidth();
+
+        ImGui::Separator();
+        ImGui::Text("Hotkeys: Ctrl+Plus to increase size, Ctrl+Minus to decrease");
+    }
+
     // Camera settings
     if (ImGui::CollapsingHeader("Camera Settings"))
     {
@@ -443,22 +552,14 @@ void Application::renderUI()
         // Tool buttons
         if (ImGui::Button("Clear Grid"))
         {
-            // Implement grid clearing functionality
-            // This would reset all cubes except the floor
-            for (int x = 0; x < grid->getSize(); x++)
-            {
-                for (int y = 0; y < grid->getSize(); y++)
-                {
-                    for (int z = 0; z < grid->getSize(); z++)
-                    {
-                        if (y > 0) // Keep the floor
-                        {
-                            setCubeAt(x, y, z, false, glm::vec3(0.0f));
-                        }
-                    }
-                }
-            }
+            clearGrid(false); // Clear grid but don't reset floor
         }
+        ImGui::SameLine();
+        if (ImGui::Button("Reset All"))
+        {
+            clearGrid(true); // Clear grid and reset floor to default color
+        }
+        ImGui::Separator();
     }
 
     // Debug options
@@ -484,6 +585,47 @@ void Application::renderSceneDepth(Shader& depthShader)
 {
     // Similar to render, but only pass model matrices for depth rendering
     renderer->renderDepthOnly(depthShader);
+}
+
+void Application::resizeWindow(int newWidth, int newHeight)
+{
+    // Make sure we don't set ridiculous values
+    if (newWidth < 320) newWidth = 320;
+    if (newHeight < 240) newHeight = 240;
+
+    // Update internal width and height
+    width = newWidth;
+    height = newHeight;
+
+    // Resize the GLFW window
+    glfwSetWindowSize(window, width, height);
+
+    // Center the window on the screen (optional)
+    GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+    if (monitor)
+    {
+        const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+        int monitorX, monitorY;
+        glfwGetMonitorPos(monitor, &monitorX, &monitorY);
+        int windowX = monitorX + (mode->width - width) / 2;
+        int windowY = monitorY + (mode->height - height) / 2;
+        glfwSetWindowPos(window, windowX, windowY);
+    }
+
+    // Update viewport and camera aspect ratio
+    glViewport(0, 0, width, height);
+
+    // Update camera aspect ratio
+    if (camera)
+    {
+        float aspect = static_cast<float>(width) / static_cast<float>(height);
+        camera->setAspectRatio(aspect);
+    }
+}
+
+void Application::resizeWindow(float newWidth, float newHeight)
+{
+    resizeWindow(static_cast<int>(newWidth), static_cast<int>(newHeight));
 }
 
 void Application::setCubeAt(int x, int y, int z, bool active, const glm::vec3& color)
@@ -512,162 +654,189 @@ bool Application::pickCube(int& outX, int& outY, int& outZ)
     float ndcX = (2.0f * mouseX) / width - 1.0f;
     float ndcY = 1.0f - (2.0f * mouseY) / height;
 
-    // For orthographic camera, ray is parallel to view direction
-    glm::vec4 rayStart = glm::vec4(ndcX, ndcY, -1.0f, 1.0f);
-    glm::vec4 rayEnd = glm::vec4(ndcX, ndcY, 1.0f, 1.0f);
+    // For orthographic projection, we need to create a ray that's parallel to view direction
+    // Get the camera's view and projection matricies
+    glm::mat4 viewMatrix = camera->getViewMatrix();
+    glm::mat4 projMatrix = camera->getProjectionMatrix();
+    glm::mat4 invViewProj = glm::inverse(projMatrix * viewMatrix);
 
-    // Convert to world space
-    glm::mat4 invViewProj = glm::inverse(camera->getProjectionMatrix() * camera->getViewMatrix());
-    glm::vec4 worldRayStart = invViewProj * rayStart;
-    glm::vec4 worldRayEnd = invViewProj * rayEnd;
+    // Create two points in NDC space at different depths
+    glm::vec4 nearPoint = glm::vec4(ndcX, ndcY, -1.0f, 1.0f);
+    glm::vec4 farPoint = glm::vec4(ndcX, ndcY, 1.0f, 1.0f);
 
-    // Perform perspective division
-    worldRayStart /= worldRayStart.w;
-    worldRayEnd /= worldRayEnd.w;
+    // Transform to world space
+    glm::vec4 worldNearPoint = invViewProj * nearPoint;
+    glm::vec4 worldFarPoint = invViewProj * farPoint;
 
-    // Calculate ray direction
-    glm::vec3 rayOrigin = glm::vec3(worldRayStart);
-    glm::vec3 rayDir = glm::normalize(glm::vec3(worldRayEnd) - glm::vec3(worldRayStart));
+    // Perform perspective division if w is not 1.0
+    if (abs(worldNearPoint.w) > 0.0001f) worldNearPoint /= worldNearPoint.w;
+    if (abs(worldFarPoint.w) > 0.0001f) worldFarPoint /= worldFarPoint.w;
 
-    // Rest of your ray intersection code...
-    float gridSize = grid->getSize();
-    float spacing = grid->getSpacing();
-
-    // Grid bounds
-    glm::vec3 gridMin = glm::vec3(-gridSize * spacing / 2.0f);
-    glm::vec3 gridMax = glm::vec3(gridSize * spacing / 2.0f);
+    // Calculate ray origin and direction
+    glm::vec3 rayOrigin = glm::vec3(worldNearPoint);
+    glm::vec3 rayDir = glm::normalize(glm::vec3(worldFarPoint) - rayOrigin);
 
     // Debug output
     std::cout << "Ray origin: " << rayOrigin.x << ", " << rayOrigin.y << ", " << rayOrigin.z << std::endl;
     std::cout << "Ray direction: " << rayDir.x << ", " << rayDir.y << ", " << rayDir.z << std::endl;
-    std::cout << "Grid min: " << gridMin.x << ", " << gridMin.y << ", " << gridMin.z << std::endl;
-    std::cout << "Grid max: " << gridMax.x << ", " << gridMax.y << ", " << gridMax.z << std::endl;
 
-    // Check if ray intersects grid bounds
-    float tMin = 0.0f;
-    float tMax = 1000.0f;
+    // Grid parameters
+    float gridSize = grid->getSize();
+    float spacing = grid->getSpacing();
 
-    // X slab
-    if (rayDir.x != 0.0f)
+    // Grid bounds (assuming grid is centered at origin)
+    glm::vec3 gridMin = glm::vec3(-gridSize * spacing / 2.0f);
+    glm::vec3 gridMax = glm::vec3(gridSize * spacing / 2.0f);
+
+    // Check ray interaction with grid bounds using slab method
+    float tMin = -INFINITY;
+    float tMax = INFINITY;
+
+    // For each axis (X, Y, Z)
+    for (int i = 0; i < 3; i++)
     {
-        float t1 = (gridMin.x - rayOrigin.x) / rayDir.x;
-        float t2 = (gridMax.x - rayOrigin.x) / rayDir.x;
-        tMin = glm::max(tMin, glm::min(t1, t2));
-        tMax = glm::min(tMax, glm::max(t1, t2));
+        if (abs(rayDir[i]) < 0.0001f)
+        {
+            // Ray is parallel to the slab. Check if ray origin is within the slab
+            if (rayOrigin[i] < gridMin[i] || rayOrigin[i] > gridMax[i])
+            {
+                // Ray doesn't intersect grid bounds
+                return false;
+            }
+        }
+        else
+        {
+            // Calculate intersection distances
+            float t1 = (gridMin[i] - rayOrigin[i]) / rayDir[i];
+            float t2 = (gridMax[i] - rayOrigin[i]) / rayDir[i];
+
+            // Ensure t1 <= t2
+            if (t1 > t2) std::swap(t1, t2);
+
+            // Update tMin and tMax
+            tMin = std::max(tMin, t1);
+            tMax = std::min(tMax, t2);
+
+            // Early termination
+            if (tMin > tMax) return false;
+        }
     }
 
-    // Y slab
-    if (rayDir.y != 0.0f)
-    {
-        float t1 = (gridMin.y - rayOrigin.y) / rayDir.y;
-        float t2 = (gridMax.y - rayOrigin.y) / rayDir.y;
-        tMin = glm::max(tMin, glm::min(t1, t2));
-        tMax = glm::min(tMax, glm::max(t1, t2));
-    }
+    // If we get here, ray intersects grid bounds
+    // Start traversal at intersection point with grid bounds
+    glm::vec3 intersectionPoint = rayOrigin + tMin * rayDir;
 
-    // Z slab
-    if (rayDir.z != 0.0f)
-    {
-        float t1 = (gridMin.z - rayOrigin.z) / rayDir.z;
-        float t2 = (gridMax.z - rayOrigin.z) / rayDir.z;
-        tMin = glm::max(tMin, glm::min(t1, t2));
-        tMax = glm::min(tMax, glm::max(t1, t2));
-    }
+    // Voxel traversal setup
+    // Convert world coordinates to grid indices
+    glm::vec3 voxelPos = (intersectionPoint - gridMin) / spacing;
 
-    std::cout << "tMin: " << tMin << ", tMax: " << tMax << std::endl;
-
-    // If tMax < tMin, no intersection
-    if (tMax < tMin)
-    {
-        std::cout << "No intersection with grid bounds" << std::endl;
-        return false;
-    }
-
-    // Start traversal at first intersection with grid bounds
-    glm::vec3 pos = rayOrigin + rayDir * tMin;
-
-    // Convert to grid coordinates
-    int gridX = static_cast<int>((pos.x - gridMin.x) / spacing);
-    int gridY = static_cast<int>((pos.y - gridMin.y) / spacing);
-    int gridZ = static_cast<int>((pos.z - gridMin.z) / spacing);
+    int voxelX = glm::clamp(static_cast<int>(floor(voxelPos.x)), 0, static_cast<int>(gridSize) - 1);
+    int voxelY = glm::clamp(static_cast<int>(floor(voxelPos.y)), 0, static_cast<int>(gridSize) - 1);
+    int voxelZ = glm::clamp(static_cast<int>(floor(voxelPos.z)), 0, static_cast<int>(gridSize) - 1);
 
     // Direction to increment grid coordinates
-    int stepX = rayDir.x > 0 ? 1 : -1;
-    int stepY = rayDir.y > 0 ? 1 : -1;
-    int stepZ = rayDir.z > 0 ? 1 : -1;
+    int stepX = (rayDir.x > 0) ? 1 : ((rayDir.x < 0) ? -1 : 0);
+    int stepY = (rayDir.y > 0) ? 1 : ((rayDir.y < 0) ? -1 : 0);
+    int stepZ = (rayDir.z > 0) ? 1 : ((rayDir.z < 0) ? -1 : 0);
 
-    // Distance to next cell boundary
-    float nextX = (stepX > 0) ? (gridX + 1) * spacing + gridMin.x : gridX * spacing + gridMin.x;
-    float nextY = (stepY > 0) ? (gridY + 1) * spacing + gridMin.y : gridY * spacing + gridMin.y;
-    float nextZ = (stepZ > 0) ? (gridZ + 1) * spacing + gridMin.z : gridZ * spacing + gridMin.z;
+    // Distance to next voxel boundary for each axis
+    float nextVoxelBoundaryX = (stepX > 0) ? (voxelX + 1) * spacing + gridMin.x : voxelX * spacing + gridMin.x;
+    float nextVoxelBoundaryY = (stepY > 0) ? (voxelY + 1) * spacing + gridMin.y : voxelY * spacing + gridMin.y;
+    float nextVoxelBoundaryZ = (stepZ > 0) ? (voxelZ + 1) * spacing + gridMin.z : voxelZ * spacing + gridMin.z;
 
-    // Distance along ray to next cell boundary
-    float tMaxX = (rayDir.x != 0) ? (nextX - rayOrigin.x) / rayDir.x : tMax;
-    float tMaxY = (rayDir.y != 0) ? (nextY - rayOrigin.y) / rayDir.y : tMax;
-    float tMaxZ = (rayDir.z != 0) ? (nextZ - rayOrigin.z) / rayDir.z : tMax;
+    // tMax is how far we need to travel in ray direction to reach the next voxel boundary
+    float tMaxX = (rayDir.x != 0) ? (nextVoxelBoundaryX - rayOrigin.x) / rayDir.x : INFINITY;
+    float tMaxY = (rayDir.y != 0) ? (nextVoxelBoundaryY - rayOrigin.y) / rayDir.y : INFINITY;
+    float tMaxZ = (rayDir.z != 0) ? (nextVoxelBoundaryZ - rayOrigin.z) / rayDir.z : INFINITY;
 
-    // Delta t to cross one cell
-    float tDeltaX = (rayDir.x != 0) ? spacing / std::abs(rayDir.x) : tMax;
-    float tDeltaY = (rayDir.y != 0) ? spacing / std::abs(rayDir.y) : tMax;
-    float tDeltaZ = (rayDir.z != 0) ? spacing / std::abs(rayDir.z) : tMax;
+    // tDelta is how far we need to travel in ray direction to cross one voxel
+    float tDeltaX = (rayDir.x != 0) ? spacing / std::abs(rayDir.x) : INFINITY;
+    float tDeltaY = (rayDir.y != 0) ? spacing / std::abs(rayDir.y) : INFINITY;
+    float tDeltaZ = (rayDir.z != 0) ? spacing / std::abs(rayDir.z) : INFINITY;
 
     // Previous cell for placing new cube
-    int prevX = gridX;
-    int prevY = gridY;
-    int prevZ = gridZ;
+    int prevX = voxelX;
+    int prevY = voxelY;
+    int prevZ = voxelZ;
 
-    // Traverse grid
-    while (gridX >= 0 && gridX < gridSize && gridY >= 0 && gridY < gridSize && gridZ >= 0 && gridZ < gridSize)
+    // Traverse the grid
+    int maxSteps = static_cast<int>(gridSize * 3); // Limit iterations
+    for (int i = 0; i < maxSteps; i++)
     {
-        // Check if current cell has a cube
-        if (grid->isCubeActive(gridX, gridY, gridZ))
+        // Check if current voxel has a cube
+        if (grid->isCubeActive(voxelX, voxelY, voxelZ))
         {
-            // Found a cube! Return its position
-            outX = gridX;
-            outY = gridY;
-            outZ = gridZ;
+            // Cube found
+            outX = voxelX;
+            outY = voxelY;
+            outZ = voxelZ;
             return true;
         }
 
         // Store previous position for placing cubes on empty space
-        prevX = gridX;
-        prevY = gridY;
-        prevZ = gridZ;
+        prevX = voxelX;
+        prevY = voxelY;
+        prevZ = voxelZ;
 
-        // Advance to next cell
+        // Move to next voxel
         if (tMaxX < tMaxY && tMaxX < tMaxZ)
         {
             // X axis traversal
             tMaxX += tDeltaX;
-            gridX += stepX;
+            voxelX += stepX;
         }
         else if (tMaxY < tMaxZ)
         {
             // Y axis traversal
             tMaxY += tDeltaY;
-            gridY += stepY;
+            voxelY += stepY;
         }
         else
         {
             // Z axis traversal
             tMaxZ += tDeltaZ;
-            gridZ += stepZ;
+            voxelZ += stepZ;
         }
 
-        // Check if we've gone too far
-        if (tMaxX > tMax && tMaxY > tMax && tMaxZ > tMax)
+        // Check if we're still in the grid
+        if (voxelX < 0 || voxelX >= gridSize ||
+            voxelY < 0 || voxelY >= gridSize ||
+            voxelZ < 0 || voxelZ >= gridSize)
         {
             break;
         }
     }
 
-    // If we didn't hit a cube, use the last empty cell we traversed
-    // This lets users place cubes on empty space
+    // If we get here, no cube was found, so we use the last empty position
     outX = prevX;
     outY = prevY;
     outZ = prevZ;
 
-    return true;
+    return false; // No active cube was hit, but we provide an empty position
+}
+
+void Application::clearGrid(bool resetFloor)
+{
+    for (int x = 0; x < grid->getSize(); x++)
+    {
+        for (int y = 0; y < grid->getSize(); y++)
+        {
+            for (int z = 0; z < grid->getSize(); z++)
+            {
+                if (y > 0) // Above floor
+                {
+                    // Clear all cubes above the floor
+                    setCubeAt(x, y, z, false, glm::vec3(0.0f));
+                }
+                else if (resetFloor && y == 0) // Floor level and resetFloor is true
+                {
+                    // Reset floor to default color but keep it active
+                    setCubeAt(x, y, z, true, glm::vec3(0.9f, 0.9f, 0.9f));
+                }
+                // Note: We don't touch the floor cubes if resetFloor is false
+            }
+        }
+    }
 }
 
 void Application::framebufferSizeCallback(GLFWwindow *window, int width, int height)
