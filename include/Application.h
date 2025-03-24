@@ -3,9 +3,11 @@
 #include "CubeGrid.h"
 #include "CubeRenderer.h"
 #include "DebugRenderer.h"
-#include "IsometricCamera.h"
-#include "ImGuiWrapper.h"
 #include "Frustum.h"
+#include "ImGuiWrapper.h"
+#include "IsometricCamera.h"
+#include "Profiler.h"
+#include "RenderSettings.h"
 #include <Shader.h>
 #include <GLFW/glfw3.h>
 
@@ -18,22 +20,41 @@ private:
     CubeGrid* grid;
     CubeRenderer* renderer;
     DebugRenderer* debugRenderer;
+    RenderSettings renderSettings;
     IsometricCamera* camera;
     Shader* shader;
     Shader* shadowShader;
+    Shader* instancedShader;
+    Shader* instancedShadowShader;
     ImGuiWrapper* imGui;
     Frustum viewFrustum;
+    Profiler profiler;
 
-    bool showDebugView;
-    int currentDebugView; // 0 = normal, 1 = depth map, 2 = shadow map, etc.
+    struct CullingStats {
+        int totalActiveCubes;
+        int visibleCubes;
+        int culledCubes;
+        float cullingPercentage;
+        float lastUpdateTime;
+        std::vector<float> fpsHistory;
+        std::vector<float> cullingHistory;
+
+        CullingStats() : totalActiveCubes(0), visibleCubes(0), culledCubes(0),
+            cullingPercentage(0.0f), lastUpdateTime(0.0f)
+        {
+            fpsHistory.resize(100, 0.0f);
+            cullingHistory.resize(100, 0.0f);
+        }
+    };
+
+    CullingStats cullingStats;
+
     bool showUI;          // Toggle for UI visibility
-    bool enableFrustumCulling; // Toggle for frustum culling
 
     unsigned int depthMapFBO;
     unsigned int depthMap;
-    const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
+    unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
     unsigned int debugLineVAO, debugLineVBO;
-    bool showFrustumDebug;
 
     float lastFrame;
     float deltaTime;
@@ -54,10 +75,12 @@ public:
 
     void setVisibleCubeCount(int visibleCount);
 
-    // Make these methods public so CubeRenderer can access them
-    bool isCubeVisible(int x, int y, int z) const;
     const Frustum& getViewFrustum() const { return viewFrustum; }
-    bool isFrustumCullingEnabled() const { return enableFrustumCulling; }
+    unsigned int getInstancedShaderID() const { return instancedShader ? instancedShader->ID : 0; }
+    unsigned int getInstancedShadowShaderID() const { return instancedShadowShader ? instancedShadowShader->ID : 0; }
+
+    bool isCubeVisible(int x, int y, int z) const;
+    bool isFrustumCullingEnabled() const { return renderSettings.enableFrustumCulling; }
 
 private:
     bool initializeWindow();
@@ -66,8 +89,10 @@ private:
     void update();
     void render();
     void renderUI();
+    void renderSettingsUI();
     void renderSceneDepth(Shader &depthShader);
     void renderFrustumDebug();
+    void renderDebugView();
     void updateViewFrustum();
 
     // Debug functions

@@ -4,11 +4,12 @@
 Application::Application(int windowWidth, int windowHeight)
     : width(windowWidth), height(windowHeight),
       window(nullptr), grid(nullptr), renderer(nullptr), camera(nullptr),
-      shader(nullptr), showDebugView(false), currentDebugView(0), showFrustumDebug(false),
+      shader(nullptr), shadowShader(nullptr),
+      instancedShader(nullptr), instancedShadowShader(nullptr),
       lastFrame(0.0f), deltaTime(0.0f), showUI(true),
       selectedCubeColor(0.5f, 0.5f, 1.0f), isEditing(false), brushSize(1),
       selectedCubeX(-1), selectedCubeY(-1), selectedCubeZ(-1),
-      imGui(nullptr), enableFrustumCulling(true), visibleCubeCount(0)
+      imGui(nullptr), visibleCubeCount(0)
 {
     
 }
@@ -19,11 +20,18 @@ Application::~Application()
     delete renderer;
     delete camera;
     delete shader;
+    delete shadowShader;
+    delete instancedShader;
+    delete instancedShadowShader;
     delete debugRenderer;
     delete imGui;
 
     glDeleteVertexArrays(1, &debugLineVAO);
     glDeleteBuffers(1, &debugLineVBO);
+
+    // Clean up shadow resources
+    glDeleteFramebuffers(1, &depthMapFBO);
+    glDeleteTextures(1, &depthMap);
 
     glfwDestroyWindow(window);
     glfwTerminate();
@@ -50,6 +58,10 @@ bool Application::initialize()
     // Load shader
     shader = new Shader("shaders/VertexShader.glsl", "shaders/FragmentShader.glsl");
     shadowShader = new Shader("shaders/ShadowMappingVertexShader.glsl", "shaders/ShadowMappingFragmentShader.glsl");
+
+    // Load instanced versions
+    instancedShader = new Shader("shaders/InstancedVertexShader.glsl", "shaders/InstancedFragmentShader.glsl");
+    instancedShadowShader = new Shader("shaders/InstancedShadowVertexShader.glsl", "shaders/ShadowMappingFragmentShader.glsl");
 
     // Setup shadow mapping
     setupShadowMap();
@@ -132,6 +144,17 @@ bool Application::initializeWindow()
 
 void Application::setupShadowMap()
 {
+    // Use the shadow map resolution from settings
+    SHADOW_WIDTH = renderSettings.shadowMapResolution;
+    SHADOW_HEIGHT = renderSettings.shadowMapResolution;
+
+    // Delete existing shadow map resources if they exist
+    if (depthMapFBO)
+    {
+        glDeleteFramebuffers(1, &depthMapFBO);
+        glDeleteTextures(1, &depthMap);
+    }
+
     // Create a framebuffer object for the depth map
     glGenFramebuffers(1, &depthMapFBO);
 
@@ -141,19 +164,35 @@ void Application::setupShadowMap()
     glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24,
         SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
 
-    // Improved texture filtering for better quality shadows
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    // Configure texture filtering
+    if (renderSettings.usePCF)
+    {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    }
+    else
+    {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    }
 
-    // Important: Fix shadow acne with proper clamping
+    // Fix shadow acne with proper clamping
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
     float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
     glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
 
-    // Use comparison mode for better shadow mapping quality
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+    // Use comparison mode only when needed
+    if (renderSettings.usePCF)
+    {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+    }
+    else
+    {
+        // CRITICAL: Disable comparison mode for standard shadow mapping
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+    }
 
     // Attach the depth texture to the framebuffer
     glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
@@ -209,12 +248,58 @@ void Application::run()
 
 void Application::setVisibleCubeCount(int visibleCount)
 {
-    visibleCubeCount = visibleCount;
+    // Count total active cubes
+    int totalActive = 0;
+    const auto& gridData = grid->getGrid();
+    for (int x = 0; x < grid->getSize(); x++)
+    {
+        for (int y = 0; y < grid->getSize(); y++)
+        {
+            for (int z = 0; z < grid->getSize(); z++)
+            {
+                if (gridData[x][y][z].active)
+                {
+                    totalActive++;
+                }
+            }
+        }
+    }
+
+    cullingStats.totalActiveCubes = totalActive;
+    cullingStats.visibleCubes = visibleCount;
+    cullingStats.culledCubes = totalActive - visibleCount;
+
+    if (totalActive > 0)
+    {
+        cullingStats.cullingPercentage = 100.0f * (float)cullingStats.culledCubes / (float)totalActive;
+    }
+    else
+    {
+        cullingStats.cullingPercentage = 0.0f;
+    }
+
+    // Update history for graphs
+    float currentTime = static_cast<float>(glfwGetTime());
+    if (currentTime - cullingStats.lastUpdateTime >= 0.1f)
+    {
+        cullingStats.lastUpdateTime = currentTime;
+
+        // Shift values in the history arrays
+        for (size_t i = 0; i < cullingStats.fpsHistory.size() - 1; i++)
+        {
+            cullingStats.fpsHistory[i] = cullingStats.fpsHistory[i + 1];
+            cullingStats.cullingHistory[i] = cullingStats.cullingHistory[i + 1];
+        }
+
+        // Add new values
+        cullingStats.fpsHistory[cullingStats.fpsHistory.size() - 1] = 1.0f / deltaTime;
+        cullingStats.cullingHistory[cullingStats.cullingHistory.size() - 1] = cullingStats.cullingPercentage;
+    }
 }
 
 bool Application::isCubeVisible(int x, int y, int z) const
 {
-    if (!enableFrustumCulling)
+    if (!renderSettings.enableFrustumCulling)
     {
         return true; // Always visible when culling is disabled
     }
@@ -337,7 +422,7 @@ void Application::processInput()
     static bool tabReleased = true;
     if (glfwGetKey(window, GLFW_KEY_TAB) == GLFW_PRESS && tabReleased)
     {
-        showDebugView = !showDebugView;
+        renderSettings.showDebugView = !renderSettings.showDebugView;
         tabReleased = false;
     }
     else if (glfwGetKey(window, GLFW_KEY_TAB) == GLFW_RELEASE)
@@ -365,19 +450,22 @@ void Application::update()
 
 void Application::render()
 {
-    // Update the view frustum for culling
-    updateViewFrustum();
+    profiler.beginFrame();
 
-    // 1. First render to depth map (shadow pass)
+    // First update the view frustum for culling
+    profiler.startProfile("Update Frustum");
+    updateViewFrustum();
+    profiler.endProfile("Update Frustum");
+
+    // Pre-shadow calculations
     glm::mat4 lightProjection, lightView, lightSpaceMatrix;
     float near_plane = 1.0f, far_plane = 100.0f;
 
-    // Better orthographic projection dimensions for the light
+    // Orthographic projection for the light
     float orthoSize = 15.0f; // Adjust based on scene size
     lightProjection = glm::ortho(-orthoSize, orthoSize, -orthoSize, orthoSize, near_plane, far_plane);
 
-    // Light view matrix - adjust light position for better coverage
-    // Position the light to cast shadows at an angle for more interesting results
+    // Light view matrix
     glm::vec3 lightPos = glm::vec3(15.0f, 20.0f, 15.0f);
     glm::vec3 lightTarget = glm::vec3(0.0f, 0.0f, 0.0f);
     lightView = glm::lookAt(lightPos, lightTarget, glm::vec3(0.0f, 1.0f, 0.0f));
@@ -385,112 +473,99 @@ void Application::render()
     // Light space transformation matrix
     lightSpaceMatrix = lightProjection * lightView;
 
-    // Use the shadow mapping shader
-    shadowShader->use();
-    shadowShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
+    // Skip shadow rendering if disabled
+    if (renderSettings.enableShadows)
+    {
+        // 1. First render to depth map (shadow map)
+        profiler.startProfile("Shadow Pass");
 
-    // Configure viewport to shadow map dimensions
-    glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+        // Choose shadow shader based on instancing setting
+        Shader* activeShadowShader = renderSettings.useInstancing ? instancedShadowShader : shadowShader;
 
-    // When rendering to depth map, use polygon offset to reduce shadow acne
-    glEnable(GL_POLYGON_OFFSET_FILL);
-    glPolygonOffset(2.0f, 4.0f);
+        // Use the shadow mapping shader
+        activeShadowShader->use();
+        activeShadowShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
 
-    // Cull front faces for shadow mapping to reduce peter-panning
-    //GLint cullFaceMode;
-    //glGetIntegerv(GL_CULL_FACE_MODE, &cullFaceMode);
-    //glCullFace(GL_FRONT);
+        // Configure viewport to shadow map dimensions
+        glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
 
-    // Bind shadow map framebuffer
-    glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-    glClear(GL_DEPTH_BUFFER_BIT);
+        // When rendering to depth map, use polygon offset to reduce shadow acne
+        glEnable(GL_POLYGON_OFFSET_FILL);
+        glPolygonOffset(2.0f, 4.0f);
 
-    // Render scene from light's perspective
-    renderSceneDepth(*shadowShader);
+        // Bind shadow map framebuffer
+        glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+        glClear(GL_DEPTH_BUFFER_BIT);
 
-    // Reset state
-    //glCullFace(cullFaceMode);
-    glDisable(GL_POLYGON_OFFSET_FILL);
+        // Render scene from light's perspective
+        renderSceneDepth(*activeShadowShader);
 
-    // Reset framebuffer and viewport
+        // Reset state
+        glDisable(GL_POLYGON_OFFSET_FILL);
+        glBindBuffer(GL_FRAMEBUFFER, 0);
+
+        profiler.endProfile("Shadow Pass");
+    }
+
+    // 2. Render scene normally with shadow mapping
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, width, height);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // 2. Render scene normally with shadow mapping
-    shader->use();
+    profiler.startProfile("Main Rendering");
+
+    // Choose shader based on instancing setting
+    Shader* activeShader = renderSettings.useInstancing ? instancedShader : shader;
+    activeShader->use();
 
     // Set view and projection matrices
-    shader->setMat4("view", camera->getViewMatrix());
-    shader->setMat4("projection", camera->getProjectionMatrix());
+    activeShader->setMat4("view", camera->getViewMatrix());
+    activeShader->setMat4("projection", camera->getProjectionMatrix());
 
     // Set light position and view position
-    shader->setVec3("lightPos", lightPos);
-    shader->setVec3("lightColor", glm::vec3(15.0f, 15.0f, 15.0f));
-    shader->setVec3("viewPos", camera->getPosition());
+    activeShader->setVec3("lightPos", lightPos);
+    activeShader->setVec3("lightColor", glm::vec3(15.0f, 15.0f, 15.0f));
+    activeShader->setVec3("viewPos", camera->getPosition());
 
-    // Add additional lighting parameters for better control
-    shader->setFloat("ambientStrength", 0.2f);    // Ambient light intensity
-    shader->setFloat("specularStrength", 0.5f);   // Specular highlights intensity
-    shader->setFloat("shininess", 32.0f);         // Specular shininess
+    // Pass render settings to shader
+    activeShader->setFloat("ambientStrength", renderSettings.ambientStrength);
+    activeShader->setFloat("specularStrength", renderSettings.specularStrength);
+    activeShader->setFloat("shininess", renderSettings.shininess);
+    activeShader->setBool("usePCF", renderSettings.usePCF);
+    activeShader->setFloat("shadowBias", renderSettings.shadowBias);
 
-    // Set light space matrix and bind shadow map
-    shader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, depthMap);
-    shader->setInt("shadowMap", 0);
-
-    // Additional shadows parameters
-    shader->setFloat("shadowBias", 0.005f);       // Shadow bias to reduce acne
-    shader->setBool("usePCF", true);              // Enable PCF filtering for soft shadows
+    // Only bind shadow map if shadows are enabled
+    if (renderSettings.enableShadows)
+    {
+        // Set light space matrix and bind shadow map
+        activeShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, depthMap);
+        activeShader->setInt("shadowMap", 0);
+    }
+    else
+    {
+        // When shadows are disabled, make sure nothing is in shadow
+        activeShader->setFloat("shadowBias", 1.0f); // Value that ensures no shadows
+    }
 
     // Render the grid
-    renderer->render(*shader);
+    renderer->render(*activeShader);
+    profiler.endProfile("Main Rendering");
 
-    // Render frustum wireframe for debugging
-    if (showFrustumDebug)
+    // Render debug visualizations if enabled
+    if (renderSettings.showFrustumWireframe)
     {
         renderFrustumDebug();
     }
 
     // 3. Debug visualization if enabled
-    if (showDebugView)
+    if (renderSettings.showDebugView && renderSettings.enableShadows)
     {
-        // Reset viewport to full screen for main rendering
-        glViewport(0, 0, width, height);
-
-        switch (currentDebugView)
-        {
-        case 0: // Depth map in corner of screen
-            debugRenderer->renderDebugTexture(depthMap,
-                width - SHADOW_WIDTH / 4,
-                height - SHADOW_HEIGHT / 4,
-                SHADOW_WIDTH / 4,
-                SHADOW_HEIGHT / 4,
-                true);
-            break;
-            
-        case 1: // Full screen depth map
-            debugRenderer->renderDebugTexture(depthMap,
-                0, 0,
-                width, height,
-                true);
-            break;
-
-        case 2: // Full screen depth map with linear depth output
-            // Special visualization with depth linearization
-            // This would need a custom shader to properly visualize depth
-            debugRenderer->renderDebugTexture(depthMap,
-                0, 0,
-                width, height,
-                true);
-            // Add text overlay explaining the view
-            // (Would need additional text rendering functionality)
-            break;
-        }
+        renderDebugView();
     }
 
-    visibleCubeCount = 0; // This will be updated by the renderer during render
+    profiler.endFrame();
 }
 
 void Application::renderUI()
@@ -608,14 +683,17 @@ void Application::renderUI()
         ImGui::Separator();
     }
 
+    // Add Graphics Settings section
+    renderSettingsUI();
+
     // Debug options
     if (ImGui::CollapsingHeader("Debug Options"))
     {
-        ImGui::Checkbox("Show Frustum Wireframe", &showFrustumDebug);
-        ImGui::Checkbox("Show Debug View", &showDebugView);
+        ImGui::Checkbox("Show Frustum Wireframe", &renderSettings.showFrustumWireframe);
+        ImGui::Checkbox("Show Debug View", &renderSettings.showDebugView);
 
         const char* debugViews[] = { "Shadow Map Corner", "Full Shadow Map", "Linearized Depth" };
-        ImGui::Combo("Debug View Mode", &currentDebugView, debugViews, 3);
+        ImGui::Combo("Debug View Mode", &renderSettings.currentDebugView, debugViews, 3);
     }
 
     // Performance stats
@@ -623,11 +701,127 @@ void Application::renderUI()
     {
         ImGui::Text("FPS: %.1f", 1.0f / deltaTime);
         ImGui::Text("Frame Time: %.3f ms", deltaTime * 1000.0f);
-        ImGui::Checkbox("Enable Frustum Culling", &enableFrustumCulling);
-        ImGui::Text("Visible Cubes: %d", visibleCubeCount);
+
+        ImGui::Checkbox("Enable Frustum Culling", &renderSettings.enableFrustumCulling);
+
+        ImGui::Text("Culling Statistics:");
+        ImGui::Text("  Active Cubes %d", cullingStats.totalActiveCubes);
+        ImGui::Text("  Visible Cubes: %d", cullingStats.visibleCubes);
+        ImGui::Text("  Culled Cubes %d", cullingStats.culledCubes);
+        ImGui::Text("  Culling Rate %.1f%%", cullingStats.cullingPercentage);
+
+        // Create a simple FPS graph
+        ImGui::PlotLines("FPS", cullingStats.fpsHistory.data(), cullingStats.fpsHistory.size(),
+            0, NULL, 0.0f, 120.0f, ImVec2(0, 80));
+
+        // Create a culling percentage graph
+        ImGui::PlotLines("Culling %", cullingStats.cullingHistory.data(), cullingStats.cullingHistory.size(),
+            0, NULL, 0.0f, 100.0f, ImVec2(0, 80));
+
+        // Force culling percentage to 0 when disabled
+        if (!renderSettings.enableFrustumCulling)
+        {
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f),
+                "Culling is disabled! Enable for performance boost.");
+        }
     }
 
     imGui->endWindow();
+
+    // Profiler Window
+    profiler.drawImGuiWindow();
+}
+
+void Application::renderSettingsUI()
+{
+    if (ImGui::CollapsingHeader("Graphics Settings", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        // Quality presets
+        const char* presets[] = { "Low", "Medium", "High", "Ultra" };
+        static int currentPreset = 1; // Medium by default
+
+        if (ImGui::Combo("Quality Preset", &currentPreset, presets, 4))
+        {
+            renderSettings.applyPreset(static_cast<RenderSettings::QualityPreset>(currentPreset));
+            // Recreate shadow map if resolution changed
+            setupShadowMap();
+        }
+
+        // Individual settings
+        if (ImGui::TreeNode("Shadow Settings"))
+        {
+            bool shadowsChanged = false;
+
+            shadowsChanged |= ImGui::Checkbox("Enable Shadows", &renderSettings.enableShadows);
+
+            const char* resolutions[] = { "512x512", "1024x1024", "2048x2048", "4096x4096" };
+            int currentRes = 0;
+
+            if (renderSettings.shadowMapResolution == 512) currentRes = 0;
+            else if (renderSettings.shadowMapResolution == 1024) currentRes = 1;
+            else if (renderSettings.shadowMapResolution == 2048) currentRes = 2;
+            else if (renderSettings.shadowMapResolution == 4096) currentRes = 3;
+
+            if (ImGui::Combo("Shadow Resolution", &currentRes, resolutions, 4))
+            {
+                switch (currentRes)
+                {
+                case 0: renderSettings.shadowMapResolution = 512; break;
+                case 1: renderSettings.shadowMapResolution = 1024; break;
+                case 2: renderSettings.shadowMapResolution = 2048; break;
+                case 3: renderSettings.shadowMapResolution = 4096; break;
+                }
+                shadowsChanged = true;
+            }
+
+            shadowsChanged |= ImGui::Checkbox("Use PCF Filtering", &renderSettings.usePCF);
+
+            // Make the bias slider more precise for debugging
+            ImGui::SliderFloat("Shadow Bias", &renderSettings.shadowBias, 0.0001f, 0.01f, "%.5f");
+
+            if (shadowsChanged)
+            {
+                // Recreate shadow map if settings changed
+                setupShadowMap();
+            }
+
+            ImGui::TreePop();
+        }
+
+        if (ImGui::TreeNode("Lighting Settings"))
+        {
+            ImGui::SliderFloat("Ambient Strength", &renderSettings.ambientStrength, 0.0f, 1.0f);
+            ImGui::SliderFloat("Specular Strength", &renderSettings.specularStrength, 0.0f, 1.0f);
+            ImGui::SliderFloat("Shininess", &renderSettings.shininess, 1.0f, 128.0f);
+            ImGui::TreePop();
+        }
+
+        if (ImGui::TreeNode("Performance Settings"))
+        {
+            ImGui::Checkbox("Enable Frustum Culling", &renderSettings.enableFrustumCulling);
+            ImGui::Checkbox("Use Instanced Rendering", &renderSettings.useInstancing);
+
+            bool vsyncChanged = ImGui::Checkbox("VSync", &renderSettings.enableVSync);
+            if (vsyncChanged)
+            {
+                glfwSwapInterval(renderSettings.enableVSync ? 1 : 0);
+            }
+
+            ImGui::TreePop();
+        }
+
+        if (ImGui::TreeNode("Debug Settings"))
+        {
+            ImGui::Checkbox("Show Debug View", &renderSettings.showDebugView);
+            ImGui::Checkbox("Show Frustum Wireframe", &renderSettings.showFrustumWireframe);
+            ImGui::Checkbox("Show Performance Overlay", &renderSettings.showPerformanceOverlay);
+
+            const char* debugViews[] = { "Shadow Map Corner", "Full Shadow Map", "Linearized Depth" };
+            ImGui::Combo("Debug View Mode", &renderSettings.currentDebugView, debugViews, 3);
+
+            ImGui::TreePop();
+        }
+    }
 }
 
 void Application::renderSceneDepth(Shader& depthShader)
@@ -638,7 +832,7 @@ void Application::renderSceneDepth(Shader& depthShader)
 
 void Application::renderFrustumDebug()
 {
-    if (!showFrustumDebug) return;
+    if (!renderSettings.showFrustumWireframe) return;
 
     // Create simple shader for lines if needed
     static Shader* lineShader = nullptr;
@@ -687,6 +881,42 @@ void Application::renderFrustumDebug()
     glLineWidth(1.0f); // Reset line width
 
     glBindVertexArray(0);
+}
+
+void Application::renderDebugView()
+{
+    // Reset viewport to full screen for main rendering
+    glViewport(0, 0, width, height);
+
+    switch (renderSettings.currentDebugView)
+    {
+    case 0: // Depth map in corner of screen
+        debugRenderer->renderDebugTexture(depthMap,
+            width - SHADOW_WIDTH / 4,
+            height - SHADOW_HEIGHT / 4,
+            SHADOW_WIDTH / 4,
+            SHADOW_HEIGHT / 4,
+            true);
+        break;
+
+    case 1: // Full screen depth map
+        debugRenderer->renderDebugTexture(depthMap,
+            0, 0,
+            width, height,
+            true);
+        break;
+
+    case 2: // Full screen depth map with linear depth output
+        // Special visualization with depth linearization
+        // This would need a custom shader to properly visualize depth
+        debugRenderer->renderDebugTexture(depthMap,
+            0, 0,
+            width, height,
+            true);
+        // Add text overlay explaining the view
+        // (Would need additional text rendering functionality)
+        break;
+    }
 }
 
 void Application::updateViewFrustum()
