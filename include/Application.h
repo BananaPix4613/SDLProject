@@ -3,6 +3,7 @@
 #include "CubeGrid.h"
 #include "CubeRenderer.h"
 #include "DebugRenderer.h"
+#include "FileDialog.h"
 #include "Frustum.h"
 #include "GridSerializer.h"
 #include "ImGuiWrapper.h"
@@ -11,6 +12,14 @@
 #include "RenderSettings.h"
 #include <Shader.h>
 #include <GLFW/glfw3.h>
+#include <algorithm>
+#include <string>
+#include <limits>
+#include <ctime>
+
+// Required for Windows file dialog integration
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
 
 class Application
 {
@@ -84,6 +93,12 @@ private:
     bool perCubeCulling = true;
     int batchSize = 10000;
 
+    // Auto-save features
+    bool enableAutoSave;
+    int autoSaveInterval; // In minutes
+    std::string autoSaveFolder;
+    double lastAutoSaveTime;
+
 public:
     Application(int windowWidth, int windowHeight);
     ~Application();
@@ -110,6 +125,7 @@ private:
     void render();
     void renderUI();
     void renderSettingsUI();
+    void renderFileOperationsUI();
     void renderSceneDepth(Shader &depthShader);
     void renderFrustumDebug();
     void renderDebugView();
@@ -130,6 +146,10 @@ private:
     void setCubeAt(int x, int y, int z, bool active, const glm::vec3& color);
     bool pickCube(int& outX, int& outY, int& outZ);
     void clearGrid(bool resetFloor);
+
+    // File handling
+    std::string generateAutoSaveFilename() const;
+    void performAutoSave();
 
     // Static callbacks
     static void framebufferSizeCallback(GLFWwindow* window, int width, int height);

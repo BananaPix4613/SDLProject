@@ -1,67 +1,36 @@
 #pragma once
 
 #include "CubeGrid.h"
+#include "FileDialog.h"
 #include <fstream>
-#include <nlohmann/json.hpp>
 #include <iostream>
 #include <string>
-
-using json = nlohmann::json;
+#include <vector>
 
 class GridSerializer
 {
 public:
-    // Save grid to file (JSON format)
-    static bool saveGridToFile(const CubeGrid* grid, const std::string& filename)
+    // Save grid to binary file using a file dialog
+    static bool saveGridToFile(const CubeGrid* grid, HWND ownerWindow = NULL)
     {
         try
         {
-            json gridData;
+            // Open save file dialog
+            std::string filename = FileDialog::saveFile("Binary Grid Files (*.bin)\0*.bin\0", ownerWindow);
 
-            // Save metadata
-            gridData["version"] = 1;
-            gridData["spacing"] = grid->getSpacing();
-
-            // Save active cubes only
-            json cubesArray = json::array();
-
-            // Get bounds for optimization
-            glm::ivec3 minBounds = grid->getMinBounds();
-            glm::ivec3 maxBounds = grid->getMaxBounds();
-
-            // For chunks-based system, iterate through active chunks
-            for (int x = minBounds.x; x <= maxBounds.x; x++)
+            // User cancelled
+            if (filename.empty())
             {
-                for (int y = minBounds.y; y <= maxBounds.y; y++)
-                {
-                    for (int z = minBounds.z; z <= maxBounds.z; z++)
-                    {
-                        if (grid->isCubeActive(x, y, z))
-                        {
-                            const Cube& cube = grid->getCube(x, y, z);
-
-                            json cubeData;
-                            cubeData["pos"] = {x, y, z};
-                            cubeData["color"] = {cube.color.r, cube.color.g, cube.color.b};
-
-                            cubesArray.push_back(cubeData);
-                        }
-                    }
-                }
-            }
-
-            gridData["cubes"] = cubesArray;
-
-            // Write to file
-            std::ofstream file(filename);
-            if (!file.is_open())
-            {
-                std::cerr << "Failed to open file for writing: " << filename << std::endl;
                 return false;
             }
 
-            file << std::setw(4) << gridData << std::endl;
-            return true;
+            // Ensure .bin extension
+            if (filename.length() < 4 || filename.substr(filename.length() - 4) != ".bin")
+            {
+                filename += ".bin";
+            }
+
+            return saveGridToBinary(grid, filename);
         }
         catch (const std::exception& e)
         {
@@ -70,56 +39,21 @@ public:
         }
     }
 
-    // Load grid from file
-    static bool loadGridFromFile(CubeGrid* grid, const std::string& filename)
+    // Load grid from binary file using a file dialog
+    static bool loadGridFromFile(CubeGrid* grid, HWND ownerWindow = NULL)
     {
         try
         {
-            std::ifstream file(filename);
-            if (!file.is_open())
+            // Open file dialog
+            std::string filename = FileDialog::openFile("Binary Grid Files (*.bin)\0*.bin\0", ownerWindow);
+
+            // User cancelled
+            if (filename.empty())
             {
-                std::cerr << "Failed to open file for reading: " << filename << std::endl;
                 return false;
             }
 
-            json gridData;
-            file >> gridData;
-
-            // Verify version
-            int version = gridData["version"];
-            if (version != 1)
-            {
-                std::cerr << "Unsupported grid file version: " << version << std::endl;
-                return false;
-            }
-
-            // Clear existing grid
-            grid->clear();
-
-            // Set grid properties
-            float spacing = gridData["spacing"];
-            // (grid spacing is typically set in constructor, but could be updated if needed)
-
-            // Load cubes
-            for (const auto& cubeData : gridData["cubes"])
-            {
-                int x = cubeData["pos"][0];
-                int y = cubeData["pos"][1];
-                int z = cubeData["pos"][2];
-
-                glm::vec3 color(
-                    cubeData["color"][0],
-                    cubeData["color"][1],
-                    cubeData["color"][2]
-                );
-
-                glm::vec3 position = grid->calculatePosition(x, y, z);
-                Cube cube(position, color);
-                cube.active = true;
-                grid->setCube(x, y, z, cube);
-            }
-
-            return true;
+            return loadGridFromBinary(grid, filename);
         }
         catch (const std::exception& e)
         {
@@ -128,7 +62,7 @@ public:
         }
     }
 
-    // For binary format, faster but less human-readable
+    // Binary format implementation
     static bool saveGridToBinary(const CubeGrid* grid, const std::string& filename)
     {
         try
@@ -140,10 +74,14 @@ public:
                 return false;
             }
 
-            // Write header
-            uint32_t version = 1;
+            // Write header and version
+            const char* header = "CUBEGRID";
+            file.write(header, 8);
+
+            uint32_t version = 2; // Increment version number
             file.write(reinterpret_cast<char*>(&version), sizeof(version));
 
+            // Write grid properties
             float spacing = grid->getSpacing();
             file.write(reinterpret_cast<char*>(&spacing), sizeof(spacing));
 
@@ -151,24 +89,18 @@ public:
             glm::ivec3 minBounds = grid->getMinBounds();
             glm::ivec3 maxBounds = grid->getMaxBounds();
 
+            // Write grid bounds
+            file.write(reinterpret_cast<const char*>(&minBounds), sizeof(minBounds));
+            file.write(reinterpret_cast<const char*>(&maxBounds), sizeof(maxBounds));
+
             // Count active cubes first
-            uint32_t activeCubeCount = 0;
-            for (int x = minBounds.x; x <= maxBounds.x; x++)
-            {
-                for (int y = minBounds.y; y <= maxBounds.y; y++)
-                {
-                    for (int z = minBounds.z; z <= maxBounds.z; z++)
-                    {
-                        if (grid->isCubeActive(x, y, z))
-                        {
-                            activeCubeCount++;
-                        }
-                    }
-                }
-            }
+            uint32_t activeCubeCount = grid->getTotalActiveCubeCount();
 
             // Write active cube count
             file.write(reinterpret_cast<char*>(&activeCubeCount), sizeof(activeCubeCount));
+
+            // Count of active cubes written
+            uint32_t cubesWritten = 0;
 
             // Write each active cube
             for (int x = minBounds.x; x <= maxBounds.x; x++)
@@ -188,9 +120,17 @@ public:
                             // Color
                             float color[3] = {cube.color.r, cube.color.g, cube.color.b};
                             file.write(reinterpret_cast<char*>(color), sizeof(color));
+
+                            cubesWritten++;
                         }
                     }
                 }
+            }
+
+            // Verify that we wrote the correct number of cubes
+            if (cubesWritten != activeCubeCount)
+            {
+                std::cerr << "Warning: Active cube count mismatch. Expected: " << activeCubeCount << ", Wrote: " << cubesWritten << std::endl;
             }
 
             return true;
@@ -213,10 +153,21 @@ public:
                 return false;
             }
 
-            // Read header
+            // Read and verify header
+            char header[9] = { 0 };
+            file.read(header, 8);
+            if (std::string(header) != "CUBEGRID")
+            {
+                std::cerr << "Invalid file format: not a CUBEGRID file" << std::endl;
+                return false;
+            }
+
+            // Read version
             uint32_t version;
             file.read(reinterpret_cast<char*>(&version), sizeof(version));
-            if (version != 1)
+
+            // Handle different versions
+            if (version < 1 || version > 2)
             {
                 std::cerr << "Unsupported binary grid file version: " << version << std::endl;
                 return false;
@@ -228,6 +179,14 @@ public:
 
             // Clear existing grid
             grid->clear();
+
+            // Read bounds if version >= 2
+            glm::ivec3 minBounds, maxBounds;
+            if (version >= 2)
+            {
+                file.read(reinterpret_cast<char*>(&minBounds), sizeof(minBounds));
+                file.read(reinterpret_cast<char*>(&maxBounds), sizeof(maxBounds));
+            }
 
             // Read cube count
             uint32_t cubeCount;
@@ -249,6 +208,14 @@ public:
                 Cube cube(position, glm::vec3(color[0], color[1], color[2]));
                 cube.active = true;
                 grid->setCube(pos[0], pos[1], pos[2], cube);
+            }
+
+            // Print stats about the loaded world
+            std::cout << "Loaded world with " << cubeCount << " cubes" << std::endl;
+            if (version >= 2)
+            {
+                std::cout << "World bounds: (" << minBounds.x << ", " << minBounds.y << ", " << minBounds.z << ") to ("
+                          << maxBounds.x << ", " << maxBounds.y << ", " << maxBounds.z << ")" << std::endl;
             }
 
             return true;

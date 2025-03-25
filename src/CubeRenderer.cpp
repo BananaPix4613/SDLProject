@@ -181,8 +181,11 @@ void CubeRenderer::render(Shader &shader)
 {
     shader.use();
 
-    // Reset instance count
+    // Reset instance count and visible cube tracking
     instanceCount = 0;
+
+    // Reset visible cube count at the beginning of render
+    app->setVisibleCubeCount(0);
 
     // Determine if we're using instanced rendering based on shader name
     bool usingInstanced = shader.ID == app->getInstancedShaderID();
@@ -448,7 +451,7 @@ void CubeRenderer::renderCurrentBatch(Shader& shader)
     glDrawElementsInstanced(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0, instanceCount);
     glBindVertexArray(0);
 
-    // Update visible cube count
+    // Add to the running total of visible cubes (accumulate)
     app->setVisibleCubeCount(app->getVisibleCubeCount() + instanceCount);
 }
 

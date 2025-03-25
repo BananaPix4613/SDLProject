@@ -51,9 +51,14 @@ private:
 
     double frameStartTime;
     double lastFrameTime;
+    double currentFPS;
 
 public:
-    Profiler() : enabled(true), paused(false), frameStartTime(0.0), lastFrameTime(0.0) {}
+    Profiler()
+        : enabled(true), paused(false), frameStartTime(0.0), lastFrameTime(0.0), currentFPS(0.0)
+    {
+        
+    }
 
     void setEnabled(bool enable) { enabled = enable; }
     void setPaused(bool pause) { paused = pause; }
@@ -61,21 +66,30 @@ public:
     void beginFrame() {
         if (!enabled) return;
 
+        // Store the actual tiem when the frame starts
         frameStartTime = glfwGetTime();
 
         // Clear active points at the start of each frame
-        // (in case any weren't properly ended in the previous frame)
         activePoints.clear();
     }
 
     void endFrame() {
         if (!enabled) return;
 
-        lastFrameTime = glfwGetTime() - frameStartTime;
+        // Calculate frame time
+        double currentTime = glfwGetTime();
+        lastFrameTime = currentTime - frameStartTime;
 
-        // Add frame time to stats
+        // Don't allow zero frame time to avoid division by zero
+        if (lastFrameTime < 0.0001) lastFrameTime = 0.0001;
+
+        // Calculate FPS directly from frame time
+        currentFPS = 1.0 / lastFrameTime;
+
+        // Add to basic measurements
         if (!paused) {
-            addMeasurement("Total Frame", lastFrameTime);
+            addMeasurement("Total Frame Time", lastFrameTime);
+            addMeasurement("FPS", currentFPS);
         }
     }
 
@@ -134,13 +148,24 @@ public:
 
         // Update statistics
         stats.callCount++;
-        stats.minDuration = std::min(stats.minDuration, duration);
-        stats.maxDuration = std::max(stats.maxDuration, duration);
 
-        // Recalculate average
+        // Update min/max (convert to milliseconds for display)
+        double durationMs = duration * 1000.0;
+
+        if (stats.history.size() == 1 || durationMs < stats.minDuration)
+        {
+            stats.minDuration = durationMs;
+        }
+
+        if (stats.history.size() == 1 || durationMs > stats.maxDuration)
+        {
+            stats.maxDuration = durationMs;
+        }
+
+        // Recalculate average (in milliseconds for display)
         double sum = 0.0;
         for (const auto& m : stats.history) {
-            sum += m.duration;
+            sum += m.duration * 1000.0; // Convert to ms
         }
         stats.averageDuration = sum / stats.history.size();
     }
@@ -172,8 +197,7 @@ public:
         }
 
         // Display current FPS
-        ImGui::Text("FPS: %.1f", lastFrameTime > 0 ? (1.0 / lastFrameTime) : 0.0);
-        ImGui::Text("Frame Time: %.3f ms", lastFrameTime * 1000.0);
+        ImGui::Text("FPS: %.1f (%.3f ms/frame)", currentFPS, lastFrameTime * 1000.0);
 
         if (statsMap.empty()) {
             ImGui::Text("No profile data collected.");
@@ -194,7 +218,7 @@ public:
             });
 
         // Limit display size
-        size_t displayCount = std::min(sortedStats.size(), MAX_DISPLAYED_PROFILES);
+        size_t displayCount = min(sortedStats.size(), MAX_DISPLAYED_PROFILES);
 
         // Table display
         ImGui::Columns(4, "profileTable");
@@ -205,7 +229,15 @@ public:
         ImGui::Text("% of Frame"); ImGui::NextColumn();
         ImGui::Separator();
 
-        double totalTime = lastFrameTime > 0 ? lastFrameTime : 0.0001; // Avoid division by zero
+        // Find the total frame time stat for percentage calculation
+        double totalFrameTimeAvg = 0.0;
+        auto it = statsMap.find("Total Frame Time");
+        if (it != statsMap.end())
+        {
+            totalFrameTimeAvg = it->second.averageDuration;
+        }
+
+        if (totalFrameTimeAvg < 0.001) totalFrameTimeAvg = 0.001; // Avoid division by zero
 
         for (size_t i = 0; i < displayCount; i++) {
             const ProfileStats* stat = sortedStats[i];
@@ -213,7 +245,17 @@ public:
             ImGui::Text("%s", stat->name.c_str()); ImGui::NextColumn();
             ImGui::Text("%.3f", stat->averageDuration * 1000.0); ImGui::NextColumn();
             ImGui::Text("%.2f / %.2f", stat->minDuration * 1000.0, stat->maxDuration * 1000.0); ImGui::NextColumn();
-            ImGui::Text("%.1f%%", (stat->averageDuration / totalTime) * 100.0); ImGui::NextColumn();
+
+            // Calculate percentage of total frame time
+            double percentage = 100.0 * stat->averageDuration / totalFrameTimeAvg;
+
+            // Cap percentage to 100% for display purposes
+            if (percentage > 100.0 && stat->name != "Total Frame Time")
+            {
+                percentage = 100.0;
+            }
+
+            ImGui::Text("%.1f%%", percentage); ImGui::NextColumn();
         }
 
         ImGui::Columns(1);

@@ -64,6 +64,7 @@ public:
     // Settings
     void setRenderSettings(bool useCache, bool perCubeCulling, float viewDist, int batch);
 
+    void setGrid(CubeGrid* newGrid) { grid = newGrid; markCacheForUpdate(); }
     int getChunkUpdatesThisFrame() const { return chunksUpdatedThisFrame; }
 
     // Helper method for frustum culling

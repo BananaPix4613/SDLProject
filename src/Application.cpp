@@ -9,7 +9,8 @@ Application::Application(int windowWidth, int windowHeight)
       lastFrame(0.0f), deltaTime(0.0f), showUI(true),
       selectedCubeColor(0.5f, 0.5f, 1.0f), isEditing(false), brushSize(1),
       selectedCubeX(-1), selectedCubeY(-1), selectedCubeZ(-1),
-      imGui(nullptr), visibleCubeCount(0)
+      imGui(nullptr), visibleCubeCount(0),
+      enableAutoSave(false), autoSaveInterval(5), autoSaveFolder(""), lastAutoSaveTime(0.0)
 {
     
 }
@@ -249,7 +250,7 @@ void Application::run()
 
 void Application::setVisibleCubeCount(int visibleCount)
 {
-    // Store the visible count
+    // Then set to the new count
     visibleCubeCount = visibleCount;
 
     // Count total active cubes
@@ -257,8 +258,17 @@ void Application::setVisibleCubeCount(int visibleCount)
 
     cullingStats.totalActiveCubes = totalActive;
     cullingStats.visibleCubes = visibleCount;
-    cullingStats.culledCubes = totalActive - visibleCount;
 
+    if (totalActive >= visibleCount)
+    {
+        cullingStats.culledCubes = totalActive - visibleCount;
+    }
+    else
+    {
+        cullingStats.culledCubes = 0;
+    }
+
+    // Calculate culling percentage
     if (totalActive > 0)
     {
         cullingStats.cullingPercentage = 100.0f * (float)cullingStats.culledCubes / (float)totalActive;
@@ -281,8 +291,11 @@ void Application::setVisibleCubeCount(int visibleCount)
             cullingStats.cullingHistory[i] = cullingStats.cullingHistory[i + 1];
         }
 
-        // Add new values
-        cullingStats.fpsHistory[cullingStats.fpsHistory.size() - 1] = 1.0f / deltaTime;
+        // Add new values - cap FPS to something reasonable for the graph
+        float currentFps = 1.0f / deltaTime;
+        if (currentFps > 1000.0f) currentFps = 1000.0f;
+
+        cullingStats.fpsHistory[cullingStats.fpsHistory.size() - 1] = currentFps;
         cullingStats.cullingHistory[cullingStats.cullingHistory.size() - 1] = cullingStats.cullingPercentage;
     }
 }
@@ -437,6 +450,18 @@ void Application::update()
 {
     // Main grid update
     grid->update(deltaTime);
+
+    // Auto-save check
+    if (enableAutoSave && !autoSaveFolder.empty())
+    {
+        double currentTime = glfwGetTime();
+        double autoSaveIntervalSeconds = autoSaveInterval * 60.0f;
+
+        if (currentTime - lastAutoSaveTime >= autoSaveIntervalSeconds)
+        {
+            performAutoSave();
+        }
+    }
 
     // Check if it's time to update loaded chunks (don't do this every frame)
     static float chunkUpdateTimer = 0.0f;
@@ -770,77 +795,7 @@ void Application::renderUI()
 
     imGui->endWindow();
 
-    // File operations window
-    imGui->beginWindow("File Operations");
-
-    static char saveFilename[256] = "world.grid";
-    ImGui::InputText("Filename", saveFilename, 256);
-
-    if (ImGui::Button("Save Grid"))
-    {
-        if (GridSerializer::saveGridToFile(grid, saveFilename))
-        {
-            // Success notification
-            showNotification("Grid saved successfully");
-        }
-        else
-        {
-            // Error notification
-            showNotification("Failed to save grid", true);
-        }
-    }
-
-    ImGui::SameLine();
-
-    if (ImGui::Button("Load Grid"))
-    {
-        if (GridSerializer::loadGridFromFile(grid, saveFilename))
-        {
-            // Success notification
-            showNotification("Grid loaded successfully");
-        }
-        else
-        {
-            // Error notification
-            showNotification("Failed to load grid", true);
-        }
-    }
-
-    ImGui::Separator();
-
-    // Option to use binary format
-    static bool useBinaryFormat = false;
-    ImGui::Checkbox("Use Binary Format", &useBinaryFormat);
-
-    if (ImGui::Button("Export Binary"))
-    {
-        std::string binFilename = std::string(saveFilename) + ".bin";
-        if (GridSerializer::saveGridToBinary(grid, binFilename))
-        {
-            showNotification("Grid exported as binary");
-        }
-        else
-        {
-            showNotification("Failed to export binary grid", true);
-        }
-    }
-
-    ImGui::SameLine();
-
-    if (ImGui::Button("Import Binary"))
-    {
-        std::string binFilename = std::string(saveFilename) + ".bin";
-        if (GridSerializer::loadGridFromBinary(grid, binFilename))
-        {
-            showNotification("Binary grid imported");
-        }
-        else
-        {
-            showNotification("Failed to import binary grid", true);
-        }
-    }
-
-    imGui->endWindow();
+    renderFileOperationsUI();
 
     // Grid navigation window
     imGui->beginWindow("Grid Navigation");
@@ -1181,6 +1136,10 @@ void Application::renderSettingsUI()
                     // Reset world with new settings
                     delete grid;
                     grid = new CubeGrid(worldSize, cubeSpacing);
+
+                    // Update renderer to use new grid
+                    renderer->setGrid(grid);
+
                     renderer->markCacheForUpdate();
                     ImGui::CloseCurrentPopup();
                 }
@@ -1207,6 +1166,168 @@ void Application::renderSettingsUI()
             ImGui::TreePop();
         }
     }
+}
+
+void Application::renderFileOperationsUI()
+{
+    // File operations window
+    imGui->beginWindow("File Operations");
+
+    if (ImGui::Button("Save World", ImVec2(150, 30)))
+    {
+        // Use Windows file dialog for saving
+        HWND hwnd = glfwGetWin32Window(window);
+
+        if (GridSerializer::saveGridToFile(grid, hwnd))
+        {
+            // Success notification
+            showNotification("Grid saved successfully");
+        }
+        else
+        {
+            // Error notification - only show if the user didn't cancel
+            if (GetLastError() != 0)
+            {
+                showNotification("Failed to save grid", true);
+            }
+        }
+    }
+
+    ImGui::SameLine();
+
+    if (ImGui::Button("Load World", ImVec2(150, 30)))
+    {
+        // Use Windows file dialog for loading
+        HWND hwnd = glfwGetWin32Window(window);
+
+        if (GridSerializer::loadGridFromFile(grid,hwnd))
+        {
+            // Success notification
+            showNotification("Grid loaded successfully");
+
+            // Mark the renderer cache as needing update
+            renderer->markCacheForUpdate();
+        }
+        else
+        {
+            // Error notification - only show if the user didn't cancel
+            if (GetLastError() != 0)
+            {
+                showNotification("Failed to load grid", true);
+            }
+        }
+    }
+
+    // Auto-save features section
+    ImGui::Separator();
+    ImGui::Text("Auto-Save Options");
+
+    if (ImGui::Checkbox("Enable Auto-Save", &enableAutoSave))
+    {
+        if (enableAutoSave && autoSaveFolder.empty())
+        {
+            // If enabling auto-save but no folder is selected, prompt for a folder
+            std::string folder = FileDialog::selectFolder("Select Auto-Save Folder", glfwGetWin32Window(window));
+            if (!folder.empty())
+            {
+                autoSaveFolder = folder;
+            }
+            else
+            {
+                // User cancelled folder selection, disable auto-save
+                enableAutoSave = false;
+            }
+        }
+
+        // Reset timer when enabling
+        if (enableAutoSave)
+        {
+            lastAutoSaveTime = glfwGetTime();
+        }
+    }
+
+    // Input for auto-save interval
+    if (ImGui::InputInt("Auto-Save Interval (minutes)", &autoSaveInterval))
+    {
+        // Clamp values manually without using std::min/max
+        if (autoSaveInterval < 1) autoSaveInterval = 1;
+        if (autoSaveInterval > 60) autoSaveInterval = 60;
+    }
+
+    // Show current auto-save location and button to change it
+    static char folderBuffer[256] = "";
+    strncpy_s(folderBuffer, sizeof(folderBuffer), autoSaveFolder.c_str(), _TRUNCATE);
+
+    ImGui::InputText("Auto-Save Location", folderBuffer, sizeof(folderBuffer), ImGuiInputTextFlags_ReadOnly);
+    ImGui::SameLine();
+
+    if (ImGui::Button("Browse..."))
+    {
+        std::string folder = FileDialog::selectFolder("Select Auto-Save Folder", glfwGetWin32Window(window));
+        if (!folder.empty())
+        {
+            autoSaveFolder = folder;
+        }
+    }
+
+    // Display next auto-save time if enabled
+    if (enableAutoSave && !autoSaveFolder.empty())
+    {
+        double currentTime = glfwGetTime();
+        double timeUntilNextSave = (lastAutoSaveTime + autoSaveInterval * 60.0) - currentTime;
+
+        int minutesLeft = static_cast<int>(timeUntilNextSave / 60.0);
+        int secondsLeft = static_cast<int>(timeUntilNextSave) % 60;
+
+        ImGui::Text("Next Auto-Save in: %d:%02d", minutesLeft, secondsLeft);
+
+        // Manual auto-save button
+        if (ImGui::Button("Save Now"))
+        {
+            performAutoSave();
+        }
+    }
+
+    // Quick backup options
+    ImGui::Separator();
+    ImGui::Text("Quick Backup");
+
+    if (ImGui::Button("Create Backup"))
+    {
+        // Generate timestamp for backup filename
+        time_t now = time(nullptr);
+        tm localTime;
+        localtime_s(&localTime, &now);
+
+        char timestamp[64];
+        strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", &localTime);
+
+        // Create backup filename
+        std::string backupFilename = "backup_" + std::string(timestamp) + ".bin";
+
+        // Use file dialog to get the backup location
+        std::string savePath = FileDialog::saveFile("Binary Grid Files (*.bin)\0*.bin\0", glfwGetWin32Window(window));
+
+        if (!savePath.empty())
+        {
+            // Ensure .bin extension
+            if (savePath.length() < 4 || savePath.substr(savePath.length() - 4) != ".bin")
+            {
+                savePath += ".bin";
+            }
+
+            if (GridSerializer::saveGridToBinary(grid, savePath))
+            {
+                showNotification("Backup created successfully: " + savePath);
+            }
+            else
+            {
+                showNotification("Failed to create backup", true);
+            }
+        }
+    }
+
+    imGui->endWindow();
 }
 
 void Application::renderSceneDepth(Shader& depthShader)
@@ -1531,8 +1652,8 @@ bool Application::pickCube(int& outX, int& outY, int& outZ)
             if (t1 > t2) std::swap(t1, t2);
 
             // Update tMin and tMax
-            tMin = std::max(tMin, t1);
-            tMax = std::min(tMax, t2);
+            tMin = max(tMin, t1);
+            tMax = min(tMax, t2);
 
             // Early termination
             if (tMin > tMax) return false;
@@ -1663,6 +1784,50 @@ void Application::clearGrid(bool resetFloor)
 
     // Mark renderer cache for update
     renderer->markCacheForUpdate();
+}
+
+std::string Application::generateAutoSaveFilename() const
+{
+    if (autoSaveFolder.empty())
+    {
+        return ""; // No folder selected
+    }
+
+    // Create a timestamp for the filename
+    time_t now = time(nullptr);
+    tm localTime;
+    localtime_s(&localTime, &now);
+
+    char timestamp[64];
+    strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", &localTime);
+
+    // Create the full path
+    std::string filename = autoSaveFolder + "\\autosave_" + timestamp + ".bin";
+    return filename;
+}
+
+void Application::performAutoSave()
+{
+    if (!enableAutoSave || autoSaveFolder.empty())
+    {
+        return;
+    }
+
+    std::string filename = generateAutoSaveFilename();
+    if (filename.empty())
+    {
+        return;
+    }
+
+    if (GridSerializer::saveGridToBinary(grid, filename))
+    {
+        showNotification("Auto-saved world");
+        lastAutoSaveTime = glfwGetTime();
+    }
+    else
+    {
+        showNotification("Auto-save failed", true);
+    }
 }
 
 void Application::framebufferSizeCallback(GLFWwindow *window, int width, int height)
