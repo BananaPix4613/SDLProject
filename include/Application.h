@@ -4,6 +4,7 @@
 #include "CubeRenderer.h"
 #include "DebugRenderer.h"
 #include "Frustum.h"
+#include "GridSerializer.h"
 #include "ImGuiWrapper.h"
 #include "IsometricCamera.h"
 #include "Profiler.h"
@@ -49,6 +50,18 @@ private:
 
     CullingStats cullingStats;
 
+    struct Notification
+    {
+        std::string message;
+        float timeRemaining;
+        bool isError;
+
+        Notification(const std::string& msg, bool error, float duration = 3.0f)
+            : message(msg), timeRemaining(duration), isError(error) {}
+    };
+
+    std::vector<Notification> notifications;
+
     bool showUI;          // Toggle for UI visibility
 
     unsigned int depthMapFBO;
@@ -65,6 +78,11 @@ private:
     bool isEditing;
     int brushSize;
     int selectedCubeX, selectedCubeY, selectedCubeZ;
+    int chunkViewDistance = 5;
+    float maxViewDistance = 500.0f;
+    bool useInstanceCache = true;
+    bool perCubeCulling = true;
+    int batchSize = 10000;
 
 public:
     Application(int windowWidth, int windowHeight);
@@ -74,8 +92,10 @@ public:
     void run();
 
     void setVisibleCubeCount(int visibleCount);
+    int getVisibleCubeCount() const { return visibleCubeCount; }
 
     const Frustum& getViewFrustum() const { return viewFrustum; }
+    const glm::vec3 getCameraPosition() const { return camera->getPosition(); }
     unsigned int getInstancedShaderID() const { return instancedShader ? instancedShader->ID : 0; }
     unsigned int getInstancedShadowShaderID() const { return instancedShadowShader ? instancedShadowShader->ID : 0; }
 
@@ -93,10 +113,14 @@ private:
     void renderSceneDepth(Shader &depthShader);
     void renderFrustumDebug();
     void renderDebugView();
+    void renderNotifications();
     void updateViewFrustum();
 
     // Debug functions
     std::vector<glm::vec3> getFrustumCorners() const;
+
+    // Notifications
+    void showNotification(const std::string& message, bool isError = false);
 
     // Window size control
     void resizeWindow(int newWidth, int newHeight);

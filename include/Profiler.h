@@ -145,6 +145,16 @@ public:
         stats.averageDuration = sum / stats.history.size();
     }
 
+    double getLastTime(const std::string& name) const
+    {
+        auto it = statsMap.find(name);
+        if (it != statsMap.end() && !it->second.history.empty())
+        {
+            return it->second.history.back().duration;
+        }
+        return 0.0; // Return 0 if no data is available
+    }
+
     void drawImGuiWindow() {
         if (!ImGui::Begin("Profiler")) {
             ImGui::End();

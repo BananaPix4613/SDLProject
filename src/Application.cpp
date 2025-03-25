@@ -44,14 +44,14 @@ bool Application::initialize()
         return false;
     }
 
-    // Create grid
+    // Create grid with chunk-based system
     grid = new CubeGrid(20, 1.0f);
 
     // Create camera
     float aspect = static_cast<float>(width) / static_cast<float>(height);
     camera = new IsometricCamera(aspect);
 
-    // Create renderer
+    // Create renderer with support for chunks
     renderer = new CubeRenderer(grid, this);
     renderer->initialize();
 
@@ -68,6 +68,7 @@ bool Application::initialize()
 
     // Initialize debug renderer
     debugRenderer = new DebugRenderer();
+    debugRenderer->initialize();
 
     // Initialize ImGui
     imGui = new ImGuiWrapper();
@@ -248,22 +249,11 @@ void Application::run()
 
 void Application::setVisibleCubeCount(int visibleCount)
 {
+    // Store the visible count
+    visibleCubeCount = visibleCount;
+
     // Count total active cubes
-    int totalActive = 0;
-    const auto& gridData = grid->getGrid();
-    for (int x = 0; x < grid->getSize(); x++)
-    {
-        for (int y = 0; y < grid->getSize(); y++)
-        {
-            for (int z = 0; z < grid->getSize(); z++)
-            {
-                if (gridData[x][y][z].active)
-                {
-                    totalActive++;
-                }
-            }
-        }
-    }
+    int totalActive = grid->getTotalActiveCubeCount();
 
     cullingStats.totalActiveCubes = totalActive;
     cullingStats.visibleCubes = visibleCount;
@@ -445,7 +435,36 @@ void Application::processInput()
 
 void Application::update()
 {
+    // Main grid update
     grid->update(deltaTime);
+
+    // Check if it's time to update loaded chunks (don't do this every frame)
+    static float chunkUpdateTimer = 0.0f;
+    chunkUpdateTimer += deltaTime;
+
+    // Update loaded chunks based on camera position every frame
+    if (chunkUpdateTimer >= 1.0f)
+    {
+        profiler.startProfile("ChunkUpdate");
+
+        // Get current view distance from settings
+        static int viewDistance = 8; // Default, can be changed in UI
+
+        // Convert camera position to grid coordinates
+        glm::vec3 camWorldPos = camera->getPosition();
+        glm::ivec3 camGridPos = grid->worldToGridCoordinates(camWorldPos);
+
+        // Update which chunks are loaded
+        grid->updateLoadedChunks(camGridPos, viewDistance);
+
+        // Reset timer
+        chunkUpdateTimer = 0.0f;
+
+        // Mark renderer cache for update due to chunk changes
+        renderer->markCacheForUpdate();
+
+        profiler.endProfile("ChunkUpdate");
+    }
 }
 
 void Application::render()
@@ -510,6 +529,9 @@ void Application::render()
     // 2. Render scene normally with shadow mapping
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, width, height);
+
+    // Format is R, G, B, A where values range from 0.0 to 1.0
+    glClearColor(0.678f, 0.847f, 0.902f, 1.0f); // Light blue sky color
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     profiler.startProfile("Main Rendering");
@@ -557,6 +579,26 @@ void Application::render()
     if (renderSettings.showFrustumWireframe)
     {
         renderFrustumDebug();
+    }
+
+    // Render chunk boundaries if enabled
+    if (debugRenderer && renderSettings.showChunkBoundaries)
+    {
+        debugRenderer->renderChunkBoundaries(
+            camera->getViewMatrix(),
+            camera->getProjectionMatrix(),
+            grid);
+    }
+
+    // Render grid lines if enabled
+    if (debugRenderer && renderSettings.showGridLines)
+    {
+        debugRenderer->renderGridLines(
+            camera->getViewMatrix(),
+            camera->getProjectionMatrix(),
+            grid->getMinBounds(),
+            grid->getMaxBounds(),
+            grid->getSpacing());
     }
 
     // 3. Debug visualization if enabled
@@ -728,6 +770,145 @@ void Application::renderUI()
 
     imGui->endWindow();
 
+    // File operations window
+    imGui->beginWindow("File Operations");
+
+    static char saveFilename[256] = "world.grid";
+    ImGui::InputText("Filename", saveFilename, 256);
+
+    if (ImGui::Button("Save Grid"))
+    {
+        if (GridSerializer::saveGridToFile(grid, saveFilename))
+        {
+            // Success notification
+            showNotification("Grid saved successfully");
+        }
+        else
+        {
+            // Error notification
+            showNotification("Failed to save grid", true);
+        }
+    }
+
+    ImGui::SameLine();
+
+    if (ImGui::Button("Load Grid"))
+    {
+        if (GridSerializer::loadGridFromFile(grid, saveFilename))
+        {
+            // Success notification
+            showNotification("Grid loaded successfully");
+        }
+        else
+        {
+            // Error notification
+            showNotification("Failed to load grid", true);
+        }
+    }
+
+    ImGui::Separator();
+
+    // Option to use binary format
+    static bool useBinaryFormat = false;
+    ImGui::Checkbox("Use Binary Format", &useBinaryFormat);
+
+    if (ImGui::Button("Export Binary"))
+    {
+        std::string binFilename = std::string(saveFilename) + ".bin";
+        if (GridSerializer::saveGridToBinary(grid, binFilename))
+        {
+            showNotification("Grid exported as binary");
+        }
+        else
+        {
+            showNotification("Failed to export binary grid", true);
+        }
+    }
+
+    ImGui::SameLine();
+
+    if (ImGui::Button("Import Binary"))
+    {
+        std::string binFilename = std::string(saveFilename) + ".bin";
+        if (GridSerializer::loadGridFromBinary(grid, binFilename))
+        {
+            showNotification("Binary grid imported");
+        }
+        else
+        {
+            showNotification("Failed to import binary grid", true);
+        }
+    }
+
+    imGui->endWindow();
+
+    // Grid navigation window
+    imGui->beginWindow("Grid Navigation");
+
+    // Show current bounds
+    glm::ivec3 minBounds = grid->getMinBounds();
+    glm::ivec3 maxBounds = grid->getMaxBounds();
+
+    ImGui::Text("Grid Bounds: (%d, %d, %d) to (%d, %d, %d)",
+        minBounds.x, minBounds.y, minBounds.z,
+        maxBounds.x, maxBounds.y, maxBounds.z);
+
+    ImGui::Separator();
+
+    // Navigation to specific coordinates
+    static int targetX = 0, targetY = 0, targetZ = 0;
+    ImGui::InputInt("Target X", &targetX);
+    ImGui::InputInt("Target Y", &targetY);
+    ImGui::InputInt("Target Z", &targetZ);
+
+    if (ImGui::Button("Go To Target"))
+    {
+        // Calculate world coordinates
+        glm::vec3 worldPos = grid->calculatePosition(targetX, targetY, targetZ);
+
+        // Set camera target to that location
+        camera->setTarget(worldPos);
+
+        // Check if we're in edit mode
+        if (isEditing)
+        {
+            // Select cube at that location (or nearby empty spot)
+            if (grid->isCubeActive(targetX, targetY, targetZ))
+            {
+                selectedCubeX = targetX;
+                selectedCubeY = targetY;
+                selectedCubeZ = targetZ;
+            }
+        }
+    }
+
+    ImGui::Separator();
+
+    // Chunk loading settings
+    static int viewDistance = 8;
+    ImGui::SliderInt("View Distance (chunks)", &viewDistance, 2, 16);
+
+    if (ImGui::Button("Update Loaded Chunks"))
+    {
+        // Calculate camera position in grid coordinates
+        glm::vec3 camWorldPos = camera->getPosition();
+        glm::ivec3 camGridPos = grid->worldToGridCoordinates(camWorldPos);
+
+        // Update which chunks are loaded
+        grid->updateLoadedChunks(camGridPos, viewDistance);
+    }
+
+    ImGui::Separator();
+
+    // Statistics
+    ImGui::Text("Active Chunks: %d", grid->getActiveChunkCount());
+    ImGui::Text("Total Cubes: %d", grid->getTotalActiveCubeCount());
+
+    imGui->endWindow();
+
+    // Add notification system UI (auto-hiding messages)
+    renderNotifications();
+
     // Profiler Window
     profiler.drawImGuiWindow();
 }
@@ -805,6 +986,210 @@ void Application::renderSettingsUI()
             if (vsyncChanged)
             {
                 glfwSwapInterval(renderSettings.enableVSync ? 1 : 0);
+            }
+
+            ImGui::TreePop();
+        }
+
+        if (ImGui::TreeNode("Advanced Visualization"))
+        {
+            bool settingsChanged = false;
+
+            // Chunk visualization
+            if (ImGui::TreeNode("Chunk System"))
+            {
+                ImGui::Text("Active Chunks: %d", grid->getActiveChunkCount());
+                ImGui::Text("Total Cubes: %d", grid->getTotalActiveCubeCount());
+
+                if (ImGui::Checkbox("Show Chunk Boundaries", &renderSettings.showChunkBoundaries))
+                {
+                    settingsChanged = true;
+                    debugRenderer->setShowChunkBoundaries(renderSettings.showChunkBoundaries);
+                }
+
+                if (ImGui::SliderInt("Chunk View Distance", &chunkViewDistance, 1, 16))
+                {
+                    settingsChanged = true;
+                    grid->updateLoadedChunks(
+                        grid->worldToGridCoordinates(camera->getPosition()),
+                        chunkViewDistance);
+                }
+
+                if (ImGui::SliderFloat("Max View Distance", &maxViewDistance, 100.0f, 2000.0f))
+                {
+                    settingsChanged = true;
+                }
+
+                if (ImGui::Button("Update Loaded Chunks"))
+                {
+                    grid->updateLoadedChunks(
+                        grid->worldToGridCoordinates(camera->getPosition()),
+                        chunkViewDistance);
+                }
+
+                ImGui::TreePop();
+            }
+
+            // Rendering optimization
+            if (ImGui::TreeNode("Rendering Optimization"))
+            {
+                if (ImGui::Checkbox("Use Instance Cache", &useInstanceCache))
+                {
+                    settingsChanged = true;
+                }
+
+                if (ImGui::Checkbox("Per-Cube Culling", &perCubeCulling))
+                {
+                    settingsChanged = true;
+                }
+
+                if (ImGui::SliderInt("Batch Size", &batchSize, 1000, 50000))
+                {
+                    settingsChanged = true;
+                }
+
+                if (ImGui::Button("Update Render Cache"))
+                {
+                    renderer->updateChunkInstanceCache();
+                }
+
+                ImGui::TreePop();
+            }
+
+            // Apply settings changes
+            if (settingsChanged)
+            {
+                // Get values from UI widgets
+                float viewDist = maxViewDistance;
+                bool useCache = useInstanceCache;
+                bool cubeCulling = perCubeCulling;
+                int batch = batchSize;
+
+                // Update renderer settings
+                renderer->setRenderSettings(useCache, cubeCulling, viewDist, batch);
+                renderer->markCacheForUpdate();
+            }
+
+            ImGui::TreePop();
+        }
+
+        // LOD Settings
+        if (ImGui::TreeNode("Level of Detail"))
+        {
+            ImGui::Checkbox("Enable LOD", &renderSettings.enableLOD);
+
+            // Only show these controls if LOD is enabled
+            if (renderSettings.enableLOD)
+            {
+                static float lodDistanceMedium = 200.0f;
+                static float lodDistanceLow = 500.0f;
+
+                ImGui::SliderFloat("Medium Detail Distance", &lodDistanceMedium, 50.0f, 1000.0f);
+                ImGui::SliderFloat("Low Detail Distance", &lodDistanceLow, lodDistanceMedium + 50.0f, 2000.0f);
+
+                ImGui::Text("High Detail: 0-%.0f units", lodDistanceMedium);
+                ImGui::Text("Medium Detail: %.0f-%.0f units", lodDistanceMedium, lodDistanceLow);
+                ImGui::Text("Low Detail: %.0f+ units", lodDistanceLow);
+
+                // Preview Colors
+                ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "High Detail");
+                ImGui::SameLine(150);
+                ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Medium Detail");
+                ImGui::SameLine(300);
+                ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Low Detail");
+
+                if (ImGui::Button("Apply LOD Settings"))
+                {
+                    // Apply LOD settings to the renderer
+                    // Implementation would depend on your LOD system desin
+                    if (renderer)
+                    {
+                        // This would be added to renderer class
+                        // renderer-setLodDistances(lodDistanceMedium, lodDistanceLow, enableLOD);
+                    }
+                }
+            }
+
+            ImGui::TreePop();
+        }
+
+        // Debug visualization
+        if (ImGui::TreeNode("Visualization Debug"))
+        {
+            if (ImGui::Checkbox("Show Bounding Boxes", &renderSettings.showBoundingBoxes))
+            {
+                debugRenderer->setShowBoundingBoxes(renderSettings.showBoundingBoxes);
+            }
+
+            if (ImGui::Checkbox("Show Grid Lines", &renderSettings.showGridLines))
+            {
+                debugRenderer->setShowGridLines(renderSettings.showGridLines);
+            }
+
+            if (ImGui::Checkbox("Color by Distance", &renderSettings.colorByDistance))
+            {
+                // This would enable a debug shader that colors cubes based on distance from camera
+                // Could be implemented in the renderer class
+                // renderer->setDebugColorMode(colorByDistance ? 1 : 0);
+            }
+
+            if (ImGui::Checkbox("Show Chunk Stats", &renderSettings.showChunkStats))
+            {
+                renderSettings.showChunkStats = renderSettings.showChunkStats;
+            }
+
+            if (renderSettings.showChunkStats)
+            {
+                // Display additional statistics about chunks if enabled
+                ImGui::Text("Chunk Update Time: %.3f ms", profiler.getLastTime("ChunkUpdate") * 1000.0f);
+                ImGui::Text("Chunk Culling Time: %.3f ms", profiler.getLastTime("ChunkCulling") * 1000.0f);
+                ImGui::Text("Chunk Mesh Updates: %d", renderer->getChunkUpdatesThisFrame());
+            }
+
+            ImGui::TreePop();
+        }
+
+        // World settings
+        if (ImGui::TreeNode("World Settings"))
+        {
+            static int worldSize = 20;
+            ImGui::SliderInt("Initial World Size", &worldSize, 10, 100);
+
+            static float cubeSpacing = 1.0f;
+            if (ImGui::SliderFloat("Cube Spacing", &cubeSpacing, 0.5f, 2.0f))
+            {
+                // This would update the spacing in the grid if implemented
+                // grid->setSpacing(cubeSpacing);
+            }
+
+            static int worldHeight = 128;
+            ImGui::SliderInt("World Height Limit", &worldHeight, 64, 512);
+
+            if (ImGui::Button("Reset World"))
+            {
+                ImGui::OpenPopup("Reset World?");
+            }
+
+            // Confirmation popup
+            if (ImGui::BeginPopupModal("Reset World?", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+            {
+                ImGui::Text("This will delete the entire world and create a new one.\nThis operation cannot be undone!\n\n");
+                ImGui::Separator();
+
+                if (ImGui::Button("OK", ImVec2(120, 0)))
+                {
+                    // Reset world with new settings
+                    delete grid;
+                    grid = new CubeGrid(worldSize, cubeSpacing);
+                    renderer->markCacheForUpdate();
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Cancel", ImVec2(120, 0)))
+                {
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndPopup();
             }
 
             ImGui::TreePop();
@@ -919,6 +1304,57 @@ void Application::renderDebugView()
     }
 }
 
+void Application::renderNotifications()
+{
+    if (notifications.empty()) return;
+
+    float PADDING = 10.0f;
+    ImVec2 windowPos = ImVec2(width - 300.0f - PADDING, PADDING);
+    ImGui::SetNextWindowPos(windowPos);
+    ImGui::SetNextWindowSize(ImVec2(300, 0));
+    ImGui::SetNextWindowBgAlpha(0.8f);
+
+    if (ImGui::Begin("##Notifications", nullptr,
+        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar))
+    {
+        for (auto& notification : notifications)
+        {
+            if (notification.isError)
+            {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.3f, 0.3f, 1.0f));
+            }
+            else
+            {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.4f, 1.0f, 0.4f, 1.0f));
+            }
+
+            ImGui::TextWrapped("%s", notification.message.c_str());
+            ImGui::PopStyleColor();
+        }
+    }
+    ImGui::End();
+
+    // Update notification timers
+    float currentTime = static_cast<float>(glfwGetTime());
+    static float lastTime = currentTime;
+    float deltaTime = currentTime - lastTime;
+    lastTime = currentTime;
+
+    for (auto it = notifications.begin(); it != notifications.end();)
+    {
+        it->timeRemaining -= deltaTime;
+        if (it->timeRemaining <= 0.0f)
+        {
+            it = notifications.erase(it);
+        }
+        else
+        {
+            it++;
+        }
+    }
+}
+
 void Application::updateViewFrustum()
 {
     if (!camera) return;
@@ -965,6 +1401,11 @@ std::vector<glm::vec3> Application::getFrustumCorners() const
     return corners;
 }
 
+void Application::showNotification(const std::string& message, bool isError)
+{
+    notifications.emplace_back(message, isError);
+}
+
 void Application::resizeWindow(int newWidth, int newHeight)
 {
     // Make sure we don't set ridiculous values
@@ -1008,18 +1449,13 @@ void Application::resizeWindow(float newWidth, float newHeight)
 
 void Application::setCubeAt(int x, int y, int z, bool active, const glm::vec3& color)
 {
-    if (x >= 0 && x < grid->getSize() &&
-        y >= 0 && y < grid->getSize() &&
-        z >= 0 && z < grid->getSize())
-    {
-        Cube cube = grid->getCube(x, y, z);
-        cube.active = active;
-        if (active)
-        {
-            cube.color = color;
-        }
-        grid->setCube(x, y, z, cube);
-    }
+    glm::vec3 position = grid->calculatePosition(x, y, z);
+    Cube cube(position, color);
+    cube.active = active;
+    grid->setCube(x, y, z, cube);
+
+    // Mark the renderer cache as needing update due to grid changes
+    renderer->markCacheForUpdate();
 }
 
 bool Application::pickCube(int& outX, int& outY, int& outZ)
@@ -1059,12 +1495,15 @@ bool Application::pickCube(int& outX, int& outY, int& outZ)
     std::cout << "Ray direction: " << rayDir.x << ", " << rayDir.y << ", " << rayDir.z << std::endl;
 
     // Grid parameters
-    float gridSize = grid->getSize();
     float spacing = grid->getSpacing();
 
+    // Get current grid bounds
+    glm::ivec3 minBounds = grid->getMinBounds();
+    glm::ivec3 maxBounds = grid->getMaxBounds();
+
     // Grid bounds (assuming grid is centered at origin)
-    glm::vec3 gridMin = glm::vec3(-gridSize * spacing / 2.0f);
-    glm::vec3 gridMax = glm::vec3(gridSize * spacing / 2.0f);
+    glm::vec3 gridMin = grid->calculatePosition(minBounds.x - 10, minBounds.y - 10, minBounds.z - 10);
+    glm::vec3 gridMax = grid->calculatePosition(maxBounds.x + 10, maxBounds.y + 10, maxBounds.z + 10);
 
     // Check ray interaction with grid bounds using slab method
     float tMin = -INFINITY;
@@ -1106,11 +1545,10 @@ bool Application::pickCube(int& outX, int& outY, int& outZ)
 
     // Voxel traversal setup
     // Convert world coordinates to grid indices
-    glm::vec3 voxelPos = (intersectionPoint - gridMin) / spacing;
-
-    int voxelX = glm::clamp(static_cast<int>(floor(voxelPos.x)), 0, static_cast<int>(gridSize) - 1);
-    int voxelY = glm::clamp(static_cast<int>(floor(voxelPos.y)), 0, static_cast<int>(gridSize) - 1);
-    int voxelZ = glm::clamp(static_cast<int>(floor(voxelPos.z)), 0, static_cast<int>(gridSize) - 1);
+    glm::ivec3 gridPos = grid->worldToGridCoordinates(intersectionPoint);
+    int voxelX = gridPos.x;
+    int voxelY = gridPos.y;
+    int voxelZ = gridPos.z;
 
     // Direction to increment grid coordinates
     int stepX = (rayDir.x > 0) ? 1 : ((rayDir.x < 0) ? -1 : 0);
@@ -1118,9 +1556,9 @@ bool Application::pickCube(int& outX, int& outY, int& outZ)
     int stepZ = (rayDir.z > 0) ? 1 : ((rayDir.z < 0) ? -1 : 0);
 
     // Distance to next voxel boundary for each axis
-    float nextVoxelBoundaryX = (stepX > 0) ? (voxelX + 1) * spacing + gridMin.x : voxelX * spacing + gridMin.x;
-    float nextVoxelBoundaryY = (stepY > 0) ? (voxelY + 1) * spacing + gridMin.y : voxelY * spacing + gridMin.y;
-    float nextVoxelBoundaryZ = (stepZ > 0) ? (voxelZ + 1) * spacing + gridMin.z : voxelZ * spacing + gridMin.z;
+    float nextVoxelBoundaryX = (stepX > 0) ? (voxelX + 1) * spacing : voxelX * spacing;
+    float nextVoxelBoundaryY = (stepY > 0) ? (voxelY + 1) * spacing : voxelY * spacing;
+    float nextVoxelBoundaryZ = (stepZ > 0) ? (voxelZ + 1) * spacing : voxelZ * spacing;
 
     // tMax is how far we need to travel in ray direction to reach the next voxel boundary
     float tMaxX = (rayDir.x != 0) ? (nextVoxelBoundaryX - rayOrigin.x) / rayDir.x : INFINITY;
@@ -1138,7 +1576,7 @@ bool Application::pickCube(int& outX, int& outY, int& outZ)
     int prevZ = voxelZ;
 
     // Traverse the grid
-    int maxSteps = static_cast<int>(gridSize * 3); // Limit iterations
+    int maxSteps = 1000; // Limit iterations for infinite grid
     for (int i = 0; i < maxSteps; i++)
     {
         // Check if current voxel has a cube
@@ -1176,10 +1614,9 @@ bool Application::pickCube(int& outX, int& outY, int& outZ)
             voxelZ += stepZ;
         }
 
-        // Check if we're still in the grid
-        if (voxelX < 0 || voxelX >= gridSize ||
-            voxelY < 0 || voxelY >= gridSize ||
-            voxelZ < 0 || voxelZ >= gridSize)
+        // Check if we've gone too far
+        float distance = glm::length(rayOrigin - (rayOrigin + tMin * rayDir + glm::vec3(voxelX, voxelY, voxelZ) * spacing));
+        if (distance > 1000.0f) // Limit picking distance
         {
             break;
         }
@@ -1195,12 +1632,20 @@ bool Application::pickCube(int& outX, int& outY, int& outZ)
 
 void Application::clearGrid(bool resetFloor)
 {
-    for (int x = 0; x < grid->getSize(); x++)
+    // Get current bounds to know what to clear
+    glm::ivec3 minBounds = grid->getMinBounds();
+    glm::ivec3 maxBounds = grid->getMaxBounds();
+
+    // We'll only clear within the current active bounds plus a margin
+    for (int x = minBounds.x - 5; x <= maxBounds.x; x++)
     {
-        for (int y = 0; y < grid->getSize(); y++)
+        for (int y = minBounds.y; y <= maxBounds.y; y++)
         {
-            for (int z = 0; z < grid->getSize(); z++)
+            for (int z = minBounds.z; z <= maxBounds.z; z++)
             {
+                // Skip positions that don't have active cubes (for efficiency)
+                if (!grid->isCubeActive(x, y, z)) continue;
+
                 if (y > 0) // Above floor
                 {
                     // Clear all cubes above the floor
@@ -1215,6 +1660,9 @@ void Application::clearGrid(bool resetFloor)
             }
         }
     }
+
+    // Mark renderer cache for update
+    renderer->markCacheForUpdate();
 }
 
 void Application::framebufferSizeCallback(GLFWwindow *window, int width, int height)

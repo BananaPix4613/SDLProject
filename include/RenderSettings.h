@@ -20,6 +20,7 @@ struct RenderSettings
     bool enableFrustumCulling = true;
     bool useInstancing = true;
     bool enableVSync = false;
+    bool enableLOD = false;
 
     // Post-processing
     bool enablePostProcessing = false;
@@ -31,6 +32,11 @@ struct RenderSettings
     bool showFrustumWireframe = false;
     int currentDebugView = 0;
     bool showPerformanceOverlay = true;
+    bool showChunkBoundaries = false;
+    bool showBoundingBoxes = false;
+    bool showGridLines = false;
+    bool colorByDistance = false;
+    bool showChunkStats = false;
 
     // Graphics quality preset
     enum QualityPreset {

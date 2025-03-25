@@ -2,64 +2,69 @@
 #define DEBUG_RENDERER_H
 
 #include <glad/glad.h>
+#include <glm.hpp>
+#include <utility>
+#include <vector>
 #include "Shader.h"
+
+// Forward declaration
+class CubeGrid;
 
 class DebugRenderer
 {
 public:
-    DebugRenderer()
-    {
-        // Setup buffers for the quad
-        float quadVertices[] = {
-            // positions        // texture coords
-            -1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
-            -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
-             1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
-             1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
-        };
+    DebugRenderer();
+    ~DebugRenderer();
 
-        glGenVertexArrays(1, &quadVAO);
-        glGenBuffers(1, &quadVBO);
-        glBindVertexArray(quadVAO);
-        glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    void initialize();
 
-        // Initialize debug shader
-        debugShader = new Shader("shaders/DebugVertexShader.glsl", "shaders/DebugFragmentShader.glsl");
-    }
+    // Texture debug view
+    void renderDebugTexture(GLuint textureID, float x, float y, float width, float height, bool isDepthTexture = true);
 
-    ~DebugRenderer()
-    {
-        glDeleteVertexArrays(1, &quadVAO);
-        glDeleteBuffers(1, &quadVBO);
-        delete debugShader;
-    }
+    // Chunk visualization
+    void renderChunkBoundaries(const glm::mat4& view, const glm::mat4& projection, const CubeGrid* grid);
 
-    // Render a texture to the screen (for debug purposes)
-    void renderDebugTexture(GLuint textureID, float x, float y, float width, float height, bool isDepthTexture = true)
-    {
-        debugShader->use();
-        debugShader->setBool("isDepthTexture", isDepthTexture);
+    // Bounding box visualization
+    void renderBoundingBoxes(const glm::mat4& view, const glm::mat4& projection,
+                             const std::vector<std::pair<glm::vec3, glm::vec3>>& boxes);
 
-        // Setup viewport transform to render in a corner of the screen
-        glViewport(x, y, width, height);
+    // Grid line visualization
+    void renderGridLines(const glm::mat4& view, const glm::mat4& projection,
+                         const glm::ivec3& minBounds, const glm::ivec3& maxBounds,
+                         float spacing);
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureID);
-        debugShader->setInt("debugTexture", 0);
+    // Update graphics resources
+    void updateLineMeshes();
 
-        glBindVertexArray(quadVAO);
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-        glBindVertexArray(0);
-    }
+    // Visualization
+    void setShowChunkBoundaries(bool show);
+    void setShowBoundingBoxes(bool show);
+    void setShowGridLines(bool show);
 
 private:
+    // OpenGL objects
     unsigned int quadVAO, quadVBO;
+    unsigned int lineVAO, lineVBO;
+
+    // Shaders
     Shader* debugShader;
+    Shader* lineShader;
+
+    // Visualization flags
+    bool showChunkBoundaries;
+    bool showBoundingBoxes;
+    bool showGridLines;
+
+    // Cached line data for chunk boundaries
+    std::vector<float> chunkBoundaryLines;
+
+    // Helper methods for adding geometric primitives
+    void addBoxToLines(const glm::vec3& minCorner, const glm::vec3& maxCorner,
+                       const glm::vec3& color, std::vector<float>& lines);
+
+    void addLineToBuffer(float x1, float y1, float z1,
+                         float x2, float y2, float z2,
+                         const glm::vec3& color, std::vector<float>& buffer);
 };
 
 #endif // DEBUG_RENDERER_H
