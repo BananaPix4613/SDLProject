@@ -10,13 +10,17 @@ UIManager::UIManager(Application* application)
     showUI(true),
     showMainMenuBar(true),
     showDockSpace(true),
+    showViewportPanel(true),
     showControlPanel(true),
     showSettingsPanel(true),
     showGridNavigationPanel(true),
     showProfilerPanel(true),
+    shouldOpenControlsPopup(false),
+    shouldOpenAboutPopup(false),
     isEditing(false),
     windowWidth(1280),
     windowHeight(720),
+    dpiScale(1.0f),
     selectedCubeX(-1),
     selectedCubeY(-1),
     selectedCubeZ(-1),
@@ -72,17 +76,33 @@ void UIManager::beginFrame()
     {
         imGui->newFrame();
 
-        // If we want docking, set it up
+        // Set up docking
         if (showDockSpace)
         {
             renderDockSpace();
         }
 
-        // Render main menu bar if enabled
+        // Main menu bar rendering
         if (showMainMenuBar)
         {
             renderMainMenuBar();
         }
+
+        // Handle popup flags
+        if (shouldOpenControlsPopup)
+        {
+            ImGui::OpenPopup("Controls Help");
+            shouldOpenControlsPopup = false;
+        }
+
+        if (shouldOpenAboutPopup)
+        {
+            ImGui::OpenPopup("About");
+            shouldOpenAboutPopup = false;
+        }
+
+        // Render all modal dialogs
+        renderPopupModals();
 
         // Render all panels
         renderPanels();
@@ -216,6 +236,32 @@ void UIManager::renderDockSpace()
     if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable)
     {
         ImGuiID dockspace_id = ImGui::GetID("MainDockSpace");
+
+        // Only set up the default layout if it hasn't been done yet
+        static bool first_time = true;
+        if (first_time && ImGui::DockBuilderGetNode(dockspace_id) == NULL)
+        {
+            ImGui::DockBuilderRemoveNode(dockspace_id);
+            ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_DockSpace);
+            ImGui::DockBuilderSetNodeSize(dockspace_id, viewport->Size);
+
+            // Split the dockspace into sections
+            ImGuiID dock_main = dockspace_id;
+            ImGuiID dock_right = ImGui::DockBuilderSplitNode(dock_main, ImGuiDir_Right, 0.25f, NULL, &dock_main);
+            ImGuiID dock_left = ImGui::DockBuilderSplitNode(dock_main, ImGuiDir_Left, 0.2f, NULL, &dock_main);
+            ImGuiID dock_bottom = ImGui::DockBuilderSplitNode(dock_main, ImGuiDir_Down, 0.25f, NULL, &dock_main);
+
+            // Dock windows to specific areas
+            ImGui::DockBuilderDockWindow("Viewport", dock_main);
+            ImGui::DockBuilderDockWindow("Control Panel", dock_right);
+            ImGui::DockBuilderDockWindow("Settings", dock_right);
+            ImGui::DockBuilderDockWindow("Grid Navigation", dock_left);
+            ImGui::DockBuilderDockWindow("Profiler", dock_bottom);
+
+            ImGui::DockBuilderFinish(dockspace_id);
+            first_time = false;
+        }
+
         ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
     }
 
@@ -223,9 +269,78 @@ void UIManager::renderDockSpace()
     ImGui::End();
 }
 
+void UIManager::renderPopupModals()
+{
+    // Controls popup
+    if (ImGui::BeginPopupModal("Controls Help", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        ImGui::Text("Navigation Controls:");
+        ImGui::BulletText("WASD - Pan camera");
+        ImGui::BulletText("Q/E - Rotate camera");
+        ImGui::BulletText("Mouse Wheel - Zoom in/out");
+
+        ImGui::Separator();
+
+        ImGui::Text("Editor Controls:");
+        ImGui::BulletText("Left Click - Place Cube");
+        ImGui::BulletText("Right Click - Remove cube");
+        ImGui::BulletText("Ctrl+Z - Undo (not implemented yet)");
+        ImGui::BulletText("Ctrl+Y - Redo (not implemented yet)");
+
+        ImGui::Separator();
+
+        ImGui::Text("Window Controls:");
+        ImGui::BulletText("F11 - Toggle Fullscreen");
+        ImGui::BulletText("Ctrl+ / Ctrl- - Resize window");
+
+        ImGui::Separator();
+
+        ImGui::Text("UI Controls:");
+        ImGui::BulletText("F1 - Toggle UI visibility");
+        ImGui::BulletText("Tab - Toggle debug view");
+
+        if (ImGui::Button("Close", ImVec2(120, 0)))
+        {
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::EndPopup();
+    }
+
+    // About popup
+    if (ImGui::BeginPopupModal("About", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        ImGui::Text("Isometric Voxel Editor");
+        ImGui::Text("Version 1.0");
+        ImGui::Separator();
+        ImGui::Text("An OpenGL-based voxel editor with chunk-based rendering");
+        ImGui::Text("and frustum fulling for optimal performance.");
+
+        ImGui::Separator();
+
+        ImGui::Text("Technologies used:");
+        ImGui::BulletText("OpenGl 3.3");
+        ImGui::BulletText("GLFW");
+        ImGui::BulletText("GLM");
+        ImGui::BulletText("Dear ImGui");
+
+        if (ImGui::Button("Close", ImVec2(120, 0)))
+        {
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::EndPopup();
+    }
+}
+
 void UIManager::renderPanels()
 {
     // Render main panels if they are visible
+    if (showViewportPanel)
+    {
+        renderViewportPanel();
+    }
+
     if (showControlPanel)
     {
         renderControlPanel();
@@ -323,7 +438,6 @@ void UIManager::renderFileMenu()
         if (GridSerializer::loadGridFromFile(app->getGrid(), hwnd))
         {
             addNotification("World loaded successfully");
-            app->updateRenderer();
         }
         else if (GetLastError() != 0)
         {
@@ -408,7 +522,7 @@ void UIManager::renderEditMenu()
         for (int i = 1; i <= 5; i++)
         {
             char label[32];
-            sprintf_s(label, "%dx%dx$d", i, i, i);
+            sprintf_s(label, "%dx%dx%d", i, i, i);
             if (ImGui::MenuItem(label, nullptr, brushSize == i))
             {
                 brushSize = i;
@@ -444,7 +558,7 @@ void UIManager::renderEditMenu()
     ImGui::Separator();
 
     // Grid operations
-    if (ImGui::MenuItem("Celar Grid"))
+    if (ImGui::MenuItem("Clear Grid"))
     {
         showConfirmationDialog("Clear all cubes except the floor?", [this]()
             {
@@ -478,7 +592,7 @@ void UIManager::renderViewMenu()
 
     if (ImGui::MenuItem("Frustum Culling", nullptr, &renderSettings.enableFrustumCulling))
     {
-        app->updateRenderer();
+
     }
 
     if (ImGui::MenuItem("Shadows", nullptr, &renderSettings.enableShadows))
@@ -503,6 +617,12 @@ void UIManager::renderViewMenu()
     }
 
     ImGui::Separator();
+
+    // Toggle fullscreen option
+    if (ImGui::MenuItem("Toggle Fullscreen", "F11", app->getIsFullscreen()))
+    {
+        app->toggleFullscreen();
+    }
 
     // Window size presets
     if (ImGui::BeginMenu("Window Size"))
@@ -586,7 +706,7 @@ void UIManager::renderToolsMenu()
 
         if (ImGui::MenuItem("Use Instancing", nullptr, &renderSettings.useInstancing))
         {
-            app->updateRenderer();
+
         }
 
         ImGui::EndMenu();
@@ -614,83 +734,41 @@ void UIManager::renderToolsMenu()
     }
 
     ImGui::Separator();
-
-    // Debug tools
-    if (ImGui::MenuItem("Refresh Instance Cache"))
-    {
-        app->getRenderer()->markCacheForUpdate();
-        app->getRenderer()->updateChunkInstanceCache();
-        addNotification("Instance cache refreshed");
-    }
 }
 
 void UIManager::renderHelpMenu()
 {
     if (ImGui::MenuItem("Controls"))
     {
-        ImGui::OpenPopup("Controls Help");
+        shouldOpenControlsPopup = true;
     }
 
     if (ImGui::MenuItem("About"))
     {
-        ImGui::OpenPopup("About");
+        shouldOpenAboutPopup = true;
     }
+}
 
-    // Controls popup
-    if (ImGui::BeginPopupModal("Controls Help", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+void UIManager::renderViewportPanel()
+{
+    if (ImGui::Begin("Viewport", &showViewportPanel, ImGuiWindowFlags_NoScrollbar))
     {
-        ImGui::Text("Navigation Controls:");
-        ImGui::BulletText("WASD - Pan camera");
-        ImGui::BulletText("Q/E - Rotate camera");
-        ImGui::BulletText("Mouse Wheel - Zoom in/out");
+        // Get content region available for image
+        ImVec2 panelSize = ImGui::GetContentRegionAvail();
 
-        ImGui::Separator();
+        // Update application viewport size
+        app->setViewportSize(static_cast<int>(panelSize.x), static_cast<int>(panelSize.y));
 
-        ImGui::Text("Editor Controls:");
-        ImGui::BulletText("Left Click - Place Cube");
-        ImGui::BulletText("Right Click - Remove cube");
-        ImGui::BulletText("Ctrl+Z - Undo (not implemented yet)");
-        ImGui::BulletText("Ctrl+Y - Redo (not implemented yet)");
-
-        ImGui::Separator();
-
-        ImGui::Text("UI Controls:");
-        ImGui::BulletText("F1 - Toggle UI visibility");
-        ImGui::BulletText("Tab - Toggle debug view");
-        ImGui::BulletText("Ctrl+ / Ctrl- - Resize window");
-
-        if (ImGui::Button("Close", ImVec2(120, 0)))
+        // Display the rendered scene texture
+        if (sceneTexture)
         {
-            ImGui::CloseCurrentPopup();
+            ImGui::Image((ImTextureID)(intptr_t)sceneTexture,
+                         panelSize,
+                         ImVec2(0, 1),   // UV0 (flip y axis due to OpenGL/ImGui difference)
+                         ImVec2(1, 0));  // UV1
         }
-
-        ImGui::EndPopup();
     }
-
-    // About popup
-    if (ImGui::BeginPopupModal("About", NULL, ImGuiWindowFlags_AlwaysAutoResize))
-    {
-        ImGui::Text("Isometric Voxel Editor");
-        ImGui::Text("Version 1.0");
-        ImGui::Separator();
-        ImGui::Text("An OpenGL-based voxel editor with chunk-based rendering");
-        ImGui::Text("and frustum fulling for optimal performance.");
-
-        ImGui::Separator();
-
-        ImGui::Text("Technologies used:");
-        ImGui::BulletText("OpenGl 3.3");
-        ImGui::BulletText("GLFW");
-        ImGui::BulletText("GLM");
-        ImGui::BulletText("Dear ImGui");
-
-        if (ImGui::Button("Close", ImVec2(120, 0)))
-        {
-            ImGui::CloseCurrentPopup();
-        }
-
-        ImGui::EndPopup();
-    }
+    ImGui::End();
 }
 
 void UIManager::renderControlPanel()
@@ -702,7 +780,7 @@ void UIManager::renderControlPanel()
             float zoom = app->getCamera()->getZoom();
             if (ImGui::SliderFloat("Zoom", &zoom, 0.1f, 5.0f))
             {
-                app->getCamera()->setZoom();
+                app->getCamera()->setZoom(zoom);
             }
 
             // Camera position display
@@ -790,6 +868,172 @@ void UIManager::renderSettingsPanel()
 
 void UIManager::renderRenderSettingsSection()
 {
+    RenderSettings& renderSettings = app->getRenderSettings();
+
+    if (ImGui::CollapsingHeader("Graphics Settings", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        // Quality presets
+        const char* presets[] = { "Low", "Medium", "High", "Ultra" };
+        static int currentPreset = 1; // Medium by default
+
+        if (ImGui::Combo("Quality Preset", &currentPreset, presets, 4))
+        {
+            renderSettings.applyPreset(static_cast<RenderSettings::QualityPreset>(currentPreset));
+            // Recreate shadow map if resolution changed
+            app->setupShadowMap();
+        }
+
+        // Individual settings
+        if (ImGui::TreeNode("Shadow Settings"))
+        {
+            bool shadowsChanged = false;
+
+            shadowsChanged |= ImGui::Checkbox("Enable Shadows", &renderSettings.enableShadows);
+
+            const char* resolutions[] = { "512x512", "1024x1024", "2048x2048", "4096x4096" };
+            int currentRes = 0;
+
+            if (renderSettings.shadowMapResolution == 512) currentRes = 0;
+            else if (renderSettings.shadowMapResolution == 1024) currentRes = 1;
+            else if (renderSettings.shadowMapResolution == 2048) currentRes = 2;
+            else if (renderSettings.shadowMapResolution == 4096) currentRes = 3;
+
+            if (ImGui::Combo("Shadow Resolution", &currentRes, resolutions, 4))
+            {
+                switch (currentRes)
+                {
+                case 0: renderSettings.shadowMapResolution = 512; break;
+                case 1: renderSettings.shadowMapResolution = 1024; break;
+                case 2: renderSettings.shadowMapResolution = 2048; break;
+                case 3: renderSettings.shadowMapResolution = 4096; break;
+                }
+                shadowsChanged = true;
+            }
+
+            shadowsChanged |= ImGui::Checkbox("Use PCF Filtering", &renderSettings.usePCF);
+
+            // Make the bias slider more precise for debugging
+            ImGui::SliderFloat("Shadow Bias", &renderSettings.shadowBias, 0.0001f, 0.01f, "%.5f");
+
+            if (shadowsChanged)
+            {
+                // Recreate shadow map if settings changed
+                app->setupShadowMap();
+            }
+
+            ImGui::TreePop();
+        }
+
+        if (ImGui::TreeNode("Lighting Settings"))
+        {
+            ImGui::SliderFloat("Ambient Strength", &renderSettings.ambientStrength, 0.0f, 1.0f);
+            ImGui::SliderFloat("Specular Strength", &renderSettings.specularStrength, 0.0f, 1.0f);
+            ImGui::SliderFloat("Shininess", &renderSettings.shininess, 1.0f, 128.0f);
+            ImGui::TreePop();
+        }
+
+        if (ImGui::TreeNode("Performance Settings"))
+        {
+            ImGui::Checkbox("Enable Frustum Culling", &renderSettings.enableFrustumCulling);
+            ImGui::Checkbox("Use Instanced Rendering", &renderSettings.useInstancing);
+
+            bool vsyncChanged = ImGui::Checkbox("VSync", &renderSettings.enableVSync);
+            if (vsyncChanged)
+            {
+                glfwSwapInterval(renderSettings.enableVSync ? 1 : 0);
+            }
+
+            ImGui::TreePop();
+        }
+
+        if (ImGui::TreeNode("Advanced Visualization"))
+        {
+            bool settingsChanged = false;
+
+            // Chunk visualization
+            if (ImGui::TreeNode("Chunk System"))
+            {
+                ImGui::Text("Active Chunks: %d", app->getGrid()->getActiveChunkCount());
+                ImGui::Text("Total Cubes: %d", app->getGrid()->getTotalActiveCubeCount());
+
+                if (ImGui::Checkbox("Show Chunk Boundaries", &renderSettings.showChunkBoundaries))
+                {
+                    settingsChanged = true;
+                    app->getDebugRenderer()->setShowChunkBoundaries(renderSettings.showChunkBoundaries);
+                }
+
+                if (ImGui::SliderInt("Chunk View Distance", &chunkViewDistance, 1, 16))
+                {
+                    settingsChanged = true;
+                    app->getGrid()->updateLoadedChunks(
+                        app->getGrid()->worldToGridCoordinates(app->getCamera()->getPosition()),
+                        chunkViewDistance);
+                }
+
+                if (ImGui::SliderFloat("Max View Distance", &maxViewDistance, 100.0f, 2000.0f))
+                {
+                    settingsChanged = true;
+                }
+
+                if (ImGui::Button("Update Loaded Chunks"))
+                {
+                    app->getGrid()->updateLoadedChunks(
+                        app->getGrid()->worldToGridCoordinates(app->getCamera()->getPosition()),
+                        chunkViewDistance);
+                }
+
+                ImGui::TreePop();
+            }
+
+            // Rendering optimization
+            if (ImGui::TreeNode("Rendering Optimization"))
+            {
+                if (ImGui::Checkbox("Use Instance Cache", &useInstanceCache))
+                {
+                    settingsChanged = true;
+                }
+
+                if (ImGui::Checkbox("Per-Cube Culling", &perCubeCulling))
+                {
+                    settingsChanged = true;
+                }
+
+                if (ImGui::SliderInt("Batch Size", &batchSize, 1000, 50000))
+                {
+                    settingsChanged = true;
+                }
+
+                ImGui::TreePop();
+            }
+
+            // Apply settings changes
+            if (settingsChanged)
+            {
+                // Get values from UI widgets
+                float viewDist = maxViewDistance;
+                bool useCache = useInstanceCache;
+                bool cubeCulling = perCubeCulling;
+                int batch = batchSize;
+
+                // Update renderer settings
+            }
+
+            ImGui::TreePop();
+        }
+
+        // Debug visualization
+        if (ImGui::TreeNode("Debug Settings"))
+        {
+            ImGui::Checkbox("Show Debug View", &renderSettings.showDebugView);
+            ImGui::Checkbox("Show Frustum Wireframe", &renderSettings.showFrustumWireframe);
+            ImGui::Checkbox("Show Performance Overlay", &renderSettings.showPerformanceOverlay);
+
+            const char* debugViews[] = { "Shadow Map Corner", "Full Shadow Map", "Linearized Depth" };
+            ImGui::Combo("Debug View Mode", &renderSettings.currentDebugView, debugViews, 3);
+
+            ImGui::TreePop();
+        }
+    }
 }
 
 void UIManager::renderGridNavigationPanel()
@@ -853,7 +1097,7 @@ void UIManager::renderGridNavigationPanel()
 
         // Statistics
         ImGui::Text("Active Chunks: %d", app->getGrid()->getActiveChunkCount());
-        ImGui::Text("Total Cubes: %d" app->getGrid()->getTotalActiveCubeCount());
+        ImGui::Text("Total Cubes: %d", app->getGrid()->getTotalActiveCubeCount());
     }
     ImGui::End();
 }
@@ -910,7 +1154,6 @@ void UIManager::renderLoadFileDialog()
             if (GridSerializer::loadGridFromFile(app->getGrid(), hwnd))
             {
                 addNotification("World loaded successfully");
-                app->updateRenderer();
             }
             else if (GetLastError() != 0)
             {
@@ -979,4 +1222,97 @@ void UIManager::renderSettingsDialog()
 void UIManager::renderConfirmationDialog()
 {
     // This is handled in beginFrame()
+}
+
+void UIManager::addNotification(const std::string& message, bool isError)
+{
+    notifications.emplace_back(message, isError);
+}
+
+void UIManager::updateNotifications(float deltaTime)
+{
+    // Update notification timers and remove expired ones
+    for (auto it = notifications.begin(); it != notifications.end();)
+    {
+        it->timeRemaining -= deltaTime;
+        if (it->timeRemaining <= 0.0f)
+        {
+            it = notifications.erase(it);
+        }
+        else
+        {
+            it++;
+        }
+    }
+}
+
+void UIManager::setupTheme(bool darkTheme)
+{
+    ImGuiStyle& style = ImGui::GetStyle();
+
+    // Apply DPI scaling
+    style.ScaleAllSizes(dpiScale);
+    ImGuiIO& io = ImGui::GetIO();
+    io.FontGlobalScale = dpiScale;
+
+    if (darkTheme)
+    {
+        ImGui::StyleColorsDark();
+
+        // Customize dark theme
+        style.Colors[ImGuiCol_WindowBg] = ImVec4(0.1f, 0.1f, 0.13f, 1.0f);
+        style.Colors[ImGuiCol_MenuBarBg] = ImVec4(0.16f, 0.16f, 0.21f, 1.0f);
+        style.Colors[ImGuiCol_Header] = ImVec4(0.2f, 0.2f, 0.27f, 1.0f);
+        style.Colors[ImGuiCol_HeaderHovered] = ImVec4(0.3f, 0.3f, 0.37f, 1.0f);
+        style.Colors[ImGuiCol_HeaderActive] = ImVec4(0.35f, 0.35f, 0.42f, 1.0f);
+        style.Colors[ImGuiCol_Button] = ImVec4(0.25f, 0.25f, 0.32f, 1.0f);
+        style.Colors[ImGuiCol_ButtonHovered] = ImVec4(0.3f, 0.3f, 0.37f, 1.0f);
+        style.Colors[ImGuiCol_ButtonActive] = ImVec4(0.35f, 0.35f, 0.42f, 1.0f);
+    }
+    else
+    {
+        ImGui::StyleColorsLight();
+
+        // Customize light theme
+        style.Colors[ImGuiCol_WindowBg] = ImVec4(0.94f, 0.94f, 0.94f, 1.0f);
+        style.Colors[ImGuiCol_MenuBarBg] = ImVec4(0.9f, 0.9f, 0.9f, 1.0f);
+        style.Colors[ImGuiCol_Header] = ImVec4(0.74f, 0.74f, 0.87f, 0.76f);
+        style.Colors[ImGuiCol_HeaderHovered] = ImVec4(0.84f, 0.84f, 0.87f, 0.76f);
+        style.Colors[ImGuiCol_HeaderActive] = ImVec4(0.88f, 0.88f, 0.92f, 1.0f);
+        style.Colors[ImGuiCol_Button] = ImVec4(0.70f, 0.70f, 0.78f, 1.0f);
+        style.Colors[ImGuiCol_ButtonHovered] = ImVec4(0.80f, 0.80f, 0.85f, 1.0f);
+        style.Colors[ImGuiCol_ButtonActive] = ImVec4(0.73f, 0.73f, 0.82f, 1.0f);
+    }
+
+    // General style settings regardless of theme
+    style.WindowRounding = 6.0f;
+    style.FrameRounding = 3.0f;
+    style.PopupRounding = 4.0f;
+    style.ScrollbarRounding = 4.0f;
+    style.GrabRounding = 4.0f;
+    style.TabRounding = 4.0f;
+
+    style.WindowPadding = ImVec2(8, 8);
+    style.FramePadding = ImVec2(5, 3);
+    style.ItemSpacing = ImVec2(6, 4);
+    style.ItemInnerSpacing = ImVec2(4, 4);
+
+    style.ScrollbarSize = 16.0f;
+    style.GrabMinSize = 8.0f;
+}
+
+void UIManager::showConfirmationDialog(const std::string& message, std::function<void()> onConfirm)
+{
+    confirmMessage = message;
+    confirmCallback = onConfirm;
+    showConfirmDialog = true;
+}
+
+void UIManager::resizeWindowPreset(int width, int height)
+{
+    app->resizeWindow(width, height);
+
+    // Update local window size variables
+    windowWidth = width;
+    windowHeight = height;
 }

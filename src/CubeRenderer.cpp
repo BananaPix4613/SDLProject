@@ -1,15 +1,18 @@
 #include "CubeRenderer.h"
 #include "Application.h"
 #include "ext/matrix_transform.hpp"
+#include <iostream>
 
 CubeRenderer::CubeRenderer(CubeGrid *cubeGrid, Application* application)
-    : grid(cubeGrid), app(application), maxInstances(10000), instanceCount(0)
+    : grid(cubeGrid), app(application), maxViewDistance(500.0f),
+      enableFrustumCulling(true), visibleCubeCount(0)
 {
     
 }
 
 CubeRenderer::~CubeRenderer()
 {
+    // Clean up OpenGL resources
     glDeleteVertexArrays(1, &cubeVAO);
     glDeleteBuffers(1, &cubeVBO);
     glDeleteBuffers(1, &cubeEBO);
@@ -19,8 +22,10 @@ CubeRenderer::~CubeRenderer()
 
 void CubeRenderer::initialize()
 {
+    std::cout << "Initializing cube renderer..." << std::endl;
+
     // Cube vertices with reduced data - eliminating duplicates
-    float cubeVertices[] = {
+    float vertices[] = {
         // positions           // normals          // tex coords
         -0.5f, -0.5f, -0.5f,   0.0f,  0.0f, -1.0f,  0.0f, 0.0f, // 0
          0.5f, -0.5f, -0.5f,   0.0f,  0.0f, -1.0f,  1.0f, 0.0f, // 1
@@ -63,75 +68,79 @@ void CubeRenderer::initialize()
         22, 21, 20, 20, 23, 22  // Top face
     };
 
-    // Create VAO, VBO and EBO
+    // Generate and set up VAO, VBO and EBO
     glGenVertexArrays(1, &cubeVAO);
     glGenBuffers(1, &cubeVBO);
     glGenBuffers(1, &cubeEBO);
 
+    // Bind VAO first
     glBindVertexArray(cubeVAO);
 
-    // Bind VBO and upload vertex data
+    // Set up vertex buffer
     glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVertices), cubeVertices, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
-    // Bind EBO and upload index data
+    // CRITICAL: Set up element buffer while VAO is bound
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeEBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-
+    
     // Position attribute
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
+
     // Normal attribute
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
-    // Texture coords
+
+    // Texture coordinate attribute
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
     glEnableVertexAttribArray(2);
 
-    // Create buffers for instance data
-    instanceMatrices.resize(maxInstances);
-    instanceColors.resize(maxInstances);
-
-    // Create VBO for model matrices (one per instance)
+    // Create instance data buffer
     glGenBuffers(1, &instanceMatrixVBO);
-    glBindBuffer(GL_ARRAY_BUFFER, instanceMatrixVBO);
-    glBufferData(GL_ARRAY_BUFFER, maxInstances * sizeof(glm::mat4), nullptr, GL_DYNAMIC_DRAW);
+    glGenBuffers(1, &instanceColorVBO);
 
-    // Model matrix (4 vec4s)
-    // Layout for instanced model matrix
+    // Bind VAO to associate the instance buffers with it
+    glBindVertexArray(cubeVAO);
+
+    // Set up matrix attributes - initially with null data, size will be updated in reder
+    glBindBuffer(GL_ARRAY_BUFFER, instanceMatrixVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(glm::mat4) * 100, NULL, GL_DYNAMIC_DRAW); // Reserve space for 100 initially
+
+    // Set up matrix attribute pointers
     for (unsigned int i = 0; i < 4; i++)
     {
         glEnableVertexAttribArray(3 + i);
         glVertexAttribPointer(3 + i, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4),
-            (void*)(sizeof(glm::vec4) * i));
-        glVertexAttribDivisor(3 + i, 1); // Tell OpenGL this is an instanced attribute
+                              (void*)(sizeof(glm::vec4) * i));
+        glVertexAttribDivisor(3 + i, 1);
     }
 
-    // Create VBO for colors (one per instance)
-    glGenBuffers(1, &instanceColorVBO);
+    // Set up color attributes
     glBindBuffer(GL_ARRAY_BUFFER, instanceColorVBO);
-    glBufferData(GL_ARRAY_BUFFER, maxInstances * sizeof(glm::vec3), nullptr, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec3) * 100, NULL, GL_DYNAMIC_DRAW); // Reserve space for 100 initially
 
-    // Color attribute
     glEnableVertexAttribArray(7);
     glVertexAttribPointer(7, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
-    glVertexAttribDivisor(7, 1); // Tell OpenGL this is an instanced attribute
+    glVertexAttribDivisor(7, 1);
 
+    // Unbind VAO
     glBindVertexArray(0);
-
-    // Initialize chunk instance caches
-    updateChunkInstanceCache();
 }
 
-void CubeRenderer::updateChunkInstanceCache()
+void CubeRenderer::render(Shader &shader)
 {
-    // Reset counter
-    chunksUpdatedThisFrame = 0;
+    // Start with visible cube count at 0
+    visibleCubeCount = 0;
 
-    // Clear existing cache if needed
-    chunkInstanceCache.clear();
+    // Build list of model matrices from grid data
+    std::vector<glm::mat4> instanceMatrices;
+    std::vector<glm::vec3> instanceColors;
 
-    // Loop through all chunks and create cached instance data
+    // Get camera position for distance culling
+    glm::vec3 cameraPos = app->getCameraPosition();
+
+    // Process each chunk
     const auto& chunks = grid->getChunks();
     for (const auto& pair : chunks)
     {
@@ -141,83 +150,7 @@ void CubeRenderer::updateChunkInstanceCache()
         // Skip inactive chunks
         if (!chunk->isActive()) continue;
 
-        // Create instance data for this chunk
-        ChunkInstanceData cacheData;
-
-        // Loop through all cubes in this chunk
-        for (int x = 0; x < GridChunk::CHUNK_SIZE; x++)
-        {
-            for (int y = 0; y < GridChunk::CHUNK_SIZE; y++)
-            {
-                for (int z = 0; z < GridChunk::CHUNK_SIZE; z++)
-                {
-                    const Cube& cube = chunk->getCube(x, y, z);
-
-                    if (cube.active)
-                    {
-                        // Calculate model matrix
-                        glm::mat4 model = glm::mat4(1.0f);
-                        model = glm::translate(model, cube.position);
-                        model = glm::scale(model, glm::vec3(1.0f));
-
-                        // Add to instance data cache
-                        cacheData.matrices.push_back(model);
-                        cacheData.colors.push_back(cube.color);
-                    }
-                }
-            }
-        }
-
-        // Only add chunks with active cubes
-        if (!cacheData.matrices.empty())
-        {
-            chunkInstanceCache[chunkPos] = cacheData;
-            chunksUpdatedThisFrame++; // Count this chunk as updated
-        }
-    }
-}
-
-void CubeRenderer::render(Shader &shader)
-{
-    shader.use();
-
-    // Reset instance count and visible cube tracking
-    instanceCount = 0;
-
-    // Reset visible cube count at the beginning of render
-    app->setVisibleCubeCount(0);
-
-    // Determine if we're using instanced rendering based on shader name
-    bool usingInstanced = shader.ID == app->getInstancedShaderID();
-
-    if (!usingInstanced)
-    {
-        // Legacy non-instanced rendering - less efficient for large worlds
-        renderLegacy(shader);
-        return;
-    }
-
-    // Efficient chunk-based instanced rendering
-    renderChunked(shader);
-}
-
-void CubeRenderer::renderLegacy(Shader& shader)
-{
-    // For backward compatibility - render entire grid without chunks
-    // This is less efficient, so should be a fallback option
-
-    const auto& chunks = grid->getChunks();
-    int totalCubes = 0;
-
-    for (const auto& pair : chunks)
-    {
-        GridChunk* chunk = pair.second;
-        const glm::ivec3& chunkPos = chunk->getPosition();
-
-        // Skip processing if chunk is inactive
-        if (!chunk->isActive()) continue;
-
-        // Calculate global grid coordinates for this chunk
+        // Calculate grid coordinates for chunk
         int baseX = chunkPos.x * GridChunk::CHUNK_SIZE;
         int baseY = chunkPos.y * GridChunk::CHUNK_SIZE;
         int baseZ = chunkPos.z * GridChunk::CHUNK_SIZE;
@@ -229,363 +162,237 @@ void CubeRenderer::renderLegacy(Shader& shader)
             {
                 for (int z = 0; z < GridChunk::CHUNK_SIZE; z++)
                 {
-                    // Global grid coordinates
-                    int gridX = baseX + x;
-                    int gridY = baseY + y;
-                    int gridZ = baseZ + z;
-
                     const Cube& cube = chunk->getCube(x, y, z);
 
+                    // Skip inactive cubes
+                    if (!cube.active) continue;
+
+                    // Distance culling
+                    //float distance = glm::distance(cube.position, cameraPos);
+                    //if (distance > maxViewDistance) continue;
+
+                    // Skip frustum culling for now since we know that works
+                    // if (enableFrustumCulling && !app->isCubeVisible(baseX + x, baseY + y, baseZ + z))
+
+                    // Add to instance data
+                    glm::mat4 model = glm::mat4(1.0f);
+                    model = glm::translate(model, cube.position);
+                    instanceMatrices.push_back(model);
+                    instanceColors.push_back(cube.color);
+
+                    // Count visible cubes
+                    visibleCubeCount++;
+                }
+            }
+        }
+    }
+
+    // Skip rendering if no visible cubes
+    if (visibleCubeCount == 0) return;
+
+    //std::cout << "Rendering " << visibleCubeCount << " cubes" << std::endl;
+
+    // CREATE COMPLETELY NEW RESOURCES
+    unsigned int testVAO, testVBO, testEBO, instanceMatrixVBO, instanceColorVBO;
+
+    // Create VAO and buffers
+    glGenVertexArrays(1, &testVAO);
+    glGenBuffers(1, &testVBO);
+    glGenBuffers(1, &testEBO);
+    glGenBuffers(1, &instanceMatrixVBO);
+    glGenBuffers(1, &instanceColorVBO);
+
+    // Bind the VAO first
+    glBindVertexArray(testVAO);
+
+    // Cube vertices with reduced data - eliminating duplicates
+    float vertices[] = {
+        // positions           // normals          // tex coords
+        -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f, // 0
+        0.5f, -0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 1.0f, 0.0f, // 1
+        0.5f, 0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f, // 2
+        -0.5f, 0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f, // 3
+
+        -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, // 4
+        0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, // 5
+        0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, // 6
+        -0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, // 7
+
+        -0.5f, 0.5f, 0.5f, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f, // 8 (same as 7)
+        -0.5f, 0.5f, -0.5f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f, // 9 (same as 3)
+        -0.5f, -0.5f, -0.5f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f, // 10 (same as 0)
+        -0.5f, -0.5f, 0.5f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, // 11 (same as 4)
+
+        0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, // 12 (same as 6)
+        0.5f, 0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, // 13 (same as 2)
+        0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, // 14 (same as 1)
+        0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, // 15 (same as 5)
+
+        -0.5f, -0.5f, -0.5f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f, // 16 (same as 0)
+        0.5f, -0.5f, -0.5f, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f, // 17 (same as 1)
+        0.5f, -0.5f, 0.5f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f, // 18 (same as 5)
+        -0.5f, -0.5f, 0.5f, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f, // 19 (same as 4)
+
+        -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, // 20 (same as 3)
+        0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, // 21 (same as 2)
+        0.5f, 0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, // 22 (same as 6)
+        -0.5f, 0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f  // 23 (same as 7)
+    };
+
+    // Indices for the cube faces
+    unsigned int indices[] = {
+        2, 1, 0, 0, 3, 2,       // Front face
+        4, 5, 6, 6, 7, 4,       // Back face
+        8, 9, 10, 10, 11, 8,    // Left face
+        14, 13, 12, 12, 15, 14, // Right face
+        16, 17, 18, 18, 19, 16, // Bottom face
+        22, 21, 20, 20, 23, 22  // Top face
+    };
+
+    // Upload vertices
+    glBindBuffer(GL_ARRAY_BUFFER, testVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    // Upload indices - WHILE VAO IS BOUND
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, testEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+    // Set up vertex attributes
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+
+    // Upload instance matrices
+    glBindBuffer(GL_ARRAY_BUFFER, instanceMatrixVBO);
+    glBufferData(GL_ARRAY_BUFFER, instanceMatrices.size() * sizeof(glm::mat4),
+                 instanceMatrices.data(), GL_STATIC_DRAW);
+
+    // Set up matrix attributes
+    for (unsigned int i = 0; i < 4; i++)
+    {
+        glEnableVertexAttribArray(3 + i);
+        glVertexAttribPointer(3 + i, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4),
+                              (void*)(sizeof(glm::vec4) * i));
+        glVertexAttribDivisor(3 + i, 1);
+    }
+
+    // Upload instance colors
+    glBindBuffer(GL_ARRAY_BUFFER, instanceColorVBO);
+    glBufferData(GL_ARRAY_BUFFER, instanceColors.size() * sizeof(glm::vec3),
+                 instanceColors.data(), GL_STATIC_DRAW);
+
+    // Set up color attribute
+    glEnableVertexAttribArray(7);
+    glVertexAttribPointer(7, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+    glVertexAttribDivisor(7, 1);
+
+    // Activate shader
+    shader.use();
+    shader.setMat4("view", app->getCamera()->getViewMatrix());
+    shader.setMat4("projection", app->getCamera()->getProjectionMatrix());
+    
+    //// Bind VAO
+    //glBindVertexArray(cubeVAO);
+
+    //// Update instance matrix buffer with actual data
+    //glBindBuffer(GL_ARRAY_BUFFER, instanceMatrixVBO);
+    //glBufferData(GL_ARRAY_BUFFER, instanceMatrices.size() * sizeof(glm::mat4),
+    //             instanceMatrices.data(), GL_STATIC_DRAW);
+
+    //// Update instance color buffer
+    //glBindBuffer(GL_ARRAY_BUFFER, instanceColorVBO);
+    //glBufferData(GL_ARRAY_BUFFER, instanceColors.size() * sizeof(glm::vec3),
+    //             instanceColors.data(), GL_STATIC_DRAW);
+
+    //// Draw all instances
+    //glDrawElementsInstanced(GL_TRIANGLES, 36, GL_UNSIGNED_INT, (void*)0, visibleCubeCount);
+
+    // Check for errors
+    GLenum err = glGetError();
+    if (err != GL_NO_ERROR)
+    {
+        std::cout << "OpenGL error during rendering: 0x" << std::hex << err << std::dec << std::endl;
+    }
+
+    // Draw the instances
+    glDrawElementsInstanced(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0, visibleCubeCount);
+
+    // Clean up
+    glBindVertexArray(0);
+    glDeleteVertexArrays(1, &testVAO);
+    glDeleteBuffers(1, &testVBO);
+    glDeleteBuffers(1, &testEBO);
+    glDeleteBuffers(1, &instanceMatrixVBO);
+    glDeleteBuffers(1, &instanceColorVBO);
+}
+
+void CubeRenderer::renderShadowMap(Shader& depthShader)
+{
+    // Similar implementation to render() but simplified for depth-only
+    std::vector<glm::mat4> instanceMatrices;
+
+    // Collect all visible cubes
+    const auto& chunks = grid->getChunks();
+    for (const auto& pair : chunks)
+    {
+        GridChunk* chunk = pair.second;
+        if (!chunk->isActive()) continue;
+
+        for (int x = 0; x < GridChunk::CHUNK_SIZE; x++)
+        {
+            for (int y = 0; y < GridChunk::CHUNK_SIZE; y++)
+            {
+                for (int z = 0; z < GridChunk::CHUNK_SIZE; z++)
+                {
+                    const Cube& cube = chunk->getCube(x, y, z);
                     if (cube.active)
                     {
-                        // Skip if outside frustum
-                        if (app->isFrustumCullingEnabled() && !app->isCubeVisible(gridX, gridY, gridZ))
-                        {
-                            continue;
-                        }
-
-                        totalCubes++;
-
-                        // Set up model matrix
                         glm::mat4 model = glm::mat4(1.0f);
                         model = glm::translate(model, cube.position);
-                        model = glm::scale(model, glm::vec3(1.0f));
-
-                        shader.setMat4("model", model);
-                        shader.setVec3("color", cube.color);
-
-                        glBindVertexArray(cubeVAO);
-                        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+                        instanceMatrices.push_back(model);
                     }
                 }
             }
         }
     }
 
-    // Update stats
-    app->setVisibleCubeCount(totalCubes);
-}
+    // Skip if no cubes to render
+    int instanceCount = instanceMatrices.size();
+    if (instanceCount == 0) return;
 
-void CubeRenderer::renderChunked(Shader& shader)
-{
-    // Efficient chunk-based rendering
-    instanceCount = 0;
+    // Activate shader
+    depthShader.use();
 
-    // Option 1: Use the chunk instance cache
-    if (useInstanceCache)
-    {
-        // If cache needs update
-        if (cacheNeedsUpdate)
-        {
-            updateChunkInstanceCache();
-            cacheNeedsUpdate = false;
-        }
+    // Create instance matrix buffer
+    unsigned int instanceMatrixVBO;
+    glGenBuffers(1, &instanceMatrixVBO);
 
-        // Get camera position to determine chunk visibility
-        glm::vec3 cameraPos = app->getCameraPosition();
-
-        // Frustum culling at chunk level
-        const Frustum& frustum = app->getViewFrustum();
-
-        // Loop through cached chunks
-        for (const auto& pair : chunkInstanceCache)
-        {
-            const glm::ivec3& chunkPos = pair.first;
-            const ChunkInstanceData& chunkData = pair.second;
-
-            // Skip empty chunks
-            if (chunkData.matrices.empty()) continue;
-
-            // Calculate chunk center position
-            glm::vec3 chunkCenter(
-                (chunkPos.x * GridChunk::CHUNK_SIZE + GridChunk::CHUNK_SIZE / 2) * grid->getSpacing(),
-                (chunkPos.y * GridChunk::CHUNK_SIZE + GridChunk::CHUNK_SIZE / 2) * grid->getSpacing(),
-                (chunkPos.z * GridChunk::CHUNK_SIZE + GridChunk::CHUNK_SIZE / 2) * grid->getSpacing()
-            );
-
-            // Check distance to chunk
-            float distanceToChunk = glm::distance(chunkCenter, cameraPos);
-
-            // Skip chunks beyond view distance
-            if (distanceToChunk > maxViewDistance) continue;
-
-            // Check if chunk is in frustum (approximate with bounding box)
-            float chunkSize = GridChunk::CHUNK_SIZE * grid->getSpacing();
-            if (app->isFrustumCullingEnabled())
-            {
-                glm::vec3 chunkMin = chunkCenter - glm::vec3(chunkSize / 2);
-                glm::vec3 chunkMax = chunkCenter + glm::vec3(chunkSize / 2);
-
-                if (frustum.isBoxOutside(chunkMin, chunkMax))
-                {
-                    continue;
-                }
-            }
-
-            // This chunk is visible - add its instances
-            int chunkInstanceCount = chunkData.matrices.size();
-
-            // Skip if there's no room for more instances
-            if (instanceCount + chunkInstanceCount > maxInstances)
-            {
-                // Render current batch
-                renderCurrentBatch(shader);
-                instanceCount = 0;
-            }
-
-            // Add chunk instances to batch
-            for (int i = 0; i < chunkInstanceCount; i++)
-            {
-                instanceMatrices[instanceCount] = chunkData.matrices[i];
-                instanceColors[instanceCount] = chunkData.colors[i];
-                instanceCount++;
-            }
-        }
-    }
-    else
-    {
-        // Option 2: Direct rendering from chunks (more flexible but potentially slower)
-        const auto& chunks = grid->getChunks();
-
-        for (const auto& pair : chunks)
-        {
-            GridChunk* chunk = pair.second;
-            const glm::ivec3& chunkPos = chunk->getPosition();
-
-            // Skip inactive chunks
-            if (!chunk->isActive()) continue;
-
-            // Calculate chunk center position
-            glm::vec3 chunkCenter(
-                (chunkPos.x * GridChunk::CHUNK_SIZE + GridChunk::CHUNK_SIZE / 2) * grid->getSpacing(),
-                (chunkPos.y * GridChunk::CHUNK_SIZE + GridChunk::CHUNK_SIZE / 2) * grid->getSpacing(),
-                (chunkPos.z * GridChunk::CHUNK_SIZE + GridChunk::CHUNK_SIZE / 2) * grid->getSpacing()
-            );
-
-            // Skip chunks beyond view distance
-            float distanceToChunk = glm::distance(chunkCenter, app->getCameraPosition());
-            if (distanceToChunk > maxViewDistance) continue;
-
-            // Frustum culling at chunk level
-            if (app->isFrustumCullingEnabled())
-            {
-                float chunkSize = GridChunk::CHUNK_SIZE * grid->getSpacing();
-                glm::vec3 chunkMin = chunkCenter - glm::vec3(chunkSize / 2);
-                glm::vec3 chunkMax = chunkCenter + glm::vec3(chunkSize / 2);
-
-                if (app->getViewFrustum().isBoxOutside(chunkMin, chunkMax))
-                {
-                    continue;
-                }
-            }
-
-            // Calculate global grid coordinates for this chunk
-            int baseX = chunkPos.x * GridChunk::CHUNK_SIZE;
-            int baseY = chunkPos.y * GridChunk::CHUNK_SIZE;
-            int baseZ = chunkPos.z * GridChunk::CHUNK_SIZE;
-
-            // Process each cube in the chunk
-            for (int x = 0; x < GridChunk::CHUNK_SIZE; x++)
-            {
-                for (int y = 0; y < GridChunk::CHUNK_SIZE; y++)
-                {
-                    for (int z = 0; z < GridChunk::CHUNK_SIZE; z++)
-                    {
-                        // Global grid coordinates
-                        int gridX = baseX + x;
-                        int gridY = baseY + y;
-                        int gridZ = baseZ + z;
-
-                        const Cube& cube = chunk->getCube(x, y, z);
-
-                        if (cube.active && instanceCount < maxInstances)
-                        {
-                            // Skip outside frustum - optional per-cube culling
-                            if (app->isFrustumCullingEnabled() && enablePerCubeCulling &&
-                                !app->isCubeVisible(gridX, gridY, gridZ))
-                            {
-                                continue;
-                            }
-
-                            // Create model matrix for this cube
-                            glm::mat4 model = glm::mat4(1.0f);
-                            model = glm::translate(model, cube.position);
-                            model = glm::scale(model, glm::vec3(1.0f));
-
-                            // Add to instance data
-                            instanceMatrices[instanceCount] = model;
-                            instanceColors[instanceCount] = cube.color;
-                            instanceCount++;
-
-                            // If we've reached the batch limit, render current batch
-                            if (instanceCount >= batchSize)
-                            {
-                                renderCurrentBatch(shader);
-                                instanceCount = 0;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Render any remaining instances
-    if (instanceCount > 0)
-    {
-        renderCurrentBatch(shader);
-    }
-}
-
-void CubeRenderer::renderCurrentBatch(Shader& shader)
-{
-    // Update instance data
-    glBindBuffer(GL_ARRAY_BUFFER, instanceMatrixVBO);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, instanceCount * sizeof(glm::mat4), instanceMatrices.data());
-
-    glBindBuffer(GL_ARRAY_BUFFER, instanceColorVBO);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, instanceCount * sizeof(glm::vec3), instanceColors.data());
-
-    // Draw all cubes in one call
+    // Bind VAO
     glBindVertexArray(cubeVAO);
-    glDrawElementsInstanced(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0, instanceCount);
+
+    // Set up instance matrix buffer
+    glBindBuffer(GL_ARRAY_BUFFER, instanceMatrixVBO);
+    glBufferData(GL_ARRAY_BUFFER, instanceCount * sizeof(glm::mat4),
+                 instanceMatrices.data(), GL_STATIC_DRAW);
+
+    // Set matrix attributes
+    for (unsigned int i = 0; i < 4; i++)
+    {
+        glEnableVertexAttribArray(3 + i);
+        glVertexAttribPointer(3 + i, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4),
+                              (void*)(sizeof(glm::vec4) * i));
+        glVertexAttribDivisor(3 + i, 1);
+    }
+
+    // Draw all instances
+    glDrawElementsInstanced(GL_TRIANGLES, 36, GL_UNSIGNED_INT, (void*)0, instanceCount);
+
+    // Clean up
     glBindVertexArray(0);
-
-    // Add to the running total of visible cubes (accumulate)
-    app->setVisibleCubeCount(app->getVisibleCubeCount() + instanceCount);
-}
-
-void CubeRenderer::renderDepthOnly(Shader& depthShader)
-{
-    // Modify to use chunks for shadow mapping
-    // The approach is similar to render() but simplified for depth-only
-
-    // Determine if we're using instanced rendering based on shader ID
-    bool usingInstanced = depthShader.ID == app->getInstancedShadowShaderID();
-
-    // Reset instance count
-    instanceCount = 0;
-
-    // Get all active chunks
-    const auto& chunks = grid->getChunks();
-
-    if (usingInstanced)
-    {
-        // Use instance rendering for shadow mapping
-        for (const auto& pair : chunks)
-        {
-            GridChunk* chunk = pair.second;
-
-            // Skip inactive chunks
-            if (!chunk->isActive()) continue;
-
-            // Process cubes in this chunk
-            for (int x = 0; x < GridChunk::CHUNK_SIZE; x++)
-            {
-                for (int y = 0; y < GridChunk::CHUNK_SIZE; y++)
-                {
-                    for (int z = 0; z < GridChunk::CHUNK_SIZE; z++)
-                    {
-                        const Cube& cube = chunk->getCube(x, y, z);
-
-                        if (cube.active && instanceCount < maxInstances)
-                        {
-                            // Create model matrix for this cube
-                            glm::mat4 model = glm::mat4(1.0f);
-                            model = glm::translate(model, cube.position);
-                            model = glm::scale(model, glm::vec3(1.0f));
-
-                            // Add to instance data
-                            instanceMatrices[instanceCount] = model;
-                            instanceCount++;
-
-                            // If we've reached batch limit, render current batch
-                            if (instanceCount >= batchSize)
-                            {
-                                // Update instance matrices
-                                glBindBuffer(GL_ARRAY_BUFFER, instanceMatrixVBO);
-                                glBufferSubData(GL_ARRAY_BUFFER, 0, instanceCount * sizeof(glm::mat4), instanceMatrices.data());
-
-                                // Draw all cubes in batch
-                                depthShader.use();
-                                glBindVertexArray(cubeVAO);
-                                glDrawElementsInstanced(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0, instanceCount);
-                                glBindVertexArray(0);
-
-                                // Reset for next batch
-                                instanceCount = 0;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        // Render any remaining instances
-        if (instanceCount > 0)
-        {
-            // Update instance matrices
-            glBindBuffer(GL_ARRAY_BUFFER, instanceMatrixVBO);
-            glBufferSubData(GL_ARRAY_BUFFER, 0, instanceCount * sizeof(glm::mat4), instanceMatrices.data());
-
-            // Draw all cubes in one instanced call
-            depthShader.use();
-            glBindVertexArray(cubeVAO);
-            glDrawElementsInstanced(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0, instanceCount);
-            glBindVertexArray(0);
-        }
-    }
-    else
-    {
-        // Non-instanced rendering path (legacy)
-        for (const auto& pair : chunks)
-        {
-            GridChunk* chunk = pair.second;
-
-            // Skip inactive chunks
-            if (!chunk->isActive()) continue;
-
-            // Process cubes in this chunk
-            for (int x = 0; x < GridChunk::CHUNK_SIZE; x++)
-            {
-                for (int y = 0; y < GridChunk::CHUNK_SIZE; y++)
-                {
-                    for (int z = 0; z < GridChunk::CHUNK_SIZE; z++)
-                    {
-                        const Cube& cube = chunk->getCube(x, y, z);
-
-                        if (cube.active)
-                        {
-                            // Set up model matrix
-                            glm::mat4 model = glm::mat4(1.0f);
-                            model = glm::translate(model, cube.position);
-                            model = glm::scale(model, glm::vec3(1.0f));
-
-                            depthShader.setMat4("model", model);
-
-                            glBindVertexArray(cubeVAO);
-                            glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-void CubeRenderer::markCacheForUpdate()
-{
-    cacheNeedsUpdate = true;
-}
-
-void CubeRenderer::setRenderSettings(bool useCache, bool perCubeCulling, float viewDist, int batch)
-{
-    useInstanceCache = useCache;
-    enablePerCubeCulling = perCubeCulling;
-    maxViewDistance = viewDist;
-    batchSize = batch;
-}
-
-bool CubeRenderer::isCubeVisible(int x, int y, int z) const
-{
-    return app->isCubeVisible(x, y, z);
+    glDeleteBuffers(1, &instanceMatrixVBO);
 }

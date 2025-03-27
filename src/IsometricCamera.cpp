@@ -65,7 +65,7 @@ glm::mat4 IsometricCamera::getProjectionMatrix() const
     return glm::ortho(
         -orthoSize * aspectRatio, orthoSize * aspectRatio,
         -orthoSize, orthoSize,
-        -100.0f, 100.0f
+        -100.0f, 1000.0f
     );
 }
 

@@ -1,4 +1,5 @@
 ﻿#include "Application.h"
+#include "UIManager.h"
 #include <iostream>
 
 Application::Application(int windowWidth, int windowHeight)
@@ -9,8 +10,8 @@ Application::Application(int windowWidth, int windowHeight)
       lastFrame(0.0f), deltaTime(0.0f), showUI(true),
       selectedCubeColor(0.5f, 0.5f, 1.0f), isEditing(false), brushSize(1),
       selectedCubeX(-1), selectedCubeY(-1), selectedCubeZ(-1),
-      imGui(nullptr), visibleCubeCount(0),
-      enableAutoSave(false), autoSaveInterval(5), autoSaveFolder(""), lastAutoSaveTime(0.0)
+      visibleCubeCount(0),enableAutoSave(false), autoSaveInterval(5),
+      autoSaveFolder(""), lastAutoSaveTime(0.0)
 {
     
 }
@@ -25,7 +26,7 @@ Application::~Application()
     delete instancedShader;
     delete instancedShadowShader;
     delete debugRenderer;
-    delete imGui;
+    delete uiManager;
 
     glDeleteVertexArrays(1, &debugLineVAO);
     glDeleteBuffers(1, &debugLineVBO);
@@ -45,12 +46,44 @@ bool Application::initialize()
         return false;
     }
 
+    // Set up DPI scaling for high-resolution displays
+    float xscale, yscale;
+    glfwGetWindowContentScale(window, &xscale, &yscale);
+    float dpiScale = xscale > yscale ? xscale : yscale;
+
+    // Initialize framebuffer
+    setupFramebuffer();
+
     // Create grid with chunk-based system
     grid = new CubeGrid(20, 1.0f);
+
+    // In Application::initialize() after the CubeGrid is created
+    std::cout << "Initial active cubes: " << grid->getTotalActiveCubeCount() << std::endl;
+    std::cout << "Initial grid bounds: ("
+        << grid->getMinBounds().x << "," << grid->getMinBounds().y << "," << grid->getMinBounds().z
+        << ") to ("
+        << grid->getMaxBounds().x << "," << grid->getMaxBounds().y << "," << grid->getMaxBounds().z
+        << ")" << std::endl;
+
 
     // Create camera
     float aspect = static_cast<float>(width) / static_cast<float>(height);
     camera = new IsometricCamera(aspect);
+
+    float distance = 50.0f; // Distance from origin
+    float angle = 45.0f * (3.14159f / 180.0f); // 45 degrees in radians
+
+    // Calculate isometric camera position at a fixed height
+    glm::vec3 cameraPos(
+        distance * cos(angle),
+        distance * 0.5f,        // Fixed height 
+        distance * sin(angle)
+    );
+
+    // Set camera to look at the origin
+    camera->setPosition(cameraPos);
+    camera->setTarget(glm::vec3(0.0f, 0.0f, 0.0f));
+    camera->setZoom(1.0f);
 
     // Create renderer with support for chunks
     renderer = new CubeRenderer(grid, this);
@@ -71,9 +104,14 @@ bool Application::initialize()
     debugRenderer = new DebugRenderer();
     debugRenderer->initialize();
 
-    // Initialize ImGui
-    imGui = new ImGuiWrapper();
-    imGui->initialize(window);
+    // Initialize UI Manager
+    uiManager = new UIManager(this);
+    uiManager->setDpiScale(dpiScale);
+    if (!uiManager->initialize(window))
+    {
+        std::cerr << "Failed to initialize UI Manager" << std::endl;
+        return false;
+    }
 
     // Generate buffers for debug lines (frustum visualization)
     glGenVertexArrays(1, &debugLineVAO);
@@ -82,9 +120,13 @@ bool Application::initialize()
     glBindVertexArray(debugLineVAO);
     glBindBuffer(GL_ARRAY_BUFFER, debugLineVBO);
 
-    // We'll update the buffer data when rendering
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    // Position attribute (3 floats, stride is 6 floats, no offset)
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
+
+    // Color attribute (3 floats, stride is 6 floats, offset 3 floats)
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
 
     glBindVertexArray(0);
 
@@ -108,7 +150,15 @@ bool Application::initializeWindow()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    // Create window
+    // Get primary monitor resolution to calculate medium-sized window
+    GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
+    const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);
+
+    // Set window size to approximately 70% of screen size
+    width = static_cast<int>(mode->width * 0.7f);
+    height = static_cast<int>(mode->height * 0.7f);
+
+    // Create windowed mode window
     window = glfwCreateWindow(width, height, "Isometric Grid", nullptr, nullptr);
     if (!window)
     {
@@ -116,6 +166,24 @@ bool Application::initializeWindow()
         glfwTerminate();
         return false;
     }
+
+    // Center the window on screen
+    int monitorX, monitorY;
+    glfwGetMonitorPos(primaryMonitor, &monitorX, &monitorY);
+    glfwSetWindowPos(window,
+                     monitorX + (mode->width - width) / 2,
+                     monitorY + (mode->height - height) / 2);
+
+    // Initialize viewport properties
+    viewportWidth = width;
+    viewportHeight = height;
+    viewportX = 0;
+    viewportY = 0;
+    viewportActive = true;
+
+    // Store monitor info for fullscreen toggle
+    this->primaryMonitor = primaryMonitor;
+    this->isFullscreen = false;
 
     // Make context current
     glfwMakeContextCurrent(window);
@@ -144,181 +212,146 @@ bool Application::initializeWindow()
     return true;
 }
 
-void Application::setupShadowMap()
-{
-    // Use the shadow map resolution from settings
-    SHADOW_WIDTH = renderSettings.shadowMapResolution;
-    SHADOW_HEIGHT = renderSettings.shadowMapResolution;
-
-    // Delete existing shadow map resources if they exist
-    if (depthMapFBO)
-    {
-        glDeleteFramebuffers(1, &depthMapFBO);
-        glDeleteTextures(1, &depthMap);
-    }
-
-    // Create a framebuffer object for the depth map
-    glGenFramebuffers(1, &depthMapFBO);
-
-    // Create a 2D texture for the depth map
-    glGenTextures(1, &depthMap);
-    glBindTexture(GL_TEXTURE_2D, depthMap);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24,
-        SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-
-    // Configure texture filtering
-    if (renderSettings.usePCF)
-    {
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    }
-    else
-    {
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    }
-
-    // Fix shadow acne with proper clamping
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-    float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
-    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
-
-    // Use comparison mode only when needed
-    if (renderSettings.usePCF)
-    {
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
-    }
-    else
-    {
-        // CRITICAL: Disable comparison mode for standard shadow mapping
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
-    }
-
-    // Attach the depth texture to the framebuffer
-    glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
-    glDrawBuffer(GL_NONE);
-    glReadBuffer(GL_NONE);
-
-    // Check framebuffer completeness
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        std::cerr << "Error: Shadow map framebuffer is not complete!" << std::endl;
-    }
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-}
-
 void Application::run()
 {
     while (!glfwWindowShouldClose(window))
     {
-        // Poll events first to collect input
-        glfwPollEvents();
-
-        // Calculate delta time
+        // Calculate delta timing
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
-        // Process input
+        // Process input and update
+        glfwPollEvents();
         processInput();
-
-        // Update logic
         update();
 
-        // Start ImGui frame
-        imGui->newFrame();
+        // 1. Start UI frame
+        uiManager->beginFrame();
 
-        // Create UI
-        if (showUI)
-        {
-            renderUI();
-        }
+        // 2. Render 3D scene to framebuffer
+        renderSceneToFrameBuffer();
 
-        // Render
-        render();
+        // 3. Render main framebuffer to screen
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glClearColor(0.15f, 0.15f, 0.15f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // Render ImGui on top
-        imGui->render();
+        // 4. Render UI with the scene texture in the viewport
+        renderUI();
 
         // Swap buffers
         glfwSwapBuffers(window);
     }
 }
 
-void Application::setVisibleCubeCount(int visibleCount)
+void Application::update()
 {
-    // Then set to the new count
-    visibleCubeCount = visibleCount;
+    // Main grid update
+    grid->update(deltaTime);
 
-    // Count total active cubes
-    int totalActive = grid->getTotalActiveCubeCount();
+    // Update UI Manager notifications
+    uiManager->updateNotifications(deltaTime);
 
-    cullingStats.totalActiveCubes = totalActive;
-    cullingStats.visibleCubes = visibleCount;
-
-    if (totalActive >= visibleCount)
+    // Make sure camera is correctly configured
+    if (camera && viewportActive)
     {
-        cullingStats.culledCubes = totalActive - visibleCount;
-    }
-    else
-    {
-        cullingStats.culledCubes = 0;
+        float aspect = static_cast<float>(viewportWidth) / static_cast<float>(viewportHeight);
+        camera->setAspectRatio(aspect);
     }
 
-    // Calculate culling percentage
-    if (totalActive > 0)
+    // Auto-save check
+    if (enableAutoSave && !autoSaveFolder.empty())
     {
-        cullingStats.cullingPercentage = 100.0f * (float)cullingStats.culledCubes / (float)totalActive;
-    }
-    else
-    {
-        cullingStats.cullingPercentage = 0.0f;
-    }
+        double currentTime = glfwGetTime();
+        double autoSaveIntervalSeconds = autoSaveInterval * 60.0f;
 
-    // Update history for graphs
-    float currentTime = static_cast<float>(glfwGetTime());
-    if (currentTime - cullingStats.lastUpdateTime >= 0.1f)
-    {
-        cullingStats.lastUpdateTime = currentTime;
-
-        // Shift values in the history arrays
-        for (size_t i = 0; i < cullingStats.fpsHistory.size() - 1; i++)
+        if (currentTime - lastAutoSaveTime >= autoSaveIntervalSeconds)
         {
-            cullingStats.fpsHistory[i] = cullingStats.fpsHistory[i + 1];
-            cullingStats.cullingHistory[i] = cullingStats.cullingHistory[i + 1];
+            performAutoSave();
         }
+    }
 
-        // Add new values - cap FPS to something reasonable for the graph
-        float currentFps = 1.0f / deltaTime;
-        if (currentFps > 1000.0f) currentFps = 1000.0f;
+    // Check if it's time to update loaded chunks (don't do this every frame)
+    static float chunkUpdateTimer = 0.0f;
+    chunkUpdateTimer += deltaTime;
 
-        cullingStats.fpsHistory[cullingStats.fpsHistory.size() - 1] = currentFps;
-        cullingStats.cullingHistory[cullingStats.cullingHistory.size() - 1] = cullingStats.cullingPercentage;
+    // Update loaded chunks based on camera position every frame
+    if (chunkUpdateTimer >= 1.0f)
+    {
+        profiler.startProfile("ChunkUpdate");
+
+        // Get current view distance from settings
+        static int viewDistance = 8; // Default, can be changed in UI
+
+        // Convert camera position to grid coordinates
+        glm::vec3 camWorldPos = camera->getPosition();
+        glm::ivec3 camGridPos = grid->worldToGridCoordinates(camWorldPos);
+
+        // Update which chunks are loaded
+        grid->updateLoadedChunks(camGridPos, viewDistance);
+
+        // Reset timer
+        chunkUpdateTimer = 0.0f;
+
+        profiler.endProfile("ChunkUpdate");
     }
 }
 
-bool Application::isCubeVisible(int x, int y, int z) const
+void Application::setupFramebuffer()
 {
-    if (!renderSettings.enableFrustumCulling)
+    // Create framebuffer
+    glGenFramebuffers(1, &sceneFramebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, sceneFramebuffer);
+
+    // Create color attachment texture
+    glGenTextures(1, &sceneColorTexture);
+    glBindTexture(GL_TEXTURE_2D, sceneColorTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, sceneColorTexture, 0);
+
+    // Create depth texture
+    glGenTextures(1, &sceneDepthTexture);
+    glBindTexture(GL_TEXTURE_2D, sceneDepthTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, sceneDepthTexture, 0);
+
+    // Check framebuffer status
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
     {
-        return true; // Always visible when culling is disabled
+        std::cerr << "ERROR: Framebuffer is not complete!" << std::endl;
     }
 
-    // Get the cube's world position
-    const Cube& cube = grid->getCube(x, y, z);
-
-    // Use the frustum test to determine visibility
-    return viewFrustum.isCubeVisible(cube.position, grid->getSpacing());
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 void Application::processInput()
 {
     // Check if ImGui wants to capture input
     ImGuiIO& io = ImGui::GetIO();
-    bool imguiWantsCapture = io.WantCaptureMouse || io.WantCaptureKeyboard;
+    // Check if we're hovering over the viewport specifically
+    bool hoveringViewport = false;
+    ImGuiWindow* viewportWindow = ImGui::FindWindowByName("Viewport");
+    if (viewportWindow && !viewportWindow->Collapsed)
+    {
+        // Get mouse position
+        double mouseX, mouseY;
+        glfwGetCursorPos(window, &mouseX, &mouseY);
+
+        // Check if mouse is inside viewport content area
+        ImVec2 min = viewportWindow->InnerRect.Min;
+        ImVec2 max = viewportWindow->InnerRect.Max;
+
+        if (mouseX >= min.x && mouseX <= max.x &&
+            mouseY >= min.y && mouseY <= max.y)
+        {
+            hoveringViewport = true;
+        }
+    }
 
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
     {
@@ -326,7 +359,7 @@ void Application::processInput()
     }
 
     // Only process game inputs if ImGui isn't capturing
-    if (!imguiWantsCapture)
+    if (hoveringViewport)
     {
         // Camera movement
         if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
@@ -444,896 +477,200 @@ void Application::processInput()
     {
         f1Released = true;
     }
-}
 
-void Application::update()
-{
-    // Main grid update
-    grid->update(deltaTime);
-
-    // Auto-save check
-    if (enableAutoSave && !autoSaveFolder.empty())
+    // Toggle fullscreen with F11
+    static bool f11Released = true;
+    if (glfwGetKey(window, GLFW_KEY_F11) == GLFW_PRESS && f11Released)
     {
-        double currentTime = glfwGetTime();
-        double autoSaveIntervalSeconds = autoSaveInterval * 60.0f;
-
-        if (currentTime - lastAutoSaveTime >= autoSaveIntervalSeconds)
-        {
-            performAutoSave();
-        }
+        toggleFullscreen();
+        f11Released = false;
     }
-
-    // Check if it's time to update loaded chunks (don't do this every frame)
-    static float chunkUpdateTimer = 0.0f;
-    chunkUpdateTimer += deltaTime;
-
-    // Update loaded chunks based on camera position every frame
-    if (chunkUpdateTimer >= 1.0f)
+    else if (glfwGetKey(window, GLFW_KEY_F11) == GLFW_RELEASE)
     {
-        profiler.startProfile("ChunkUpdate");
-
-        // Get current view distance from settings
-        static int viewDistance = 8; // Default, can be changed in UI
-
-        // Convert camera position to grid coordinates
-        glm::vec3 camWorldPos = camera->getPosition();
-        glm::ivec3 camGridPos = grid->worldToGridCoordinates(camWorldPos);
-
-        // Update which chunks are loaded
-        grid->updateLoadedChunks(camGridPos, viewDistance);
-
-        // Reset timer
-        chunkUpdateTimer = 0.0f;
-
-        // Mark renderer cache for update due to chunk changes
-        renderer->markCacheForUpdate();
-
-        profiler.endProfile("ChunkUpdate");
+        f11Released = true;
     }
 }
 
-void Application::render()
+bool errorYet = false;
+void Application::renderSceneToFrameBuffer()
 {
-    profiler.beginFrame();
+    // Bind framebuffer
+    glBindFramebuffer(GL_FRAMEBUFFER, sceneFramebuffer);
+    glViewport(0, 0, viewportWidth, viewportHeight);
 
-    // First update the view frustum for culling
-    profiler.startProfile("Update Frustum");
+    //// Set the viewport to match the panel exactly
+    //glViewport(viewportX, viewportY, viewportWidth, viewportHeight);
+
+    // Enable depth testing and face culling for 3D rendering
+    //glEnable(GL_DEPTH_TEST);
+    // In renderSceneToFrameBuffer(), before rendering:
+    //glDisable(GL_DEPTH_TEST);  // Temporarily disable depth testing
+    // OR
+    //glDepthFunc(GL_ALWAYS);    // Always pass depth test
+    //glDisable(GL_CULL_FACE);
+    //glDepthFunc(GL_LESS); // Use the most common depth function
+
+    // In renderSceneToFrameBuffer():
+    //glCullFace(GL_BACK);  // Default is GL_BACK
+    //glFrontFace(GL_CCW);  // Try both GL_CCW and GL_CW
+
+    // Clear with sky blue color
+    glClearColor(0.678f, 0.847f, 0.902f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    // Check that camera, grid, and renderer are valid
+    if (!camera || !grid || !renderer)
+    {
+        std::cerr << "Scene components not initialized!" << std::endl;
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return;
+    }
+
+    
+
+    // Temporarily disable frustum culling
+    bool originalCullingState = renderSettings.enableFrustumCulling;
+    renderSettings.enableFrustumCulling = false;
+
+    //renderCubesDirectly();
+
+    // Update view frustum
     updateViewFrustum();
-    profiler.endProfile("Update Frustum");
 
-    // Pre-shadow calculations
-    glm::mat4 lightProjection, lightView, lightSpaceMatrix;
-    float near_plane = 1.0f, far_plane = 100.0f;
-
-    // Orthographic projection for the light
-    float orthoSize = 15.0f; // Adjust based on scene size
-    lightProjection = glm::ortho(-orthoSize, orthoSize, -orthoSize, orthoSize, near_plane, far_plane);
-
-    // Light view matrix
-    glm::vec3 lightPos = glm::vec3(15.0f, 20.0f, 15.0f);
-    glm::vec3 lightTarget = glm::vec3(0.0f, 0.0f, 0.0f);
-    lightView = glm::lookAt(lightPos, lightTarget, glm::vec3(0.0f, 1.0f, 0.0f));
-
-    // Light space transformation matrix
-    lightSpaceMatrix = lightProjection * lightView;
-
-    // Skip shadow rendering if disabled
+    // Shadow mapping
     if (renderSettings.enableShadows)
     {
-        // 1. First render to depth map (shadow map)
-        profiler.startProfile("Shadow Pass");
+        // Set up the light space matrices for shadows
+        glm::mat4 lightProjection, lightView, lightSpaceMatrix;
+        float near_plane = 1.0f, far_plane = 100.0f;
+        float orthoSize = 15.0f;
 
-        // Choose shadow shader based on instancing setting
+        lightProjection = glm::ortho(-orthoSize, orthoSize, -orthoSize, orthoSize, near_plane, far_plane);
+        glm::vec3 lightPos = glm::vec3(15.0f, 20.0f, 15.0f);
+        glm::vec3 lightTarget = glm::vec3(0.0f, 0.0f, 0.0f);
+        lightView = glm::lookAt(lightPos, lightTarget, glm::vec3(0.0f, 1.0f, 0.0f));
+        lightSpaceMatrix = lightProjection * lightView;
+
+        // Choose shadow shader
         Shader* activeShadowShader = renderSettings.useInstancing ? instancedShadowShader : shadowShader;
 
-        // Use the shadow mapping shader
-        activeShadowShader->use();
-        activeShadowShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
-
-        // Configure viewport to shadow map dimensions
+        // Render shadow map
         glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
-
-        // When rendering to depth map, use polygon offset to reduce shadow acne
+        glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+        glClear(GL_DEPTH_BUFFER_BIT);
+        
         glEnable(GL_POLYGON_OFFSET_FILL);
         glPolygonOffset(2.0f, 4.0f);
 
-        // Bind shadow map framebuffer
-        glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-        glClear(GL_DEPTH_BUFFER_BIT);
+        activeShadowShader->use();
+        activeShadowShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
 
         // Render scene from light's perspective
-        renderSceneDepth(*activeShadowShader);
+        renderer->render(*activeShadowShader);
 
-        // Reset state
         glDisable(GL_POLYGON_OFFSET_FILL);
-        glBindBuffer(GL_FRAMEBUFFER, 0);
 
-        profiler.endProfile("Shadow Pass");
+        // Restore framebuffer and viewport
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, width, height);
     }
 
-    // 2. Render scene normally with shadow mapping
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glViewport(0, 0, width, height);
-
-    // Format is R, G, B, A where values range from 0.0 to 1.0
-    glClearColor(0.678f, 0.847f, 0.902f, 1.0f); // Light blue sky color
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    profiler.startProfile("Main Rendering");
-
-    // Choose shader based on instancing setting
+    // Main rendering pass
     Shader* activeShader = renderSettings.useInstancing ? instancedShader : shader;
     activeShader->use();
 
-    // Set view and projection matrices
+    // Set matrices
     activeShader->setMat4("view", camera->getViewMatrix());
     activeShader->setMat4("projection", camera->getProjectionMatrix());
 
-    // Set light position and view position
+    // Set lighting parameters
+    glm::vec3 lightPos = glm::vec3(15.0f, 20.0f, 15.0f);
     activeShader->setVec3("lightPos", lightPos);
     activeShader->setVec3("lightColor", glm::vec3(15.0f, 15.0f, 15.0f));
     activeShader->setVec3("viewPos", camera->getPosition());
 
-    // Pass render settings to shader
+    // Apply render settings
     activeShader->setFloat("ambientStrength", renderSettings.ambientStrength);
     activeShader->setFloat("specularStrength", renderSettings.specularStrength);
     activeShader->setFloat("shininess", renderSettings.shininess);
-    activeShader->setBool("usePCF", renderSettings.usePCF);
-    activeShader->setFloat("shadowBias", renderSettings.shadowBias);
 
-    // Only bind shadow map if shadows are enabled
+    // Shadow settings
     if (renderSettings.enableShadows)
     {
-        // Set light space matrix and bind shadow map
+        glm::mat4 lightProjection, lightView, lightSpaceMatrix;
+        float near_plane = 1.0f, far_plane = 100.0f;
+        float orthoSize = 15.0f;
+
+        lightProjection = glm::ortho(-orthoSize, orthoSize, -orthoSize, orthoSize, near_plane, far_plane);
+        glm::vec3 lightPos = glm::vec3(15.0f, 20.0f, 15.0f);
+        glm::vec3 lightTarget = glm::vec3(0.0f, 0.0f, 0.0f);
+        lightView = glm::lookAt(lightPos, lightTarget, glm::vec3(0.0f, 1.0f, 0.0f));
+        lightSpaceMatrix = lightProjection * lightView;
+
         activeShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
+        activeShader->setBool("usePCF", renderSettings.usePCF);
+        activeShader->setFloat("shadowBias", renderSettings.shadowBias);
+
+        // Bind shadow map texture
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, depthMap);
         activeShader->setInt("shadowMap", 0);
     }
     else
     {
-        // When shadows are disabled, make sure nothing is in shadow
-        activeShader->setFloat("shadowBias", 1.0f); // Value that ensures no shadows
+        // Ensure nothing is in shadow
+        activeShader->setFloat("shadowBias", 1.0f);
     }
-
-    // Render the grid
+    
+    // Render the cubes
     renderer->render(*activeShader);
-    profiler.endProfile("Main Rendering");
 
-    // Render debug visualizations if enabled
+    // Debug visualizations
     if (renderSettings.showFrustumWireframe)
     {
         renderFrustumDebug();
     }
 
-    // Render chunk boundaries if enabled
-    if (debugRenderer && renderSettings.showChunkBoundaries)
+    if (debugRenderer)
     {
-        debugRenderer->renderChunkBoundaries(
-            camera->getViewMatrix(),
-            camera->getProjectionMatrix(),
-            grid);
+        if (renderSettings.showChunkBoundaries)
+        {
+            debugRenderer->renderChunkBoundaries(
+                camera->getViewMatrix(),
+                camera->getProjectionMatrix(),
+                grid);
+        }
+
+        if (renderSettings.showGridLines)
+        {
+            debugRenderer->renderGridLines(
+                camera->getViewMatrix(),
+                camera->getProjectionMatrix(),
+                grid->getMinBounds(),
+                grid->getMaxBounds(),
+                grid->getSpacing());
+        }
     }
 
-    // Render grid lines if enabled
-    if (debugRenderer && renderSettings.showGridLines)
-    {
-        debugRenderer->renderGridLines(
-            camera->getViewMatrix(),
-            camera->getProjectionMatrix(),
-            grid->getMinBounds(),
-            grid->getMaxBounds(),
-            grid->getSpacing());
-    }
+    // Unbind framebuffer
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    // 3. Debug visualization if enabled
-    if (renderSettings.showDebugView && renderSettings.enableShadows)
-    {
-        renderDebugView();
-    }
+    // Restore original culling state
+    renderSettings.enableFrustumCulling = originalCullingState;
 
-    profiler.endFrame();
+    /*GLenum err = glGetError();
+    if (err != GL_NO_ERROR && !errorYet)
+    {
+        std::cout << "5OpenGL error during rendering: 0x" << std::hex << err << std::dec << std::endl;
+    }
+    errorYet = true;*/
 }
 
 void Application::renderUI()
 {
-    // Main control panel
-    imGui->beginWindow("Control Panel");
-
-    // Window settings
-    if (ImGui::CollapsingHeader("Window Settings", ImGuiTreeNodeFlags_DefaultOpen))
-    {
-        // Display current window size
-        ImGui::Text("Current Size: %d x %d", width, height);
-
-        // Presets for common window sizes
-        if (ImGui::Button("720p (1280x720)"))
-        {
-            resizeWindow(1280, 720);
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("1080p (1920x1080)"))
-        {
-            resizeWindow(1920, 1080);
-        }
-
-        if (ImGui::Button("1440p (2560x1440)"))
-        {
-            resizeWindow(2560, 1440);
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("4K (3840x2160)"))
-        {
-            resizeWindow(3840, 2160);
-        }
-
-        // Custom window size input
-        static int customWidth = width;
-        static int customHeight = height;
-        ImGui::InputInt("Width", &customWidth, 10, 100);
-        ImGui::InputInt("Height", &customHeight, 10, 100);
-
-        if (ImGui::Button("Apply Custom Size"))
-        {
-            // Make sure we don't set ridiculous values
-            if (customWidth >= 320 && customWidth <= 7680 &&
-                customHeight >= 240 && customHeight <= 4320)
-            {
-                resizeWindow(customWidth, customHeight);
-            }
-        }
-
-        // Scale options for high-DPI displays
-        float scaleFactors[] = { 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f };
-        static int currentScaleIndex = 2; // Default to 1.0
-
-        ImGui::Text("Window Scale");
-        ImGui::PushItemWidth(200);
-        if (ImGui::Combo("##WindowScale", &currentScaleIndex, "50%\0""75%\0""100%\0""125%\0""150%\0""175%\0""200%\0""250%\0""300%\0"))
-        {
-            float scale = scaleFactors[currentScaleIndex];
-            int newWidth = static_cast<int>(1280 * scale);  // Base size of 1280x720
-            int newHeight = static_cast<int>(720 * scale);
-            resizeWindow(newWidth, newHeight);
-        }
-        ImGui::PopItemWidth();
-
-        ImGui::Separator();
-        ImGui::Text("Hotkeys: Ctrl+Plus to increase size, Ctrl+Minus to decrease");
-    }
-
-    // Camera settings
-    if (ImGui::CollapsingHeader("Camera Settings"))
-    {
-        float zoom = camera->getZoom();
-        if (ImGui::SliderFloat("Zoom", &zoom, 0.1f, 5.0f))
-        {
-            camera->setZoom(zoom);
-        }
-
-        // Camera position controls could be added here
-    }
-
-    // Editing options
-    if (ImGui::CollapsingHeader("Editing Tools"))
-    {
-        ImGui::Checkbox("Editing Mode", &isEditing);
-
-        ImGui::ColorEdit3("Cube Color", &selectedCubeColor[0]);
-
-        ImGui::SliderInt("Brush Size", &brushSize, 1, 5);
-
-        if (selectedCubeX != -1)
-        {
-            ImGui::Text("Selected Cube: (%d, %d, %d)", selectedCubeX, selectedCubeY, selectedCubeZ);
-
-            if (ImGui::Button("Delete Cube"))
-            {
-                setCubeAt(selectedCubeX, selectedCubeY, selectedCubeZ, false, glm::vec3(0.0f));
-            }
-        }
-        else
-        {
-            ImGui::Text("No cube selected.");
-        }
-
-        // Tool buttons
-        if (ImGui::Button("Clear Grid"))
-        {
-            clearGrid(false); // Clear grid but don't reset floor
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Reset All"))
-        {
-            clearGrid(true); // Clear grid and reset floor to default color
-        }
-        ImGui::Separator();
-    }
-
-    // Add Graphics Settings section
-    renderSettingsUI();
-
-    // Debug options
-    if (ImGui::CollapsingHeader("Debug Options"))
-    {
-        ImGui::Checkbox("Show Frustum Wireframe", &renderSettings.showFrustumWireframe);
-        ImGui::Checkbox("Show Debug View", &renderSettings.showDebugView);
-
-        const char* debugViews[] = { "Shadow Map Corner", "Full Shadow Map", "Linearized Depth" };
-        ImGui::Combo("Debug View Mode", &renderSettings.currentDebugView, debugViews, 3);
-    }
-
-    // Performance stats
-    if (ImGui::CollapsingHeader("Performance"))
-    {
-        ImGui::Text("FPS: %.1f", 1.0f / deltaTime);
-        ImGui::Text("Frame Time: %.3f ms", deltaTime * 1000.0f);
-
-        ImGui::Checkbox("Enable Frustum Culling", &renderSettings.enableFrustumCulling);
-
-        ImGui::Text("Culling Statistics:");
-        ImGui::Text("  Active Cubes %d", cullingStats.totalActiveCubes);
-        ImGui::Text("  Visible Cubes: %d", cullingStats.visibleCubes);
-        ImGui::Text("  Culled Cubes %d", cullingStats.culledCubes);
-        ImGui::Text("  Culling Rate %.1f%%", cullingStats.cullingPercentage);
-
-        // Create a simple FPS graph
-        ImGui::PlotLines("FPS", cullingStats.fpsHistory.data(), cullingStats.fpsHistory.size(),
-            0, NULL, 0.0f, 120.0f, ImVec2(0, 80));
-
-        // Create a culling percentage graph
-        ImGui::PlotLines("Culling %", cullingStats.cullingHistory.data(), cullingStats.cullingHistory.size(),
-            0, NULL, 0.0f, 100.0f, ImVec2(0, 80));
-
-        // Force culling percentage to 0 when disabled
-        if (!renderSettings.enableFrustumCulling)
-        {
-            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f),
-                "Culling is disabled! Enable for performance boost.");
-        }
-    }
-
-    imGui->endWindow();
-
-    renderFileOperationsUI();
-
-    // Grid navigation window
-    imGui->beginWindow("Grid Navigation");
-
-    // Show current bounds
-    glm::ivec3 minBounds = grid->getMinBounds();
-    glm::ivec3 maxBounds = grid->getMaxBounds();
-
-    ImGui::Text("Grid Bounds: (%d, %d, %d) to (%d, %d, %d)",
-        minBounds.x, minBounds.y, minBounds.z,
-        maxBounds.x, maxBounds.y, maxBounds.z);
-
-    ImGui::Separator();
-
-    // Navigation to specific coordinates
-    static int targetX = 0, targetY = 0, targetZ = 0;
-    ImGui::InputInt("Target X", &targetX);
-    ImGui::InputInt("Target Y", &targetY);
-    ImGui::InputInt("Target Z", &targetZ);
-
-    if (ImGui::Button("Go To Target"))
-    {
-        // Calculate world coordinates
-        glm::vec3 worldPos = grid->calculatePosition(targetX, targetY, targetZ);
-
-        // Set camera target to that location
-        camera->setTarget(worldPos);
-
-        // Check if we're in edit mode
-        if (isEditing)
-        {
-            // Select cube at that location (or nearby empty spot)
-            if (grid->isCubeActive(targetX, targetY, targetZ))
-            {
-                selectedCubeX = targetX;
-                selectedCubeY = targetY;
-                selectedCubeZ = targetZ;
-            }
-        }
-    }
-
-    ImGui::Separator();
-
-    // Chunk loading settings
-    static int viewDistance = 8;
-    ImGui::SliderInt("View Distance (chunks)", &viewDistance, 2, 16);
-
-    if (ImGui::Button("Update Loaded Chunks"))
-    {
-        // Calculate camera position in grid coordinates
-        glm::vec3 camWorldPos = camera->getPosition();
-        glm::ivec3 camGridPos = grid->worldToGridCoordinates(camWorldPos);
-
-        // Update which chunks are loaded
-        grid->updateLoadedChunks(camGridPos, viewDistance);
-    }
-
-    ImGui::Separator();
-
-    // Statistics
-    ImGui::Text("Active Chunks: %d", grid->getActiveChunkCount());
-    ImGui::Text("Total Cubes: %d", grid->getTotalActiveCubeCount());
-
-    imGui->endWindow();
-
-    // Add notification system UI (auto-hiding messages)
-    renderNotifications();
-
-    // Profiler Window
-    profiler.drawImGuiWindow();
-}
-
-void Application::renderSettingsUI()
-{
-    if (ImGui::CollapsingHeader("Graphics Settings", ImGuiTreeNodeFlags_DefaultOpen))
-    {
-        // Quality presets
-        const char* presets[] = { "Low", "Medium", "High", "Ultra" };
-        static int currentPreset = 1; // Medium by default
-
-        if (ImGui::Combo("Quality Preset", &currentPreset, presets, 4))
-        {
-            renderSettings.applyPreset(static_cast<RenderSettings::QualityPreset>(currentPreset));
-            // Recreate shadow map if resolution changed
-            setupShadowMap();
-        }
-
-        // Individual settings
-        if (ImGui::TreeNode("Shadow Settings"))
-        {
-            bool shadowsChanged = false;
-
-            shadowsChanged |= ImGui::Checkbox("Enable Shadows", &renderSettings.enableShadows);
-
-            const char* resolutions[] = { "512x512", "1024x1024", "2048x2048", "4096x4096" };
-            int currentRes = 0;
-
-            if (renderSettings.shadowMapResolution == 512) currentRes = 0;
-            else if (renderSettings.shadowMapResolution == 1024) currentRes = 1;
-            else if (renderSettings.shadowMapResolution == 2048) currentRes = 2;
-            else if (renderSettings.shadowMapResolution == 4096) currentRes = 3;
-
-            if (ImGui::Combo("Shadow Resolution", &currentRes, resolutions, 4))
-            {
-                switch (currentRes)
-                {
-                case 0: renderSettings.shadowMapResolution = 512; break;
-                case 1: renderSettings.shadowMapResolution = 1024; break;
-                case 2: renderSettings.shadowMapResolution = 2048; break;
-                case 3: renderSettings.shadowMapResolution = 4096; break;
-                }
-                shadowsChanged = true;
-            }
-
-            shadowsChanged |= ImGui::Checkbox("Use PCF Filtering", &renderSettings.usePCF);
-
-            // Make the bias slider more precise for debugging
-            ImGui::SliderFloat("Shadow Bias", &renderSettings.shadowBias, 0.0001f, 0.01f, "%.5f");
-
-            if (shadowsChanged)
-            {
-                // Recreate shadow map if settings changed
-                setupShadowMap();
-            }
-
-            ImGui::TreePop();
-        }
-
-        if (ImGui::TreeNode("Lighting Settings"))
-        {
-            ImGui::SliderFloat("Ambient Strength", &renderSettings.ambientStrength, 0.0f, 1.0f);
-            ImGui::SliderFloat("Specular Strength", &renderSettings.specularStrength, 0.0f, 1.0f);
-            ImGui::SliderFloat("Shininess", &renderSettings.shininess, 1.0f, 128.0f);
-            ImGui::TreePop();
-        }
-
-        if (ImGui::TreeNode("Performance Settings"))
-        {
-            ImGui::Checkbox("Enable Frustum Culling", &renderSettings.enableFrustumCulling);
-            ImGui::Checkbox("Use Instanced Rendering", &renderSettings.useInstancing);
-
-            bool vsyncChanged = ImGui::Checkbox("VSync", &renderSettings.enableVSync);
-            if (vsyncChanged)
-            {
-                glfwSwapInterval(renderSettings.enableVSync ? 1 : 0);
-            }
-
-            ImGui::TreePop();
-        }
-
-        if (ImGui::TreeNode("Advanced Visualization"))
-        {
-            bool settingsChanged = false;
-
-            // Chunk visualization
-            if (ImGui::TreeNode("Chunk System"))
-            {
-                ImGui::Text("Active Chunks: %d", grid->getActiveChunkCount());
-                ImGui::Text("Total Cubes: %d", grid->getTotalActiveCubeCount());
-
-                if (ImGui::Checkbox("Show Chunk Boundaries", &renderSettings.showChunkBoundaries))
-                {
-                    settingsChanged = true;
-                    debugRenderer->setShowChunkBoundaries(renderSettings.showChunkBoundaries);
-                }
-
-                if (ImGui::SliderInt("Chunk View Distance", &chunkViewDistance, 1, 16))
-                {
-                    settingsChanged = true;
-                    grid->updateLoadedChunks(
-                        grid->worldToGridCoordinates(camera->getPosition()),
-                        chunkViewDistance);
-                }
-
-                if (ImGui::SliderFloat("Max View Distance", &maxViewDistance, 100.0f, 2000.0f))
-                {
-                    settingsChanged = true;
-                }
-
-                if (ImGui::Button("Update Loaded Chunks"))
-                {
-                    grid->updateLoadedChunks(
-                        grid->worldToGridCoordinates(camera->getPosition()),
-                        chunkViewDistance);
-                }
-
-                ImGui::TreePop();
-            }
-
-            // Rendering optimization
-            if (ImGui::TreeNode("Rendering Optimization"))
-            {
-                if (ImGui::Checkbox("Use Instance Cache", &useInstanceCache))
-                {
-                    settingsChanged = true;
-                }
-
-                if (ImGui::Checkbox("Per-Cube Culling", &perCubeCulling))
-                {
-                    settingsChanged = true;
-                }
-
-                if (ImGui::SliderInt("Batch Size", &batchSize, 1000, 50000))
-                {
-                    settingsChanged = true;
-                }
-
-                if (ImGui::Button("Update Render Cache"))
-                {
-                    renderer->updateChunkInstanceCache();
-                }
-
-                ImGui::TreePop();
-            }
-
-            // Apply settings changes
-            if (settingsChanged)
-            {
-                // Get values from UI widgets
-                float viewDist = maxViewDistance;
-                bool useCache = useInstanceCache;
-                bool cubeCulling = perCubeCulling;
-                int batch = batchSize;
-
-                // Update renderer settings
-                renderer->setRenderSettings(useCache, cubeCulling, viewDist, batch);
-                renderer->markCacheForUpdate();
-            }
-
-            ImGui::TreePop();
-        }
-
-        // LOD Settings
-        if (ImGui::TreeNode("Level of Detail"))
-        {
-            ImGui::Checkbox("Enable LOD", &renderSettings.enableLOD);
-
-            // Only show these controls if LOD is enabled
-            if (renderSettings.enableLOD)
-            {
-                static float lodDistanceMedium = 200.0f;
-                static float lodDistanceLow = 500.0f;
-
-                ImGui::SliderFloat("Medium Detail Distance", &lodDistanceMedium, 50.0f, 1000.0f);
-                ImGui::SliderFloat("Low Detail Distance", &lodDistanceLow, lodDistanceMedium + 50.0f, 2000.0f);
-
-                ImGui::Text("High Detail: 0-%.0f units", lodDistanceMedium);
-                ImGui::Text("Medium Detail: %.0f-%.0f units", lodDistanceMedium, lodDistanceLow);
-                ImGui::Text("Low Detail: %.0f+ units", lodDistanceLow);
-
-                // Preview Colors
-                ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "High Detail");
-                ImGui::SameLine(150);
-                ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Medium Detail");
-                ImGui::SameLine(300);
-                ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Low Detail");
-
-                if (ImGui::Button("Apply LOD Settings"))
-                {
-                    // Apply LOD settings to the renderer
-                    // Implementation would depend on your LOD system desin
-                    if (renderer)
-                    {
-                        // This would be added to renderer class
-                        // renderer-setLodDistances(lodDistanceMedium, lodDistanceLow, enableLOD);
-                    }
-                }
-            }
-
-            ImGui::TreePop();
-        }
-
-        // Debug visualization
-        if (ImGui::TreeNode("Visualization Debug"))
-        {
-            if (ImGui::Checkbox("Show Bounding Boxes", &renderSettings.showBoundingBoxes))
-            {
-                debugRenderer->setShowBoundingBoxes(renderSettings.showBoundingBoxes);
-            }
-
-            if (ImGui::Checkbox("Show Grid Lines", &renderSettings.showGridLines))
-            {
-                debugRenderer->setShowGridLines(renderSettings.showGridLines);
-            }
-
-            if (ImGui::Checkbox("Color by Distance", &renderSettings.colorByDistance))
-            {
-                // This would enable a debug shader that colors cubes based on distance from camera
-                // Could be implemented in the renderer class
-                // renderer->setDebugColorMode(colorByDistance ? 1 : 0);
-            }
-
-            if (ImGui::Checkbox("Show Chunk Stats", &renderSettings.showChunkStats))
-            {
-                renderSettings.showChunkStats = renderSettings.showChunkStats;
-            }
-
-            if (renderSettings.showChunkStats)
-            {
-                // Display additional statistics about chunks if enabled
-                ImGui::Text("Chunk Update Time: %.3f ms", profiler.getLastTime("ChunkUpdate") * 1000.0f);
-                ImGui::Text("Chunk Culling Time: %.3f ms", profiler.getLastTime("ChunkCulling") * 1000.0f);
-                ImGui::Text("Chunk Mesh Updates: %d", renderer->getChunkUpdatesThisFrame());
-            }
-
-            ImGui::TreePop();
-        }
-
-        // World settings
-        if (ImGui::TreeNode("World Settings"))
-        {
-            static int worldSize = 20;
-            ImGui::SliderInt("Initial World Size", &worldSize, 10, 100);
-
-            static float cubeSpacing = 1.0f;
-            if (ImGui::SliderFloat("Cube Spacing", &cubeSpacing, 0.5f, 2.0f))
-            {
-                // This would update the spacing in the grid if implemented
-                // grid->setSpacing(cubeSpacing);
-            }
-
-            static int worldHeight = 128;
-            ImGui::SliderInt("World Height Limit", &worldHeight, 64, 512);
-
-            if (ImGui::Button("Reset World"))
-            {
-                ImGui::OpenPopup("Reset World?");
-            }
-
-            // Confirmation popup
-            if (ImGui::BeginPopupModal("Reset World?", NULL, ImGuiWindowFlags_AlwaysAutoResize))
-            {
-                ImGui::Text("This will delete the entire world and create a new one.\nThis operation cannot be undone!\n\n");
-                ImGui::Separator();
-
-                if (ImGui::Button("OK", ImVec2(120, 0)))
-                {
-                    // Reset world with new settings
-                    delete grid;
-                    grid = new CubeGrid(worldSize, cubeSpacing);
-
-                    // Update renderer to use new grid
-                    renderer->setGrid(grid);
-
-                    renderer->markCacheForUpdate();
-                    ImGui::CloseCurrentPopup();
-                }
-                ImGui::SameLine();
-                if (ImGui::Button("Cancel", ImVec2(120, 0)))
-                {
-                    ImGui::CloseCurrentPopup();
-                }
-                ImGui::EndPopup();
-            }
-
-            ImGui::TreePop();
-        }
-
-        if (ImGui::TreeNode("Debug Settings"))
-        {
-            ImGui::Checkbox("Show Debug View", &renderSettings.showDebugView);
-            ImGui::Checkbox("Show Frustum Wireframe", &renderSettings.showFrustumWireframe);
-            ImGui::Checkbox("Show Performance Overlay", &renderSettings.showPerformanceOverlay);
-
-            const char* debugViews[] = { "Shadow Map Corner", "Full Shadow Map", "Linearized Depth" };
-            ImGui::Combo("Debug View Mode", &renderSettings.currentDebugView, debugViews, 3);
-
-            ImGui::TreePop();
-        }
-    }
-}
-
-void Application::renderFileOperationsUI()
-{
-    // File operations window
-    imGui->beginWindow("File Operations");
-
-    if (ImGui::Button("Save World", ImVec2(150, 30)))
-    {
-        // Use Windows file dialog for saving
-        HWND hwnd = glfwGetWin32Window(window);
-
-        if (GridSerializer::saveGridToFile(grid, hwnd))
-        {
-            // Success notification
-            showNotification("Grid saved successfully");
-        }
-        else
-        {
-            // Error notification - only show if the user didn't cancel
-            if (GetLastError() != 0)
-            {
-                showNotification("Failed to save grid", true);
-            }
-        }
-    }
-
-    ImGui::SameLine();
-
-    if (ImGui::Button("Load World", ImVec2(150, 30)))
-    {
-        // Use Windows file dialog for loading
-        HWND hwnd = glfwGetWin32Window(window);
-
-        if (GridSerializer::loadGridFromFile(grid,hwnd))
-        {
-            // Success notification
-            showNotification("Grid loaded successfully");
-
-            // Mark the renderer cache as needing update
-            renderer->markCacheForUpdate();
-        }
-        else
-        {
-            // Error notification - only show if the user didn't cancel
-            if (GetLastError() != 0)
-            {
-                showNotification("Failed to load grid", true);
-            }
-        }
-    }
-
-    // Auto-save features section
-    ImGui::Separator();
-    ImGui::Text("Auto-Save Options");
-
-    if (ImGui::Checkbox("Enable Auto-Save", &enableAutoSave))
-    {
-        if (enableAutoSave && autoSaveFolder.empty())
-        {
-            // If enabling auto-save but no folder is selected, prompt for a folder
-            std::string folder = FileDialog::selectFolder("Select Auto-Save Folder", glfwGetWin32Window(window));
-            if (!folder.empty())
-            {
-                autoSaveFolder = folder;
-            }
-            else
-            {
-                // User cancelled folder selection, disable auto-save
-                enableAutoSave = false;
-            }
-        }
-
-        // Reset timer when enabling
-        if (enableAutoSave)
-        {
-            lastAutoSaveTime = glfwGetTime();
-        }
-    }
-
-    // Input for auto-save interval
-    if (ImGui::InputInt("Auto-Save Interval (minutes)", &autoSaveInterval))
-    {
-        // Clamp values manually without using std::min/max
-        if (autoSaveInterval < 1) autoSaveInterval = 1;
-        if (autoSaveInterval > 60) autoSaveInterval = 60;
-    }
-
-    // Show current auto-save location and button to change it
-    static char folderBuffer[256] = "";
-    strncpy_s(folderBuffer, sizeof(folderBuffer), autoSaveFolder.c_str(), _TRUNCATE);
-
-    ImGui::InputText("Auto-Save Location", folderBuffer, sizeof(folderBuffer), ImGuiInputTextFlags_ReadOnly);
-    ImGui::SameLine();
-
-    if (ImGui::Button("Browse..."))
-    {
-        std::string folder = FileDialog::selectFolder("Select Auto-Save Folder", glfwGetWin32Window(window));
-        if (!folder.empty())
-        {
-            autoSaveFolder = folder;
-        }
-    }
-
-    // Display next auto-save time if enabled
-    if (enableAutoSave && !autoSaveFolder.empty())
-    {
-        double currentTime = glfwGetTime();
-        double timeUntilNextSave = (lastAutoSaveTime + autoSaveInterval * 60.0) - currentTime;
-
-        int minutesLeft = static_cast<int>(timeUntilNextSave / 60.0);
-        int secondsLeft = static_cast<int>(timeUntilNextSave) % 60;
-
-        ImGui::Text("Next Auto-Save in: %d:%02d", minutesLeft, secondsLeft);
-
-        // Manual auto-save button
-        if (ImGui::Button("Save Now"))
-        {
-            performAutoSave();
-        }
-    }
-
-    // Quick backup options
-    ImGui::Separator();
-    ImGui::Text("Quick Backup");
-
-    if (ImGui::Button("Create Backup"))
-    {
-        // Generate timestamp for backup filename
-        time_t now = time(nullptr);
-        tm localTime;
-        localtime_s(&localTime, &now);
-
-        char timestamp[64];
-        strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", &localTime);
-
-        // Create backup filename
-        std::string backupFilename = "backup_" + std::string(timestamp) + ".bin";
-
-        // Use file dialog to get the backup location
-        std::string savePath = FileDialog::saveFile("Binary Grid Files (*.bin)\0*.bin\0", glfwGetWin32Window(window));
-
-        if (!savePath.empty())
-        {
-            // Ensure .bin extension
-            if (savePath.length() < 4 || savePath.substr(savePath.length() - 4) != ".bin")
-            {
-                savePath += ".bin";
-            }
-
-            if (GridSerializer::saveGridToBinary(grid, savePath))
-            {
-                showNotification("Backup created successfully: " + savePath);
-            }
-            else
-            {
-                showNotification("Failed to create backup", true);
-            }
-        }
-    }
-
-    imGui->endWindow();
-}
-
-void Application::renderSceneDepth(Shader& depthShader)
-{
-    // Similar to render, but only pass model matrices for depth rendering
-    renderer->renderDepthOnly(depthShader);
+    // The viewport panel in UIManager would display the scene texture
+    uiManager->setSceneTexture(sceneColorTexture);
+    uiManager->render();
 }
 
 void Application::renderFrustumDebug()
@@ -1383,7 +720,7 @@ void Application::renderFrustumDebug()
 
     glBindVertexArray(debugLineVAO);
     glLineWidth(2.0f); // Thicker lines for better visibility
-    glDrawArrays(GL_LINES, 0, lines.size());
+    glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(lines.size()));
     glLineWidth(1.0f); // Reset line width
 
     glBindVertexArray(0);
@@ -1394,85 +731,36 @@ void Application::renderDebugView()
     // Reset viewport to full screen for main rendering
     glViewport(0, 0, width, height);
 
+    float posX = static_cast<float>(width - SHADOW_WIDTH / 4);
+    float posY = static_cast<float>(height - SHADOW_HEIGHT / 4);
+
     switch (renderSettings.currentDebugView)
     {
-    case 0: // Depth map in corner of screen
-        debugRenderer->renderDebugTexture(depthMap,
-            width - SHADOW_WIDTH / 4,
-            height - SHADOW_HEIGHT / 4,
-            SHADOW_WIDTH / 4,
-            SHADOW_HEIGHT / 4,
-            true);
-        break;
+        case 0: // Depth map in corner of screen
+            debugRenderer->renderDebugTexture(depthMap, posX, posY,
+                                              static_cast<float>(SHADOW_WIDTH / 4),
+                                              static_cast<float>(SHADOW_HEIGHT / 4), true);
+            break;
 
-    case 1: // Full screen depth map
-        debugRenderer->renderDebugTexture(depthMap,
-            0, 0,
-            width, height,
-            true);
-        break;
+        case 1: // Full screen depth map
+            debugRenderer->renderDebugTexture(depthMap,
+                                              0, 0,
+                                              static_cast<float>(width),
+                                              static_cast<float>(height),
+                                              true);
+            break;
 
-    case 2: // Full screen depth map with linear depth output
-        // Special visualization with depth linearization
-        // This would need a custom shader to properly visualize depth
-        debugRenderer->renderDebugTexture(depthMap,
-            0, 0,
-            width, height,
-            true);
-        // Add text overlay explaining the view
-        // (Would need additional text rendering functionality)
-        break;
-    }
-}
-
-void Application::renderNotifications()
-{
-    if (notifications.empty()) return;
-
-    float PADDING = 10.0f;
-    ImVec2 windowPos = ImVec2(width - 300.0f - PADDING, PADDING);
-    ImGui::SetNextWindowPos(windowPos);
-    ImGui::SetNextWindowSize(ImVec2(300, 0));
-    ImGui::SetNextWindowBgAlpha(0.8f);
-
-    if (ImGui::Begin("##Notifications", nullptr,
-        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar))
-    {
-        for (auto& notification : notifications)
-        {
-            if (notification.isError)
-            {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.3f, 0.3f, 1.0f));
-            }
-            else
-            {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.4f, 1.0f, 0.4f, 1.0f));
-            }
-
-            ImGui::TextWrapped("%s", notification.message.c_str());
-            ImGui::PopStyleColor();
-        }
-    }
-    ImGui::End();
-
-    // Update notification timers
-    float currentTime = static_cast<float>(glfwGetTime());
-    static float lastTime = currentTime;
-    float deltaTime = currentTime - lastTime;
-    lastTime = currentTime;
-
-    for (auto it = notifications.begin(); it != notifications.end();)
-    {
-        it->timeRemaining -= deltaTime;
-        if (it->timeRemaining <= 0.0f)
-        {
-            it = notifications.erase(it);
-        }
-        else
-        {
-            it++;
-        }
+        case 2: // Full screen depth map with linear depth output
+            // Special visualization with depth linearization
+            // This would need a custom shader to properly visualize depth
+            debugRenderer->renderDebugTexture(depthMap,
+                                              0, 0,
+                                              static_cast<float>(width),
+                                              static_cast<float>(height),
+                                              true);
+            // Add text overlay explaining the view
+            // (Would need additional text rendering functionality)
+            break;
     }
 }
 
@@ -1509,7 +797,7 @@ std::vector<glm::vec3> Application::getFrustumCorners() const
     glm::vec4 fbr(1.0f, -1.0f, 1.0f, 1.0f);   // Far bottom right
 
     // Transform all points to world space
-    std::vector<glm::vec4> ndc = { ntl, ntr, nbl, nbr, ftl, ftr, fbl, fbr };
+    std::vector<glm::vec4> ndc = {ntl, ntr, nbl, nbr, ftl, ftr, fbl, fbr};
 
     for (int i = 0; i < 8; i++)
     {
@@ -1522,9 +810,304 @@ std::vector<glm::vec3> Application::getFrustumCorners() const
     return corners;
 }
 
-void Application::showNotification(const std::string& message, bool isError)
+std::string Application::generateAutoSaveFilename() const
 {
-    notifications.emplace_back(message, isError);
+    if (autoSaveFolder.empty())
+    {
+        return ""; // No folder selected
+    }
+
+    // Create a timestamp for the filename
+    time_t now = time(nullptr);
+    tm localTime;
+    localtime_s(&localTime, &now);
+
+    char timestamp[64];
+    strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", &localTime);
+
+    // Create the full path
+    std::string filename = autoSaveFolder + "\\autosave_" + timestamp + ".bin";
+    return filename;
+}
+
+void Application::performAutoSave()
+{
+    if (!enableAutoSave || autoSaveFolder.empty())
+    {
+        return;
+    }
+
+    std::string filename = generateAutoSaveFilename();
+    if (filename.empty())
+    {
+        return;
+    }
+
+    if (GridSerializer::saveGridToBinary(grid, filename))
+    {
+        uiManager->addNotification("Auto-saved world");
+        lastAutoSaveTime = glfwGetTime();
+    }
+    else
+    {
+        uiManager->addNotification("Auto-save failed", true);
+    }
+}
+
+void Application::framebufferSizeCallback(GLFWwindow* window, int width, int height)
+{
+    // Update viewport
+    glViewport(0, 0, width, height);
+
+    // Update camera aspect ratio
+    Application* app = static_cast<Application*>(glfwGetWindowUserPointer(window));
+    if (app && app->camera)
+    {
+        float aspect = static_cast<float>(width) / static_cast<float>(height);
+        app->camera->setAspectRatio(aspect);
+
+        // Update internal width and height values
+        app->width = width;
+        app->height = height;
+
+        // Reset viewport to full window size when resizing
+        app->viewportWidth = width;
+        app->viewportHeight = height;
+        app->viewportX = 0;
+        app->viewportY = 0;
+    }
+}
+
+void Application::mouseCallback(GLFWwindow* window, double xpos, double ypos)
+{
+    // Handle mouse movement if needed
+}
+
+void Application::scrollCallback(GLFWwindow* window, double xoffset, double yoffset)
+{
+    // Handle scroll for zoom
+    Application* app = static_cast<Application*>(glfwGetWindowUserPointer(window));
+    if (app && app->camera)
+    {
+        float zoom = yoffset > 0 ? 1.1f : 0.9f;
+        app->camera->setZoom(app->camera->getZoom() * zoom);
+    }
+}
+
+void Application::mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
+{
+    Application* app = static_cast<Application*>(glfwGetWindowUserPointer(window));
+
+    // Only process clicks if we're in editing mode and ImGui isn't capturing mouse
+    ImGuiIO& io = ImGui::GetIO();
+    if (button >= 0 && button < 5)
+    {
+        io.MouseDown[button] = (action == GLFW_PRESS);
+    }
+
+    if (!io.WantCaptureMouse && app->isEditing)
+    {
+        if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
+        {
+            int x, y, z;
+            if (app->pickCube(x, y, z))
+            {
+                // Store selected cube
+                app->selectedCubeX = x;
+                app->selectedCubeY = y;
+                app->selectedCubeZ = z;
+
+                // Update UI manager
+                app->uiManager->setSelectedCubeCoords(x, y, z);
+
+                // Add cube based on brush size
+                for (int bx = -app->brushSize / 2; bx <= app->brushSize / 2; bx++)
+                {
+                    for (int by = -app->brushSize / 2; by <= app->brushSize / 2; by++)
+                    {
+                        for (int bz = -app->brushSize / 2; bz <= app->brushSize / 2; bz++)
+                        {
+                            app->setCubeAt(x + bx, y + by, z + bz, true, app->selectedCubeColor);
+                        }
+                    }
+                }
+            }
+        }
+        else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
+        {
+            int x, y, z;
+            if (app->pickCube(x, y, z))
+            {
+                // Store selected cube
+                app->selectedCubeX = x;
+                app->selectedCubeY = y;
+                app->selectedCubeZ = z;
+
+                // Update UI manager
+                app->uiManager->setSelectedCubeCoords(x, y, z);
+
+                // Remove cube based on brush size
+                for (int bx = -app->brushSize / 2; bx <= app->brushSize / 2; bx++)
+                {
+                    for (int by = -app->brushSize / 2; by <= app->brushSize / 2; by++)
+                    {
+                        for (int bz = -app->brushSize / 2; bz <= app->brushSize / 2; bz++)
+                        {
+                            if (y + by > 0) // Don't remove floor
+                            {
+                                app->setCubeAt(x + bx, y + by, z + bz, false, glm::vec3(0.0f));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+void Application::errorCallback(GLenum source, GLenum type, GLuint id, GLenum severity,
+                                GLsizei length, const GLchar* message, const void* userParam)
+{
+    std::cerr << "GL Error: type = 0x" << std::hex << type
+        << ", severity = 0x" << std::hex << severity
+        << ", message = " << message << std::endl;
+}
+
+// //////////////////////////
+// ALL OTHER PUBLIC ACCESSORS
+// //////////////////////////
+
+void Application::setVisibleCubeCount(int visibleCount)
+{
+    // Then set to the new count
+    visibleCubeCount = visibleCount;
+
+    // Count total active cubes
+    int totalActive = grid->getTotalActiveCubeCount();
+
+    cullingStats.totalActiveCubes = totalActive;
+    cullingStats.visibleCubes = visibleCount;
+
+    if (totalActive >= visibleCount)
+    {
+        cullingStats.culledCubes = totalActive - visibleCount;
+    }
+    else
+    {
+        cullingStats.culledCubes = 0;
+    }
+
+    // Calculate culling percentage
+    if (totalActive > 0)
+    {
+        cullingStats.cullingPercentage = 100.0f * (float)cullingStats.culledCubes / (float)totalActive;
+    }
+    else
+    {
+        cullingStats.cullingPercentage = 0.0f;
+    }
+
+    // Update history for graphs
+    float currentTime = static_cast<float>(glfwGetTime());
+    if (currentTime - cullingStats.lastUpdateTime >= 0.1f)
+    {
+        cullingStats.lastUpdateTime = currentTime;
+
+        // Shift values in the history arrays
+        for (size_t i = 0; i < cullingStats.fpsHistory.size() - 1; i++)
+        {
+            cullingStats.fpsHistory[i] = cullingStats.fpsHistory[i + 1];
+            cullingStats.cullingHistory[i] = cullingStats.cullingHistory[i + 1];
+        }
+
+        // Add new values - cap FPS to something reasonable for the graph
+        float currentFps = 1.0f / deltaTime;
+        if (currentFps > 1000.0f) currentFps = 1000.0f;
+
+        cullingStats.fpsHistory[cullingStats.fpsHistory.size() - 1] = currentFps;
+        cullingStats.cullingHistory[cullingStats.cullingHistory.size() - 1] = cullingStats.cullingPercentage;
+    }
+}
+
+bool Application::isCubeVisible(int x, int y, int z) const
+{
+    if (!renderSettings.enableFrustumCulling)
+    {
+        return true; // Always visible when culling is disabled
+    }
+
+    // Get the cube's world position
+    const Cube& cube = grid->getCube(x, y, z);
+
+    // Use the frustum test to determine visibility
+    return viewFrustum.isCubeVisible(cube.position, grid->getSpacing());
+}
+
+void Application::setupShadowMap()
+{
+    // Use the shadow map resolution from settings
+    SHADOW_WIDTH = renderSettings.shadowMapResolution;
+    SHADOW_HEIGHT = renderSettings.shadowMapResolution;
+
+    // Delete existing shadow map resources if they exist
+    if (depthMapFBO)
+    {
+        glDeleteFramebuffers(1, &depthMapFBO);
+        glDeleteTextures(1, &depthMap);
+    }
+
+    // Create a framebuffer object for the depth map
+    glGenFramebuffers(1, &depthMapFBO);
+
+    // Create a 2D texture for the depth map
+    glGenTextures(1, &depthMap);
+    glBindTexture(GL_TEXTURE_2D, depthMap);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24,
+                 SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+
+    // Configure texture filtering
+    if (renderSettings.usePCF)
+    {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    }
+    else
+    {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    }
+
+    // Fix shadow acne with proper clamping
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    float borderColor[] = {1.0f, 1.0f, 1.0f, 1.0f};
+    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+
+    // Use comparison mode only when needed
+    if (renderSettings.usePCF)
+    {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+    }
+    else
+    {
+        // CRITICAL: Disable comparison mode for standard shadow mapping
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+    }
+
+    // Attach the depth texture to the framebuffer
+    glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+
+    // Check framebuffer completeness
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+    {
+        std::cerr << "Error: Shadow map framebuffer is not complete!" << std::endl;
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 void Application::resizeWindow(int newWidth, int newHeight)
@@ -1568,15 +1151,99 @@ void Application::resizeWindow(float newWidth, float newHeight)
     resizeWindow(static_cast<int>(newWidth), static_cast<int>(newHeight));
 }
 
+void Application::toggleFullscreen()
+{
+    if (isFullscreen)
+    {
+        // Switch to windowed mode
+        const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);
+
+        // Calculate medium-sized window
+        int newWidth = static_cast<int>(mode->width * 0.7f);
+        int newHeight = static_cast<int>(mode->height * 0.7f);
+
+        // Center on screen
+        int monitorX, monitorY;
+        glfwGetMonitorPos(primaryMonitor, &monitorX, &monitorY);
+        int xpos = monitorX + (mode->width - newWidth) / 2;
+        int ypos = monitorY + (mode->height - newHeight) / 2;
+
+        // Set window mode
+        glfwSetWindowMonitor(window, nullptr, xpos, ypos, newWidth, newHeight, GLFW_DONT_CARE);
+
+        // Update our size tracking
+        width = newWidth;
+        height = newHeight;
+    }
+    else
+    {
+        // Switch to fullscreen mode
+        const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);
+        glfwSetWindowMonitor(window, primaryMonitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+
+        // Update our size tracking
+        width = mode->width;
+        height = mode->height;
+    }
+
+    // Update the fullscreen flag
+    isFullscreen = !isFullscreen;
+
+    // Update camera aspect ratio
+    if (camera)
+    {
+        float aspect = static_cast<float>(width) / static_cast<float>(height);
+        camera->setAspectRatio(aspect);
+    }
+
+    // Update viewport
+    glViewport(0, 0, width, height);
+}
+
+void Application::setViewportSize(int width, int height)
+{
+    if (width > 0 && height > 0 && (viewportWidth != width || viewportHeight != height))
+    {
+        viewportWidth = width;
+        viewportHeight = height;
+        viewportActive = true;
+
+        // Resize framebuffer textures
+        glBindTexture(GL_TEXTURE_2D, sceneColorTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+
+        glBindTexture(GL_TEXTURE_2D, sceneDepthTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+
+        // Update camera aspect ratio
+        if (camera)
+        {
+            float aspect = static_cast<float>(width) / static_cast<float>(height);
+            camera->setAspectRatio(aspect);
+        }
+    }
+}
+
+void Application::setViewportPos(int x, int y)
+{
+    viewportX = x;
+    viewportY = y;
+}
+
+void Application::setCameraAspectRatio(float aspect)
+{
+    if (camera)
+    {
+        camera->setAspectRatio(aspect);
+    }
+}
+
 void Application::setCubeAt(int x, int y, int z, bool active, const glm::vec3& color)
 {
     glm::vec3 position = grid->calculatePosition(x, y, z);
     Cube cube(position, color);
     cube.active = active;
     grid->setCube(x, y, z, cube);
-
-    // Mark the renderer cache as needing update due to grid changes
-    renderer->markCacheForUpdate();
 }
 
 bool Application::pickCube(int& outX, int& outY, int& outZ)
@@ -1586,8 +1253,8 @@ bool Application::pickCube(int& outX, int& outY, int& outZ)
     glfwGetCursorPos(window, &mouseX, &mouseY);
 
     // Convert mouse position to normalized device coordinates
-    float ndcX = (2.0f * mouseX) / width - 1.0f;
-    float ndcY = 1.0f - (2.0f * mouseY) / height;
+    float ndcX = (2.0f * static_cast<float>(mouseX)) / width - 1.0f;
+    float ndcY = 1.0f - (2.0f * static_cast<float>(mouseY)) / height;
 
     // For orthographic projection, we need to create a ray that's parallel to view direction
     // Get the camera's view and projection matricies
@@ -1782,152 +1449,6 @@ void Application::clearGrid(bool resetFloor)
         }
     }
 
-    // Mark renderer cache for update
-    renderer->markCacheForUpdate();
-}
-
-std::string Application::generateAutoSaveFilename() const
-{
-    if (autoSaveFolder.empty())
-    {
-        return ""; // No folder selected
-    }
-
-    // Create a timestamp for the filename
-    time_t now = time(nullptr);
-    tm localTime;
-    localtime_s(&localTime, &now);
-
-    char timestamp[64];
-    strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", &localTime);
-
-    // Create the full path
-    std::string filename = autoSaveFolder + "\\autosave_" + timestamp + ".bin";
-    return filename;
-}
-
-void Application::performAutoSave()
-{
-    if (!enableAutoSave || autoSaveFolder.empty())
-    {
-        return;
-    }
-
-    std::string filename = generateAutoSaveFilename();
-    if (filename.empty())
-    {
-        return;
-    }
-
-    if (GridSerializer::saveGridToBinary(grid, filename))
-    {
-        showNotification("Auto-saved world");
-        lastAutoSaveTime = glfwGetTime();
-    }
-    else
-    {
-        showNotification("Auto-save failed", true);
-    }
-}
-
-void Application::framebufferSizeCallback(GLFWwindow *window, int width, int height)
-{
-    // Update viewport
-    glViewport(0, 0, width, height);
-
-    // Update camera aspect ratio
-    Application* app = static_cast<Application*>(glfwGetWindowUserPointer(window));
-    if (app && app->camera)
-    {
-        float aspect = static_cast<float>(width) / static_cast<float>(height);
-        app->camera->setAspectRatio(aspect);
-    }
-}
-
-void Application::mouseCallback(GLFWwindow *window, double xpos, double ypos)
-{
-    // Handle mouse movement if needed
-}
-
-void Application::scrollCallback(GLFWwindow *window, double xoffset, double yoffset)
-{
-    // Handle scroll for zoom
-    Application* app = static_cast<Application*>(glfwGetWindowUserPointer(window));
-    if (app && app->camera)
-    {
-        float zoom = yoffset > 0 ? 1.1f : 0.9f;
-        app->camera->setZoom(app->camera->getZoom() * zoom);
-    }
-}
-
-void Application::mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
-{
-    Application* app = static_cast<Application*>(glfwGetWindowUserPointer(window));
-
-    // Only process clicks if we're in editing mode and ImGui isn't capturing mouse
-    ImGuiIO& io = ImGui::GetIO();
-    if (button >= 0 && button < 5) {
-        io.MouseDown[button] = (action == GLFW_PRESS);
-    }
-
-    if (!io.WantCaptureMouse && app->isEditing)
-    {
-        if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
-        {
-            int x, y, z;
-            if (app->pickCube(x, y, z))
-            {
-                // Store selected cube
-                app->selectedCubeX = x;
-                app->selectedCubeY = y;
-                app->selectedCubeZ = z;
-
-                // Add cube based on brush size
-                for (int bx = -app->brushSize / 2; bx <= app->brushSize / 2; bx++)
-                {
-                    for (int by = -app->brushSize / 2; by <= app->brushSize / 2; by++)
-                    {
-                        for (int bz = -app->brushSize / 2; bz <= app->brushSize / 2; bz++)
-                        {
-                            app->setCubeAt(x + bx, y + by, z + bz, true, app->selectedCubeColor);
-                        }
-                    }
-                }
-            }
-        }
-        else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
-        {
-            int x, y, z;
-            if (app->pickCube(x, y, z))
-            {
-                // Store selected cube
-                app->selectedCubeX = x;
-                app->selectedCubeY = y;
-                app->selectedCubeZ = z;
-
-                // Remove cube based on brush size
-                for (int bx = -app->brushSize / 2; bx <= app->brushSize / 2; bx++)
-                {
-                    for (int by = -app->brushSize / 2; by <= app->brushSize / 2; by++)
-                    {
-                        for (int bz = -app->brushSize / 2; bz <= app->brushSize / 2; bz++)
-                        {
-                            if (y + by > 0) // Don't remove floor
-                            {
-                                app->setCubeAt(x + bx, y + by, z + bz, false, glm::vec3(0.0f));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-void Application::errorCallback(GLenum source, GLenum type, GLuint id, GLenum severity,
-                                GLsizei length, const GLchar *message, const void *userParam)
-{
-    std::cerr << "GL Error: type = 0x" << std::hex << type
-              << ", severity = 0x" << std::hex << severity
-              << ", message = " << message << std::endl;
+    // Notify user
+    uiManager->addNotification(resetFloor ? "World reset" : "Grid cleared");
 }

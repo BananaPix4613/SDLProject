@@ -38,10 +38,12 @@ public:
     // Main UI rendering methods
     void renderMainMenuBar();
     void renderDockSpace();
+    void renderPopupModals();
     void renderPanels();
     void renderNotifications();
 
     // Methods to show/hide specific panels
+    void toggleViewportPanel() { showViewportPanel = !showViewportPanel; }
     void toggleControlPanel() { showControlPanel = !showControlPanel; }
     void toggleSettingsPanel() { showSettingsPanel = !showSettingsPanel; }
     void toggleGridNavigationPanel() { showGridNavigationPanel = !showGridNavigationPanel; }
@@ -55,6 +57,7 @@ public:
     void renderHelpMenu();
 
     // Panel-specific rendering methods
+    void renderViewportPanel();
     void renderControlPanel();
     void renderSettingsPanel();
     void renderRenderSettingsSection();
@@ -69,6 +72,10 @@ public:
     // Notification system
     void addNotification(const std::string& message, bool isError = false);
     void updateNotifications(float deltaTime);
+
+    // Viewport
+    void setSceneTexture(unsigned int texture) { sceneTexture = texture; }
+    void setDpiScale(float scale) { dpiScale = scale; }
 
     // Getters/setters for UI state
     void setShowUI(bool show) { showUI = show; }
@@ -104,14 +111,21 @@ private:
     bool showUI;
     bool showMainMenuBar;
     bool showDockSpace;
+    bool showViewportPanel;
     bool showControlPanel;
     bool showSettingsPanel;
     bool showGridNavigationPanel;
     bool showProfilerPanel;
+    bool shouldOpenControlsPopup;
+    bool shouldOpenAboutPopup;
     bool isEditing;
 
     // Window size
     int windowWidth, windowHeight;
+
+    // Viewport
+    unsigned int sceneTexture = 0;
+    float dpiScale;
 
     // Selected cube
     int selectedCubeX, selectedCubeY, selectedCubeZ;

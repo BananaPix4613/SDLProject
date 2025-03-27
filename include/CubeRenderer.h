@@ -5,49 +5,26 @@
 #include <Shader.h>
 #include <glad/glad.h>
 #include <vector>
-#include <unordered_map>
 
 class Application; // Forward declaration
-
-// Cached instance data for a chunk
-struct ChunkInstanceData {
-    std::vector<glm::mat4> matrices;
-    std::vector<glm::vec3> colors;
-};
 
 class CubeRenderer
 {
 private:
-    // Cube mesh data
+    // Core rendering objects
     unsigned int cubeVAO, cubeVBO, cubeEBO;
-
-    // Instancing data
     unsigned int instanceMatrixVBO, instanceColorVBO;
-    std::vector<glm::mat4> instanceMatrices;
-    std::vector<glm::vec3> instanceColors;
-    unsigned int instanceCount;
-    unsigned int maxInstances;
 
-    // Chunk instance cache for faster rendering
-    std::unordered_map<glm::ivec3, ChunkInstanceData, Vec3Hash, Vec3Equal> chunkInstanceCache;
-    bool cacheNeedsUpdate = true;
-
-    // Rendering options
-    bool useInstanceCache = true;
-    bool enablePerCubeCulling = true;
-    float maxViewDistance = 500.0f;
-    int batchSize = 10000; // Number of instances to render in one batch
-
-    // Debug info
-    int chunksUpdatedThisFrame = 0;
-
+    // Grid and application references
     CubeGrid* grid;
-    Application* app; // Reference to the application for frustum culling
+    Application* app;
 
-    // Private render methods
-    void renderLegacy(Shader& shader);
-    void renderChunked(Shader& shader);
-    void renderCurrentBatch(Shader& shader);
+    // Rendering parameters
+    float maxViewDistance;
+    bool enableFrustumCulling;
+
+    // Stats
+    int visibleCubeCount;
 
 public:
     CubeRenderer(CubeGrid* cubeGrid, Application* application);
@@ -55,18 +32,12 @@ public:
 
     void initialize();
     void render(Shader& shader);
-    void renderDepthOnly(Shader& depthShader);
-
-    // Cache management
-    void updateChunkInstanceCache();
-    void markCacheForUpdate();
+    void renderShadowMap(Shader& depthShader);
 
     // Settings
-    void setRenderSettings(bool useCache, bool perCubeCulling, float viewDist, int batch);
+    void setMaxViewDistance(float distance) { maxViewDistance = distance; }
+    void setEnableFrustumCulling(bool enable) { enableFrustumCulling = enable; }
 
-    void setGrid(CubeGrid* newGrid) { grid = newGrid; markCacheForUpdate(); }
-    int getChunkUpdatesThisFrame() const { return chunksUpdatedThisFrame; }
-
-    // Helper method for frustum culling
-    bool isCubeVisible(int x, int y, int z) const;
+    // Stats
+    int getVisibleCubeCount() const { return visibleCubeCount; }
 };
