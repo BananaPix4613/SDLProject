@@ -6,7 +6,7 @@
 #include "FileDialog.h"
 #include "Frustum.h"
 #include "GridSerializer.h"
-#include "IsometricCamera.h"
+#include "Camera.h"
 #include "Profiler.h"
 #include "RenderSettings.h"
 #include "UIManager.h"
@@ -35,7 +35,7 @@ private:
     CubeRenderer* renderer;
     DebugRenderer* debugRenderer;
     RenderSettings renderSettings;
-    IsometricCamera* camera;
+    Camera* camera;
     Shader* shader;
     Shader* shadowShader;
     Shader* instancedShader;
@@ -133,7 +133,7 @@ public:
     CubeGrid* getGrid() const { return grid; }
     CubeRenderer* getRenderer() const { return renderer; }
     DebugRenderer* getDebugRenderer() const { return debugRenderer; }
-    IsometricCamera* getCamera() { return camera; }
+    Camera* getCamera() { return camera; }
     Profiler& getProfiler() { return profiler; }
     RenderSettings& getRenderSettings() { return renderSettings; }
 

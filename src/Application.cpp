@@ -68,7 +68,7 @@ bool Application::initialize()
 
     // Create camera
     float aspect = static_cast<float>(width) / static_cast<float>(height);
-    camera = new IsometricCamera(aspect);
+    camera = new Camera(aspect);
 
     float distance = 50.0f; // Distance from origin
     float angle = 45.0f * (3.14159f / 180.0f); // 45 degrees in radians
