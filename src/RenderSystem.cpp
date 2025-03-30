@@ -241,7 +241,7 @@ void RenderSystem::render(Camera* camera)
 
         for (auto& processor : postProcessors)
         {
-            processor->apply(source, target, &context);
+            processor->apply(source, target, context);
 
             // Swap source and target for next pass
             std::swap(source, target);

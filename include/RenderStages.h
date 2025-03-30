@@ -1,10 +1,12 @@
 #pragma once
 
 #include "RenderSystem.h"
+#include "CubeGrid.h"
 #include <glm.hpp>
 #include <gtc/matrix_transform.hpp>
 #include <vector>
 #include <memory>
+#include <unordered_map>
 
 // Forward declarations
 class Camera;
@@ -49,7 +51,7 @@ public:
         context.lightSpaceMatrix = lightProjection * lightView;
 
         // Bind shadow map framebuffer
-        shadowMapTarger->bind();
+        shadowMapTarget->bind();
         glClear(GL_DEPTH_BUFFER_BIT);
 
         // Configure for shadow map rendering
@@ -189,7 +191,7 @@ private:
         glGenVertexArrays(1, &skyboxVAO);
         glGenBuffers(1, &skyboxVBO);
 
-        glBindVertexarray(skyboxVAO);
+        glBindVertexArray(skyboxVAO);
         glBindBuffer(GL_ARRAY_BUFFER, skyboxVBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(skyboxVertices), &skyboxVertices, GL_STATIC_DRAW);
 
@@ -241,6 +243,47 @@ private:
         glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
     }
+};
+
+// Main geometry rendering stage (acts as a placeholder since RenderSystem has render logic)
+class GeometryStage : public RenderStage
+{
+public:
+    GeometryStage() : RenderStage("Geometry")
+    {
+
+    }
+
+    void initialize() override
+    {
+        // No specific initialization required
+    }
+
+    void execute(RenderContext& context) override
+    {
+        if (!renderSystem) return;
+
+        // Clear with sky color
+        glClearColor(0.678f, 0.847f, 0.902f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        // Render all visible objects
+        for (auto* obj : renderSystem->getRenderableObjects())
+        {
+            if (obj && obj->getActive() && obj->getVisible())
+            {
+                obj->render(context);
+            }
+        }
+    }
+
+    void setRenderSystem(RenderSystem* system)
+    {
+        renderSystem = system;
+    }
+
+private:
+    RenderSystem* renderSystem = nullptr;
 };
 
 // Debug visualization stage for wireframes, bounds, etc.
@@ -331,12 +374,12 @@ public:
     }
 
     // Set chunk data for rendering boundaries
-    void setChunkData(const std::unorderered_map<glm::ivec3, GridChunk*, Vec3Hash>& chunks, float spacing)
+    void setChunkData(const std::unordered_map<glm::ivec3, GridChunk*, Vec3Hash>& chunksMap, float spacing)
     {
         // Store chunks reference
-        this->setChunkData = &chunks;
+        this->chunksData = &chunksMap;
         this->chunkSpacing = spacing;
-        chunkBoundariesNeedUpdate = true;
+        this->chunkBoundariesNeedUpdate = true;
     }
 
 private:
@@ -348,6 +391,7 @@ private:
     bool showGrid = false;
     bool showChunkBoundaries = false;
     bool showBoundingBoxes = false;
+    bool chunkBoundariesNeedUpdate = true;
 
     // OpenGL resources
     unsigned int lineVAO = 0;
@@ -358,6 +402,10 @@ private:
     glm::ivec3 gridMaxBounds = glm::ivec3(10, 10, 10);
     float gridSpacing = 1.0f;
     bool gridNeedsUpdate = true;
+
+    // Chunk data
+    const std::unordered_map<glm::ivec3, GridChunk*, Vec3Hash>* chunksData = nullptr;
+    float chunkSpacing = 1.0f;
 
     // Bounding box data
     struct BoundingBox
@@ -479,7 +527,7 @@ private:
         glBufferData(GL_ARRAY_BUFFER, boundingBoxLineBuffer.size() * sizeof(float), boundingBoxLineBuffer.data(), GL_DYNAMIC_DRAW);
 
         glLineWidth(1.0f);
-        glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(boudningBoxLineBuffer.size() / 6));
+        glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(boundingBoxLineBuffer.size() / 6));
     }
 
     // Helper to update grid lines
@@ -495,7 +543,7 @@ private:
             {
                 glm::vec3 start(x * gridSpacing, y * gridSpacing, gridMinBounds.z * gridSpacing);
                 glm::vec3 end(x * gridSpacing, y * gridSpacing, gridMaxBounds.z * gridSpacing);
-                addLineToBuffer(start, end, gridColor, gridLinebuffer);
+                addLineToBuffer(start, end, gridColor, gridLineBuffer);
             }
         }
 
@@ -506,7 +554,7 @@ private:
             {
                 glm::vec3 start(gridMinBounds.x * gridSpacing, y * gridSpacing, z * gridSpacing);
                 glm::vec3 end(gridMaxBounds.x * gridSpacing, y * gridSpacing, z * gridSpacing);
-                addLineToBuffer(start, end, gridColor, gridLinebuffer);
+                addLineToBuffer(start, end, gridColor, gridLineBuffer);
             }
         }
 
@@ -517,7 +565,7 @@ private:
             {
                 glm::vec3 start(x * gridSpacing, gridMinBounds.y * gridSpacing, z * gridSpacing);
                 glm::vec3 end(x * gridSpacing, gridMaxBounds.y * gridSpacing, z * gridSpacing);
-                addLineToBuffer(start, end, gridColor, gridLinebuffer);
+                addLineToBuffer(start, end, gridColor, gridLineBuffer);
             }
         }
     }
@@ -527,13 +575,13 @@ private:
     {
         chunkBoundaryLineBuffer.clear();
 
-        if (!chunks) return;
+        if (!chunksData) return;
 
         // Line color for chunk boundaries
         glm::vec3 chunkColor(1.0f, 0.5f, 0.0f); // Orange
 
         // Generate lines for each chunk
-        for (const auto& pair : *chunks)
+        for (const auto& pair : *chunksData)
         {
             const glm::ivec3& chunkPos = pair.first;
             GridChunk* chunk = pair.second;

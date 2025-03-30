@@ -186,7 +186,7 @@ class PostProcessor
 public:
     virtual ~PostProcessor() = default;
     virtual void initialize() = 0;
-    virtual void apply(RenderTarget* input, RenderTarget* output, RenderContext* context) = 0;
+    virtual void apply(RenderTarget* input, RenderTarget* output, RenderContext& context) = 0;
 };
 
 // Main render system
@@ -204,6 +204,7 @@ public:
 
     void addRenderableObject(RenderableObject* object);
     void removeRenderableObject(RenderableObject* object);
+    std::vector<RenderableObject*> getRenderableObjects() { return renderableObjects; }
 
     void addRenderStage(std::shared_ptr<RenderStage> stage);
     void removeRenderStage(const std::string& stageName);

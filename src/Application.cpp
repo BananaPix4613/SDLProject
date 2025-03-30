@@ -1,16 +1,17 @@
 ﻿#include "Application.h"
+#include "ApplicationRenderIntegration.h"
 #include "UIManager.h"
 #include <iostream>
 
 Application::Application(int windowWidth, int windowHeight)
     : width(windowWidth), height(windowHeight),
-      window(nullptr), grid(nullptr), renderer(nullptr), camera(nullptr),
-      shader(nullptr), shadowShader(nullptr),
-      instancedShader(nullptr), instancedShadowShader(nullptr),
-      lastFrame(0.0f), deltaTime(0.0f), showUI(true),
-      selectedCubeColor(0.5f, 0.5f, 1.0f), isEditing(false), brushSize(1),
+      window(nullptr), grid(nullptr), camera(nullptr),
+      renderIntegration(nullptr), uiManager(nullptr),
+      lastFrame(0.0f), deltaTime(0.0f), visibleCubeCount(0),
+      showUI(true), isEditing(false), brushSize(1),
       selectedCubeX(-1), selectedCubeY(-1), selectedCubeZ(-1),
-      visibleCubeCount(0),enableAutoSave(false), autoSaveInterval(5),
+      selectedCubeColor(0.5f, 0.5f, 1.0f),
+      enableAutoSave(false), autoSaveInterval(5),
       autoSaveFolder(""), lastAutoSaveTime(0.0)
 {
     
@@ -18,22 +19,17 @@ Application::Application(int windowWidth, int windowHeight)
 
 Application::~Application()
 {
+    delete renderIntegration;
+    renderIntegration = nullptr;
+
     delete grid;
-    delete renderer;
+    grid = nullptr;
+
     delete camera;
-    delete shader;
-    delete shadowShader;
-    delete instancedShader;
-    delete instancedShadowShader;
-    delete debugRenderer;
+    camera = nullptr;
+
     delete uiManager;
-
-    glDeleteVertexArrays(1, &debugLineVAO);
-    glDeleteBuffers(1, &debugLineVBO);
-
-    // Clean up shadow resources
-    glDeleteFramebuffers(1, &depthMapFBO);
-    glDeleteTextures(1, &depthMap);
+    uiManager = nullptr;
 
     glfwDestroyWindow(window);
     glfwTerminate();
@@ -46,135 +42,50 @@ bool Application::initialize()
         return false;
     }
 
-    // Set up DPI scaling for high-resolution displays
-    float xscale, yscale;
-    glfwGetWindowContentScale(window, &xscale, &yscale);
-    float dpiScale = xscale > yscale ? xscale : yscale;
-
-    // Initialize framebuffer
-    setupFramebuffer();
-
-    // Create grid with chunk-based system
+    // Create and initialize core components
     grid = new CubeGrid(20, 1.0f);
-
-    // In Application::initialize() after the CubeGrid is created
-    std::cout << "Initial active cubes: " << grid->getTotalActiveCubeCount() << std::endl;
-    std::cout << "Initial grid bounds: ("
-        << grid->getMinBounds().x << "," << grid->getMinBounds().y << "," << grid->getMinBounds().z
-        << ") to ("
-        << grid->getMaxBounds().x << "," << grid->getMaxBounds().y << "," << grid->getMaxBounds().z
-        << ")" << std::endl;
-
 
     // Create camera
     float aspect = static_cast<float>(width) / static_cast<float>(height);
-    camera = new Camera(aspect);
+    camera = new IsometricCamera(aspect);
 
-    float distance = 50.0f; // Distance from origin
-    float angle = 45.0f * (3.14159f / 180.0f); // 45 degrees in radians
-
-    // Calculate isometric camera position at a fixed height
+    // Set camera position
+    float distance = 50.0f;
+    float angle = 45.0f * (3.14159f / 180.0f);
     glm::vec3 cameraPos(
         distance * cos(angle),
-        distance * 0.5f,        // Fixed height 
+        distance * 0.5f,
         distance * sin(angle)
     );
-
-    // Set camera to look at the origin
     camera->setPosition(cameraPos);
     camera->setTarget(glm::vec3(0.0f, 0.0f, 0.0f));
     camera->setZoom(1.0f);
 
-    // Create renderer with support for chunks
-    renderer = new CubeRenderer(grid, this);
-    renderer->initialize();
-
-    // Load shader
-    shader = new Shader("shaders/VertexShader.glsl", "shaders/FragmentShader.glsl");
-    shadowShader = new Shader("shaders/ShadowMappingVertexShader.glsl", "shaders/ShadowMappingFragmentShader.glsl");
-
-    // Load instanced versions
-    instancedShader = new Shader("shaders/InstancedVertexShader.glsl", "shaders/InstancedFragmentShader.glsl");
-    instancedShadowShader = new Shader("shaders/InstancedShadowVertexShader.glsl", "shaders/ShadowMappingFragmentShader.glsl");
-
-    // Setup shadow mapping
-    setupShadowMap();
-
-    // Initialize debug renderer
-    debugRenderer = new DebugRenderer();
-    debugRenderer->initialize();
-
     // Initialize UI Manager
     uiManager = new UIManager(this);
-    uiManager->setDpiScale(dpiScale);
     if (!uiManager->initialize(window))
     {
         std::cerr << "Failed to initialize UI Manager" << std::endl;
         return false;
     }
 
-    // Generate buffers for debug lines (frustum visualization)
-    glGenVertexArrays(1, &debugLineVAO);
-    glGenBuffers(1, &debugLineVBO);
-
-    glBindVertexArray(debugLineVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, debugLineVBO);
-
-    // Position attribute (3 floats, stride is 6 floats, no offset)
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    // Color attribute (3 floats, stride is 6 floats, offset 3 floats)
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-
-    glBindVertexArray(0);
-
-    // Add mouse button callback for cube picking
-    glfwSetMouseButtonCallback(window, mouseButtonCallback);
-
-    return true;
-}
-
-bool Application::initializeWindow()
-{
-    // Initialize GLFW
-    if (!glfwInit())
+    // Create render integration AFTER grid and camera are initialized
+    renderIntegration = new ApplicationRenderIntegration(this);
+    if (!renderIntegration->initialize())
     {
-        std::cerr << "GLFW initialization failed" << std::endl;
+        std::cerr << "Failed to initialize render system" << std::endl;
         return false;
     }
 
-    // Configure GLFW
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    // Set up DPI scaling for high-resolution displays
+    float xscale, yscale;
+    glfwGetWindowContentScale(window, &xscale, &yscale);
+    float dpiScale = xscale > yscale ? xscale : yscale;
 
-    // Get primary monitor resolution to calculate medium-sized window
-    GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
-    const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);
+    // Initialize UI Manager with DPI scale
+    uiManager->setDpiScale(dpiScale);
 
-    // Set window size to approximately 70% of screen size
-    width = static_cast<int>(mode->width * 0.7f);
-    height = static_cast<int>(mode->height * 0.7f);
-
-    // Create windowed mode window
-    window = glfwCreateWindow(width, height, "Isometric Grid", nullptr, nullptr);
-    if (!window)
-    {
-        std::cerr << "Window creation failed" << std::endl;
-        glfwTerminate();
-        return false;
-    }
-
-    // Center the window on screen
-    int monitorX, monitorY;
-    glfwGetMonitorPos(primaryMonitor, &monitorX, &monitorY);
-    glfwSetWindowPos(window,
-                     monitorX + (mode->width - width) / 2,
-                     monitorY + (mode->height - height) / 2);
-
-    // Initialize viewport properties
+    // Initialize window viewport
     viewportWidth = width;
     viewportHeight = height;
     viewportX = 0;
@@ -182,32 +93,22 @@ bool Application::initializeWindow()
     viewportActive = true;
 
     // Store monitor info for fullscreen toggle
-    this->primaryMonitor = primaryMonitor;
-    this->isFullscreen = false;
+    primaryMonitor = glfwGetPrimaryMonitor();
+    isFullscreen = false;
 
-    // Make context current
-    glfwMakeContextCurrent(window);
+    // Print initial grid stats
+    std::cout << "Initial active cubes: " << grid->getTotalActiveCubeCount() << std::endl;
+    std::cout << "Initial grid bounds: ("
+        << grid->getMinBounds().x << "," << grid->getMinBounds().y << "," << grid->getMinBounds().z
+        << ") to ("
+        << grid->getMaxBounds().x << "," << grid->getMaxBounds().y << "," << grid->getMaxBounds().z
+        << ")" << std::endl;
 
-    // Set callbacks
-    glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
-    //glfwSetCursorPosCallback(window, mouseCallback);
-    glfwSetScrollCallback(window, scrollCallback);
+    // Set up initial render settings
+    updateRenderSettings();
+
+    // Add mouse button callback for cube picking
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
-
-    // Set user pointer to this instance for callbacks
-    glfwSetWindowUserPointer(window, this);
-
-    // Initialize GLAD
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
-    {
-        std::cerr << "Failed to initialize GLAD" << std::endl;
-        return false;
-    }
-
-    // Configure OpenGL
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_CULL_FACE);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     return true;
 }
@@ -229,16 +130,14 @@ void Application::run()
         // 1. Start UI frame
         uiManager->beginFrame();
 
-        // 2. Render 3D scene to framebuffer
-        renderSceneToFrameBuffer();
+        // 2. Update render integration (updates the scene)
+        renderIntegration->update();
 
-        // 3. Render main framebuffer to screen
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glClearColor(0.15f, 0.15f, 0.15f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        // 3. Perform rendering
+        renderIntegration->render();
 
-        // 4. Render UI with the scene texture in the viewport
-        renderUI();
+        // 4. Finish UI rendering
+        uiManager->render();
 
         // Swap buffers
         glfwSwapBuffers(window);
@@ -296,43 +195,16 @@ void Application::update()
 
         profiler.endProfile("ChunkUpdate");
     }
-}
 
-void Application::setupFramebuffer()
-{
-    // Create framebuffer
-    glGenFramebuffers(1, &sceneFramebuffer);
-    glBindFramebuffer(GL_FRAMEBUFFER, sceneFramebuffer);
-
-    // Create color attachment texture
-    glGenTextures(1, &sceneColorTexture);
-    glBindTexture(GL_TEXTURE_2D, sceneColorTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, sceneColorTexture, 0);
-
-    // Create depth texture
-    glGenTextures(1, &sceneDepthTexture);
-    glBindTexture(GL_TEXTURE_2D, sceneDepthTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, sceneDepthTexture, 0);
-
-    // Check framebuffer status
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-    {
-        std::cerr << "ERROR: Framebuffer is not complete!" << std::endl;
-    }
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    // Update view frustum for culling
+    updateViewFrustum();
 }
 
 void Application::processInput()
 {
     // Check if ImGui wants to capture input
     ImGuiIO& io = ImGui::GetIO();
+
     // Check if we're hovering over the viewport specifically
     bool hoveringViewport = false;
     ImGuiWindow* viewportWindow = ImGui::FindWindowByName("Viewport");
@@ -459,6 +331,7 @@ void Application::processInput()
     if (glfwGetKey(window, GLFW_KEY_TAB) == GLFW_PRESS && tabReleased)
     {
         renderSettings.showDebugView = !renderSettings.showDebugView;
+        updateRenderSettings();
         tabReleased = false;
     }
     else if (glfwGetKey(window, GLFW_KEY_TAB) == GLFW_RELEASE)
@@ -471,6 +344,7 @@ void Application::processInput()
     if (glfwGetKey(window, GLFW_KEY_F1) == GLFW_PRESS && f1Released)
     {
         showUI = !showUI;
+        uiManager->setShowUI(showUI);
         f1Released = false;
     }
     else if (glfwGetKey(window, GLFW_KEY_F1) == GLFW_RELEASE)
@@ -491,277 +365,113 @@ void Application::processInput()
     }
 }
 
-bool errorYet = false;
-void Application::renderSceneToFrameBuffer()
+void Application::setCameraAspectRatio(float aspect)
 {
-    // Bind framebuffer
-    glBindFramebuffer(GL_FRAMEBUFFER, sceneFramebuffer);
-    glViewport(0, 0, viewportWidth, viewportHeight);
-
-    //// Set the viewport to match the panel exactly
-    //glViewport(viewportX, viewportY, viewportWidth, viewportHeight);
-
-    // Enable depth testing and face culling for 3D rendering
-    //glEnable(GL_DEPTH_TEST);
-    // In renderSceneToFrameBuffer(), before rendering:
-    //glDisable(GL_DEPTH_TEST);  // Temporarily disable depth testing
-    // OR
-    //glDepthFunc(GL_ALWAYS);    // Always pass depth test
-    //glDisable(GL_CULL_FACE);
-    //glDepthFunc(GL_LESS); // Use the most common depth function
-
-    // In renderSceneToFrameBuffer():
-    //glCullFace(GL_BACK);  // Default is GL_BACK
-    //glFrontFace(GL_CCW);  // Try both GL_CCW and GL_CW
-
-    // Clear with sky blue color
-    glClearColor(0.678f, 0.847f, 0.902f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    // Check that camera, grid, and renderer are valid
-    if (!camera || !grid || !renderer)
+    if (camera)
     {
-        std::cerr << "Scene components not initialized!" << std::endl;
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        return;
+        camera->setAspectRatio(aspect);
     }
-
-    
-
-    // Temporarily disable frustum culling
-    bool originalCullingState = renderSettings.enableFrustumCulling;
-    renderSettings.enableFrustumCulling = false;
-
-    //renderCubesDirectly();
-
-    // Update view frustum
-    updateViewFrustum();
-
-    // Shadow mapping
-    if (renderSettings.enableShadows)
-    {
-        // Set up the light space matrices for shadows
-        glm::mat4 lightProjection, lightView, lightSpaceMatrix;
-        float near_plane = 1.0f, far_plane = 100.0f;
-        float orthoSize = 15.0f;
-
-        lightProjection = glm::ortho(-orthoSize, orthoSize, -orthoSize, orthoSize, near_plane, far_plane);
-        glm::vec3 lightPos = glm::vec3(15.0f, 20.0f, 15.0f);
-        glm::vec3 lightTarget = glm::vec3(0.0f, 0.0f, 0.0f);
-        lightView = glm::lookAt(lightPos, lightTarget, glm::vec3(0.0f, 1.0f, 0.0f));
-        lightSpaceMatrix = lightProjection * lightView;
-
-        // Choose shadow shader
-        Shader* activeShadowShader = renderSettings.useInstancing ? instancedShadowShader : shadowShader;
-
-        // Render shadow map
-        glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
-        glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-        glClear(GL_DEPTH_BUFFER_BIT);
-        
-        glEnable(GL_POLYGON_OFFSET_FILL);
-        glPolygonOffset(2.0f, 4.0f);
-
-        activeShadowShader->use();
-        activeShadowShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
-
-        // Render scene from light's perspective
-        renderer->render(*activeShadowShader);
-
-        glDisable(GL_POLYGON_OFFSET_FILL);
-
-        // Restore framebuffer and viewport
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glViewport(0, 0, width, height);
-    }
-
-    // Main rendering pass
-    Shader* activeShader = renderSettings.useInstancing ? instancedShader : shader;
-    activeShader->use();
-
-    // Set matrices
-    activeShader->setMat4("view", camera->getViewMatrix());
-    activeShader->setMat4("projection", camera->getProjectionMatrix());
-
-    // Set lighting parameters
-    glm::vec3 lightPos = glm::vec3(15.0f, 20.0f, 15.0f);
-    activeShader->setVec3("lightPos", lightPos);
-    activeShader->setVec3("lightColor", glm::vec3(15.0f, 15.0f, 15.0f));
-    activeShader->setVec3("viewPos", camera->getPosition());
-
-    // Apply render settings
-    activeShader->setFloat("ambientStrength", renderSettings.ambientStrength);
-    activeShader->setFloat("specularStrength", renderSettings.specularStrength);
-    activeShader->setFloat("shininess", renderSettings.shininess);
-
-    // Shadow settings
-    if (renderSettings.enableShadows)
-    {
-        glm::mat4 lightProjection, lightView, lightSpaceMatrix;
-        float near_plane = 1.0f, far_plane = 100.0f;
-        float orthoSize = 15.0f;
-
-        lightProjection = glm::ortho(-orthoSize, orthoSize, -orthoSize, orthoSize, near_plane, far_plane);
-        glm::vec3 lightPos = glm::vec3(15.0f, 20.0f, 15.0f);
-        glm::vec3 lightTarget = glm::vec3(0.0f, 0.0f, 0.0f);
-        lightView = glm::lookAt(lightPos, lightTarget, glm::vec3(0.0f, 1.0f, 0.0f));
-        lightSpaceMatrix = lightProjection * lightView;
-
-        activeShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
-        activeShader->setBool("usePCF", renderSettings.usePCF);
-        activeShader->setFloat("shadowBias", renderSettings.shadowBias);
-
-        // Bind shadow map texture
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, depthMap);
-        activeShader->setInt("shadowMap", 0);
-    }
-    else
-    {
-        // Ensure nothing is in shadow
-        activeShader->setFloat("shadowBias", 1.0f);
-    }
-    
-    // Render the cubes
-    renderer->render(*activeShader);
-
-    // Debug visualizations
-    if (renderSettings.showFrustumWireframe)
-    {
-        renderFrustumDebug();
-    }
-
-    if (debugRenderer)
-    {
-        if (renderSettings.showChunkBoundaries)
-        {
-            debugRenderer->renderChunkBoundaries(
-                camera->getViewMatrix(),
-                camera->getProjectionMatrix(),
-                grid);
-        }
-
-        if (renderSettings.showGridLines)
-        {
-            debugRenderer->renderGridLines(
-                camera->getViewMatrix(),
-                camera->getProjectionMatrix(),
-                grid->getMinBounds(),
-                grid->getMaxBounds(),
-                grid->getSpacing());
-        }
-    }
-
-    // Unbind framebuffer
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    // Restore original culling state
-    renderSettings.enableFrustumCulling = originalCullingState;
-
-    /*GLenum err = glGetError();
-    if (err != GL_NO_ERROR && !errorYet)
-    {
-        std::cout << "5OpenGL error during rendering: 0x" << std::hex << err << std::dec << std::endl;
-    }
-    errorYet = true;*/
 }
 
-void Application::renderUI()
+void Application::setCubeAt(int x, int y, int z, bool active, const glm::vec3& color)
 {
-    // The viewport panel in UIManager would display the scene texture
-    uiManager->setSceneTexture(sceneColorTexture);
-    uiManager->render();
+    glm::vec3 position = grid->calculatePosition(x, y, z);
+    Cube cube(position, color);
+    cube.active = active;
+    grid->setCube(x, y, z, cube);
+
+    // Notify render integration of grid change
+    if (renderIntegration && renderIntegration->getVoxelObject())
+    {
+        // Mark the affected chunk as dirty for re-rendering
+        glm::ivec3 chunkPos(
+            std::floor(float(x) / GridChunk::CHUNK_SIZE),
+            std::floor(float(y) / GridChunk::CHUNK_SIZE),
+            std::floor(float(z) / GridChunk::CHUNK_SIZE)
+        );
+        renderIntegration->getVoxelObject()->markChunkDirty(chunkPos);
+    }
 }
 
-void Application::renderFrustumDebug()
+void Application::updateRenderSettings()
 {
-    if (!renderSettings.showFrustumWireframe) return;
-
-    // Create simple shader for lines if needed
-    static Shader* lineShader = nullptr;
-    if (!lineShader)
+    if (renderIntegration)
     {
-        lineShader = new Shader("shaders/LineVertexShader.glsl", "shaders/LineFragmentShader.glsl");
+        renderIntegration->updateRenderSettings();
     }
-
-    // Get frustum corners
-    std::vector<glm::vec3> corners = getFrustumCorners();
-
-    // Define line segments for frustum edges
-    std::vector<glm::vec3> lines = {
-        // Near face
-        corners[0], corners[1],
-        corners[1], corners[3],
-        corners[3], corners[2],
-        corners[2], corners[0],
-
-        // Far face
-        corners[4], corners[5],
-        corners[5], corners[7],
-        corners[7], corners[6],
-        corners[6], corners[4],
-
-        // Connecting edges
-        corners[0], corners[4],
-        corners[1], corners[5],
-        corners[2], corners[6],
-        corners[3], corners[7]
-    };
-
-    // Update VBO with line data
-    glBindBuffer(GL_ARRAY_BUFFER, debugLineVBO);
-    glBufferData(GL_ARRAY_BUFFER, lines.size() * sizeof(glm::vec3), lines.data(), GL_DYNAMIC_DRAW);
-
-    // Draw lines
-    lineShader->use();
-    lineShader->setMat4("view", camera->getViewMatrix());
-    lineShader->setMat4("projection", camera->getProjectionMatrix());
-    lineShader->setVec3("color", glm::vec3(1.0f, 0.0f, 0.0f)); // Red frustum wireframe
-
-    glBindVertexArray(debugLineVAO);
-    glLineWidth(2.0f); // Thicker lines for better visibility
-    glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(lines.size()));
-    glLineWidth(1.0f); // Reset line width
-
-    glBindVertexArray(0);
 }
 
-void Application::renderDebugView()
+void Application::setupShadowMap()
 {
-    // Reset viewport to full screen for main rendering
-    glViewport(0, 0, width, height);
-
-    float posX = static_cast<float>(width - SHADOW_WIDTH / 4);
-    float posY = static_cast<float>(height - SHADOW_HEIGHT / 4);
-
-    switch (renderSettings.currentDebugView)
+    // This is now handled by the render integration
+    if (renderIntegration)
     {
-        case 0: // Depth map in corner of screen
-            debugRenderer->renderDebugTexture(depthMap, posX, posY,
-                                              static_cast<float>(SHADOW_WIDTH / 4),
-                                              static_cast<float>(SHADOW_HEIGHT / 4), true);
-            break;
-
-        case 1: // Full screen depth map
-            debugRenderer->renderDebugTexture(depthMap,
-                                              0, 0,
-                                              static_cast<float>(width),
-                                              static_cast<float>(height),
-                                              true);
-            break;
-
-        case 2: // Full screen depth map with linear depth output
-            // Special visualization with depth linearization
-            // This would need a custom shader to properly visualize depth
-            debugRenderer->renderDebugTexture(depthMap,
-                                              0, 0,
-                                              static_cast<float>(width),
-                                              static_cast<float>(height),
-                                              true);
-            // Add text overlay explaining the view
-            // (Would need additional text rendering functionality)
-            break;
+        updateRenderSettings();
     }
+}
+
+bool Application::initializeWindow()
+{
+    // Initialize GLFW
+    if (!glfwInit())
+    {
+        std::cerr << "GLFW initialization failed" << std::endl;
+        return false;
+    }
+
+    // Configure GLFW
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+    // Get primary monitor resolution to calculate medium-sized window
+    GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
+    const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);
+
+    // Set window size to approximately 70% of screen size
+    width = static_cast<int>(mode->width * 0.7f);
+    height = static_cast<int>(mode->height * 0.7f);
+
+    // Create windowed mode window
+    window = glfwCreateWindow(width, height, "Isometric Grid", nullptr, nullptr);
+    if (!window)
+    {
+        std::cerr << "Window creation failed" << std::endl;
+        glfwTerminate();
+        return false;
+    }
+
+    // Center the window on screen
+    int monitorX, monitorY;
+    glfwGetMonitorPos(primaryMonitor, &monitorX, &monitorY);
+    glfwSetWindowPos(window,
+                     monitorX + (mode->width - width) / 2,
+                     monitorY + (mode->height - height) / 2);
+
+    // Make context current
+    glfwMakeContextCurrent(window);
+
+    // Set callbacks
+    glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
+    glfwSetScrollCallback(window, scrollCallback);
+    glfwSetMouseButtonCallback(window, mouseButtonCallback);
+
+    // Set user pointer to this instance for callbacks
+    glfwSetWindowUserPointer(window, this);
+
+    // Initialize GLAD
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
+    {
+        std::cerr << "Failed to initialize GLAD" << std::endl;
+        return false;
+    }
+
+    // Configure OpenGL
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    return true;
 }
 
 void Application::updateViewFrustum()
@@ -773,41 +483,6 @@ void Application::updateViewFrustum()
 
     // Update the frustum planes
     viewFrustum.extractFromMatrix(viewProj);
-}
-
-std::vector<glm::vec3> Application::getFrustumCorners() const
-{
-    std::vector<glm::vec3> corners(8);
-
-    // Get the inverse of the view-projection matrix
-    glm::mat4 viewProj = camera->getProjectionMatrix() * camera->getViewMatrix();
-    glm::mat4 invViewProj = glm::inverse(viewProj);
-
-    // Define corners in NDC space (-1 to 1 cube)
-    // Near face (CCW when looking at the near face from inside the frustum)
-    glm::vec4 ntl(-1.0f, 1.0f, -1.0f, 1.0f);  // Near top left
-    glm::vec4 ntr(1.0f, 1.0f, -1.0f, 1.0f);   // Near top right
-    glm::vec4 nbl(-1.0f, -1.0f, -1.0f, 1.0f); // Near bottom left
-    glm::vec4 nbr(1.0f, -1.0f, -1.0f, 1.0f);  // Near bottom right
-
-    // Far face (CCW when looking at the far face from inside the frustum)
-    glm::vec4 ftl(-1.0f, 1.0f, 1.0f, 1.0f);   // Far top left
-    glm::vec4 ftr(1.0f, 1.0f, 1.0f, 1.0f);    // Far top right
-    glm::vec4 fbl(-1.0f, -1.0f, 1.0f, 1.0f);  // Far bottom left
-    glm::vec4 fbr(1.0f, -1.0f, 1.0f, 1.0f);   // Far bottom right
-
-    // Transform all points to world space
-    std::vector<glm::vec4> ndc = {ntl, ntr, nbl, nbr, ftl, ftr, fbl, fbr};
-
-    for (int i = 0; i < 8; i++)
-    {
-        // Apply inverse view-projection to get world space corners
-        glm::vec4 worldPos = invViewProj * ndc[i];
-        worldPos /= worldPos.w; // Perspective divide
-        corners[i] = glm::vec3(worldPos);
-    }
-
-    return corners;
 }
 
 std::string Application::generateAutoSaveFilename() const
@@ -875,6 +550,12 @@ void Application::framebufferSizeCallback(GLFWwindow* window, int width, int hei
         app->viewportHeight = height;
         app->viewportX = 0;
         app->viewportY = 0;
+
+        // Update the render integration with new size
+        if (app->renderIntegration)
+        {
+            app->renderIntegration->resizeViewport(width, height);
+        }
     }
 }
 
@@ -986,7 +667,7 @@ void Application::setVisibleCubeCount(int visibleCount)
     int totalActive = grid->getTotalActiveCubeCount();
 
     cullingStats.totalActiveCubes = totalActive;
-    cullingStats.visibleCubes = visibleCount;
+    cullingStats.visibleCubes = getVisibleCubeCount();
 
     if (totalActive >= visibleCount)
     {
@@ -1036,78 +717,23 @@ bool Application::isCubeVisible(int x, int y, int z) const
         return true; // Always visible when culling is disabled
     }
 
-    // Get the cube's world position
+    // Let the VoxelObject handle visiblity if it exists
+    if (renderIntegration && renderIntegration->getVoxelObject())
+    {
+        // Get the chunk position
+        glm::ivec3 chunkPos(
+            std::floor(float(x) / GridChunk::CHUNK_SIZE),
+            std::floor(float(y) / GridChunk::CHUNK_SIZE),
+            std::floor(float(z) / GridChunk::CHUNK_SIZE)
+        );
+
+        // Use the frustum test to determine visibility
+        return renderIntegration->getVoxelObject()->isChunkVisible(chunkPos, viewFrustum, camera->getPosition());
+    }
+
+    // Fallback to simple position test if no VoxelObject
     const Cube& cube = grid->getCube(x, y, z);
-
-    // Use the frustum test to determine visibility
     return viewFrustum.isCubeVisible(cube.position, grid->getSpacing());
-}
-
-void Application::setupShadowMap()
-{
-    // Use the shadow map resolution from settings
-    SHADOW_WIDTH = renderSettings.shadowMapResolution;
-    SHADOW_HEIGHT = renderSettings.shadowMapResolution;
-
-    // Delete existing shadow map resources if they exist
-    if (depthMapFBO)
-    {
-        glDeleteFramebuffers(1, &depthMapFBO);
-        glDeleteTextures(1, &depthMap);
-    }
-
-    // Create a framebuffer object for the depth map
-    glGenFramebuffers(1, &depthMapFBO);
-
-    // Create a 2D texture for the depth map
-    glGenTextures(1, &depthMap);
-    glBindTexture(GL_TEXTURE_2D, depthMap);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24,
-                 SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-
-    // Configure texture filtering
-    if (renderSettings.usePCF)
-    {
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    }
-    else
-    {
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    }
-
-    // Fix shadow acne with proper clamping
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-    float borderColor[] = {1.0f, 1.0f, 1.0f, 1.0f};
-    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
-
-    // Use comparison mode only when needed
-    if (renderSettings.usePCF)
-    {
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
-    }
-    else
-    {
-        // CRITICAL: Disable comparison mode for standard shadow mapping
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
-    }
-
-    // Attach the depth texture to the framebuffer
-    glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
-    glDrawBuffer(GL_NONE);
-    glReadBuffer(GL_NONE);
-
-    // Check framebuffer completeness
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-    {
-        std::cerr << "Error: Shadow map framebuffer is not complete!" << std::endl;
-    }
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 void Application::resizeWindow(int newWidth, int newHeight)
@@ -1208,12 +834,8 @@ void Application::setViewportSize(int width, int height)
         viewportHeight = height;
         viewportActive = true;
 
-        // Resize framebuffer textures
-        glBindTexture(GL_TEXTURE_2D, sceneColorTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-
-        glBindTexture(GL_TEXTURE_2D, sceneDepthTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+        // Update render integration viewport
+        renderIntegration->resizeViewport(width, height);
 
         // Update camera aspect ratio
         if (camera)
@@ -1228,22 +850,6 @@ void Application::setViewportPos(int x, int y)
 {
     viewportX = x;
     viewportY = y;
-}
-
-void Application::setCameraAspectRatio(float aspect)
-{
-    if (camera)
-    {
-        camera->setAspectRatio(aspect);
-    }
-}
-
-void Application::setCubeAt(int x, int y, int z, bool active, const glm::vec3& color)
-{
-    glm::vec3 position = grid->calculatePosition(x, y, z);
-    Cube cube(position, color);
-    cube.active = active;
-    grid->setCube(x, y, z, cube);
 }
 
 bool Application::pickCube(int& outX, int& outY, int& outZ)

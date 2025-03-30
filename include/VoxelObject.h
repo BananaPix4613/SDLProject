@@ -123,6 +123,7 @@ public:
     int getTotalChunks() const { return static_cast<int>(chunkRenderData.size()); }
     int getVisibleChunks() const { return visibleChunks; }
     int getVisibleCubes() const { return visibleChunks; }
+    bool isChunkVisible(const glm::ivec3& chunkPos, const Frustum& frustum, const glm::vec3& cameraPosition) const;
 
 private:
     // Reference to the voxel data

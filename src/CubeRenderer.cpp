@@ -138,7 +138,7 @@ void CubeRenderer::render(Shader &shader)
     std::vector<glm::vec3> instanceColors;
 
     // Get camera position for distance culling
-    glm::vec3 cameraPos = app->getCameraPosition();
+    glm::vec3 cameraPos = app->getCamera()->getPosition();
 
     // Process each chunk
     const auto& chunks = grid->getChunks();
@@ -362,7 +362,7 @@ void CubeRenderer::renderShadowMap(Shader& depthShader)
     }
 
     // Skip if no cubes to render
-    int instanceCount = instanceMatrices.size();
+    int instanceCount = static_cast<int>(instanceMatrices.size());
     if (instanceCount == 0) return;
 
     // Activate shader

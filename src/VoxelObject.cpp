@@ -398,3 +398,25 @@ void VoxelObject::onGridChanged()
     // When grid changes significantly, mark all chunks dirty
     markAllChunksDirty();
 }
+
+bool VoxelObject::isChunkVisible(const glm::ivec3& chunkPos, const Frustum& frustum, const glm::vec3& cameraPosition) const
+{
+    // Find the render data for this chunk
+    auto it = chunkRenderData.find(chunkPos);
+    if (it == chunkRenderData.end())
+    {
+        return false; // Not in our data, assume not visible
+    }
+
+    const ChunkRenderData* data = it->second.get();
+
+    // Check distance culling with provided camera position
+    if (renderDistance > 0 &&
+        glm::distance(data->center, cameraPosition) > renderDistance)
+    {
+        return false;
+    }
+
+    // Check frustum culling
+    return !frustum.isSphereOutside(data->center, data->radius);
+}

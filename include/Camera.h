@@ -38,6 +38,11 @@ public:
 
     }
 
+    glm::mat4 getViewMatrix() const override
+    {
+        return glm::lookAt(position, target, up);
+    }
+
     glm::mat4 getProjectionMatrix() const override
     {
         float size = orthoSize / zoom;

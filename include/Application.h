@@ -1,15 +1,11 @@
 #pragma once
 
 #include "CubeGrid.h"
-#include "CubeRenderer.h"
-#include "DebugRenderer.h"
-#include "FileDialog.h"
+#include "Camera.h"
 #include "Frustum.h"
 #include "GridSerializer.h"
-#include "Camera.h"
 #include "Profiler.h"
 #include "RenderSettings.h"
-#include "UIManager.h"
 #include <Shader.h>
 #include <GLFW/glfw3.h>
 #include <algorithm>
@@ -21,7 +17,10 @@
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
 
-class UIManager; // Forward declaration
+// Forward declarations
+class ApplicationRenderIntegration;
+class UIManager;
+class Frustum;
 
 class Application
 {
@@ -31,18 +30,23 @@ private:
     int width, height;
     bool isFullscreen;
 
+    // Core systems
     CubeGrid* grid;
-    CubeRenderer* renderer;
-    DebugRenderer* debugRenderer;
-    RenderSettings renderSettings;
-    Camera* camera;
-    Shader* shader;
-    Shader* shadowShader;
-    Shader* instancedShader;
-    Shader* instancedShadowShader;
+    IsometricCamera* camera;
+    ApplicationRenderIntegration* renderIntegration;
     UIManager* uiManager;
-    Frustum viewFrustum;
+    RenderSettings renderSettings;
     Profiler profiler;
+
+    // Frame timing
+    float lastFrame;
+    float deltaTime;
+
+    // Rendering statistics
+    int visibleCubeCount;
+
+    // Frustum for culling
+    Frustum viewFrustum;
 
     struct CullingStats {
         int totalActiveCubes;
@@ -63,20 +67,8 @@ private:
 
     CullingStats cullingStats;
 
-    bool showUI;          // Toggle for UI visibility
-
-    unsigned int depthMapFBO;
-    unsigned int depthMap;
-    unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
-    unsigned int debugLineVAO, debugLineVBO;
-
-    unsigned int sceneFramebuffer;
-    unsigned int sceneColorTexture;
-    unsigned int sceneDepthTexture;
-
-    float lastFrame;
-    float deltaTime;
-    int visibleCubeCount;
+    // UI state
+    bool showUI;
 
     // Viewport variables
     int viewportX, viewportY, viewportWidth, viewportHeight;
@@ -88,10 +80,6 @@ private:
     int brushSize;
     int selectedCubeX, selectedCubeY, selectedCubeZ;
     int chunkViewDistance = 5;
-    float maxViewDistance = 500.0f;
-    bool useInstanceCache = true;
-    bool perCubeCulling = true;
-    int batchSize = 10000;
 
     // Auto-save features
     bool enableAutoSave;
@@ -106,41 +94,43 @@ public:
     bool initialize();
     void run();
 
+    // Statistics and visiblity
     int getVisibleCubeCount() const { return visibleCubeCount; }
     void setVisibleCubeCount(int visibleCount);
-
-    const Frustum& getViewFrustum() const { return viewFrustum; }
-    const glm::vec3 getCameraPosition() const { return camera->getPosition(); }
-    unsigned int getInstancedShaderID() const { return instancedShader ? instancedShader->ID : 0; }
-    unsigned int getInstancedShadowShaderID() const { return instancedShadowShader ? instancedShadowShader->ID : 0; }
-
     bool isCubeVisible(int x, int y, int z) const;
-    bool isFrustumCullingEnabled() const { return renderSettings.enableFrustumCulling; }
 
-    void setupShadowMap();
-    GLFWwindow* getWindow() const { return window; }
+    // Window management
     void getWindowSize(int& w, int& h) const { w = width, h = height; }
     void resizeWindow(int newWidth, int newHeight);
     void resizeWindow(float newWidth, float newHeight);
     void toggleFullscreen();
     bool getIsFullscreen() const { return isFullscreen; }
+    GLFWwindow* getWindow() const { return window; }
 
+    // Viewport management
     void setViewportSize(int width, int height);
     void setViewportPos(int x, int y);
-    void setCameraAspectRatio(float aspect);
     bool isViewportActive() const { return viewportActive; }
+    void setCameraAspectRatio(float aspect);
 
-    CubeGrid* getGrid() const { return grid; }
-    CubeRenderer* getRenderer() const { return renderer; }
-    DebugRenderer* getDebugRenderer() const { return debugRenderer; }
-    Camera* getCamera() { return camera; }
-    Profiler& getProfiler() { return profiler; }
+    // Settings management
+    void updateRenderSettings();
     RenderSettings& getRenderSettings() { return renderSettings; }
+    void setupShadowMap();
 
+    // Access to core components
+    CubeGrid* getGrid() const { return grid; }
+    IsometricCamera* getCamera() const { return camera; }
+    Profiler& getProfiler() { return profiler; }
+    UIManager* getUIManager() const { return uiManager; }
+    ApplicationRenderIntegration* getRenderIntegration() const { return renderIntegration; }
+
+    // Cube editing
     void setCubeAt(int x, int y, int z, bool active, const glm::vec3& color);
     bool pickCube(int& outX, int& outY, int& outZ);
     void clearGrid(bool resetFloor);
 
+    // Editing state
     void setEditingMode(bool editing) { isEditing = editing; }
     bool getEditingMode() const { return isEditing; }
     void setBrushSize(int size) { brushSize = size; }
@@ -154,6 +144,7 @@ public:
         selectedCubeZ = z;
     }
 
+    // Auto-save settings
     void setAutoSaveSettings(bool enable, int intervalMinutes, const std::string& folder)
     {
         enableAutoSave = enable;
@@ -166,15 +157,7 @@ private:
     bool initializeWindow();
     void processInput();
     void update();
-    void setupFramebuffer();
-    void renderSceneToFrameBuffer();
-    void renderUI();
-    void renderFrustumDebug();
-    void renderDebugView();
     void updateViewFrustum();
-
-    // Debug functions
-    std::vector<glm::vec3> getFrustumCorners() const;
 
     // File handling
     std::string generateAutoSaveFilename() const;
@@ -185,8 +168,6 @@ private:
     static void mouseCallback(GLFWwindow* window, double xpos, double ypos);
     static void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
     static void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
-
-    // Error handling
     static void GLAPIENTRY errorCallback(GLenum source, GLenum type, GLuint id,
                                          GLenum severity, GLsizei length,
                                          const GLchar* message, const void* userParam);

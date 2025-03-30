@@ -31,7 +31,15 @@ struct Plane
 class Frustum
 {
 public:
-    enum PlaneID { NEAR, FAR, LEFT, RIGHT, TOP, BOTTOM };
+    enum PlaneID
+    {
+        PLANE_NEAR,
+        PLANE_FAR,
+        PLANE_LEFT,
+        PLANE_RIGHT,
+        PLANE_TOP,
+        PLANE_BOTTOM
+    };
     std::vector<Plane> planes;
 
     Frustum()
@@ -43,40 +51,40 @@ public:
     void extractFromMatrix(const glm::mat4& viewProjection)
     {
         // Left plane
-        planes[LEFT].normal.x = viewProjection[0][3] + viewProjection[0][0];
-        planes[LEFT].normal.y = viewProjection[1][3] + viewProjection[1][0];
-        planes[LEFT].normal.z = viewProjection[2][3] + viewProjection[2][0];
-        planes[LEFT].distance = viewProjection[3][3] + viewProjection[3][0];
+        planes[PLANE_LEFT].normal.x = viewProjection[0][3] + viewProjection[0][0];
+        planes[PLANE_LEFT].normal.y = viewProjection[1][3] + viewProjection[1][0];
+        planes[PLANE_LEFT].normal.z = viewProjection[2][3] + viewProjection[2][0];
+        planes[PLANE_LEFT].distance = viewProjection[3][3] + viewProjection[3][0];
 
         // Right plane
-        planes[RIGHT].normal.x = viewProjection[0][3] - viewProjection[0][0];
-        planes[RIGHT].normal.y = viewProjection[1][3] - viewProjection[1][0];
-        planes[RIGHT].normal.z = viewProjection[2][3] - viewProjection[2][0];
-        planes[RIGHT].distance = viewProjection[3][3] - viewProjection[3][0];
+        planes[PLANE_RIGHT].normal.x = viewProjection[0][3] - viewProjection[0][0];
+        planes[PLANE_RIGHT].normal.y = viewProjection[1][3] - viewProjection[1][0];
+        planes[PLANE_RIGHT].normal.z = viewProjection[2][3] - viewProjection[2][0];
+        planes[PLANE_RIGHT].distance = viewProjection[3][3] - viewProjection[3][0];
 
         // Bottom plane
-        planes[BOTTOM].normal.x = viewProjection[0][3] + viewProjection[0][1];
-        planes[BOTTOM].normal.y = viewProjection[1][3] + viewProjection[1][1];
-        planes[BOTTOM].normal.z = viewProjection[2][3] + viewProjection[2][1];
-        planes[BOTTOM].distance = viewProjection[3][3] + viewProjection[3][1];
+        planes[PLANE_BOTTOM].normal.x = viewProjection[0][3] + viewProjection[0][1];
+        planes[PLANE_BOTTOM].normal.y = viewProjection[1][3] + viewProjection[1][1];
+        planes[PLANE_BOTTOM].normal.z = viewProjection[2][3] + viewProjection[2][1];
+        planes[PLANE_BOTTOM].distance = viewProjection[3][3] + viewProjection[3][1];
 
         // Top plane
-        planes[TOP].normal.x = viewProjection[0][3] - viewProjection[0][1];
-        planes[TOP].normal.y = viewProjection[1][3] - viewProjection[1][1];
-        planes[TOP].normal.z = viewProjection[2][3] - viewProjection[2][1];
-        planes[TOP].distance = viewProjection[3][3] - viewProjection[3][1];
+        planes[PLANE_TOP].normal.x = viewProjection[0][3] - viewProjection[0][1];
+        planes[PLANE_TOP].normal.y = viewProjection[1][3] - viewProjection[1][1];
+        planes[PLANE_TOP].normal.z = viewProjection[2][3] - viewProjection[2][1];
+        planes[PLANE_TOP].distance = viewProjection[3][3] - viewProjection[3][1];
 
         // Near plane
-        planes[NEAR].normal.x = viewProjection[0][3] + viewProjection[0][2];
-        planes[NEAR].normal.y = viewProjection[1][3] + viewProjection[1][2];
-        planes[NEAR].normal.z = viewProjection[2][3] + viewProjection[2][2];
-        planes[NEAR].distance = viewProjection[3][3] + viewProjection[3][2];
+        planes[PLANE_NEAR].normal.x = viewProjection[0][3] + viewProjection[0][2];
+        planes[PLANE_NEAR].normal.y = viewProjection[1][3] + viewProjection[1][2];
+        planes[PLANE_NEAR].normal.z = viewProjection[2][3] + viewProjection[2][2];
+        planes[PLANE_NEAR].distance = viewProjection[3][3] + viewProjection[3][2];
 
         // Far plane
-        planes[FAR].normal.x = viewProjection[0][3] - viewProjection[0][2];
-        planes[FAR].normal.y = viewProjection[1][3] - viewProjection[1][2];
-        planes[FAR].normal.z = viewProjection[2][3] - viewProjection[2][2];
-        planes[FAR].distance = viewProjection[3][3] - viewProjection[3][2];
+        planes[PLANE_FAR].normal.x = viewProjection[0][3] - viewProjection[0][2];
+        planes[PLANE_FAR].normal.y = viewProjection[1][3] - viewProjection[1][2];
+        planes[PLANE_FAR].normal.z = viewProjection[2][3] - viewProjection[2][2];
+        planes[PLANE_FAR].distance = viewProjection[3][3] - viewProjection[3][2];
 
         // Normalize all plane normals
         for (auto& plane : planes)

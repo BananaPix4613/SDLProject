@@ -607,11 +607,13 @@ void UIManager::renderViewMenu()
         if (ImGui::MenuItem("Show Frustum Wireframe", nullptr, &renderSettings.showFrustumWireframe)) {}
         if (ImGui::MenuItem("Show Chunk Boundaries", nullptr, &renderSettings.showChunkBoundaries))
         {
-            app->getDebugRenderer()->setShowChunkBoundaries(renderSettings.showChunkBoundaries);
+            app->getRenderSettings().showChunkBoundaries = renderSettings.showChunkBoundaries;
+            app->updateRenderSettings();
         }
         if (ImGui::MenuItem("Show Grid Lines", nullptr, &renderSettings.showGridLines))
         {
-            app->getDebugRenderer()->setShowGridLines(renderSettings.showGridLines);
+            app->getRenderSettings().showGridLines = renderSettings.showGridLines;
+            app->updateRenderSettings();
         }
         ImGui::EndMenu();
     }
@@ -959,7 +961,6 @@ void UIManager::renderRenderSettingsSection()
                 if (ImGui::Checkbox("Show Chunk Boundaries", &renderSettings.showChunkBoundaries))
                 {
                     settingsChanged = true;
-                    app->getDebugRenderer()->setShowChunkBoundaries(renderSettings.showChunkBoundaries);
                 }
 
                 if (ImGui::SliderInt("Chunk View Distance", &chunkViewDistance, 1, 16))
@@ -1016,6 +1017,7 @@ void UIManager::renderRenderSettingsSection()
                 int batch = batchSize;
 
                 // Update renderer settings
+                app->updateRenderSettings();
             }
 
             ImGui::TreePop();

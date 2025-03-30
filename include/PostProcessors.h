@@ -266,7 +266,7 @@ public:
         glClear(GL_COLOR_BUFFER_BIT);
 
         bloomThresholdShader->use();
-        bloomThresholdShader->setFlaot("threshold", threshold);
+        bloomThresholdShader->setFloat("threshold", threshold);
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, input->getColorTexture());
