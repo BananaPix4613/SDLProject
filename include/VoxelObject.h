@@ -106,6 +106,7 @@ public:
 
     void prepare(RenderContext& context) override;
     void render(RenderContext& context) override;
+    void renderShadow(RenderContext& context) override;
 
     // Set the materials for regular rendering and shadow mapping
     void setMaterial(Material* material) { this->material = material; }

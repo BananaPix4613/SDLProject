@@ -890,7 +890,7 @@ void UIManager::renderRenderSettingsSection()
     {
         // Quality presets
         const char* presets[] = { "Low", "Medium", "High", "Ultra" };
-        static int currentPreset = 1; // Medium by default
+        static int currentPreset = 2; // High by default
 
         if (ImGui::Combo("Quality Preset", &currentPreset, presets, 4))
         {

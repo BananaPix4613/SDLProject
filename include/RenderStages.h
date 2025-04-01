@@ -34,15 +34,15 @@ public:
         if (!shadowMapTarget) return;
 
         // Calculate light position and view
-        glm::vec3 lightDir = glm::normalize(glm::vec3(-0.5f, -1.0f, -0.3f));
-        glm::vec3 lightPos = -lightDir * 30.0f; // Position far away in the opposite direction
+        //glm::vec3 lightDir = glm::normalize(glm::vec3(-0.5f, -1.0f, -0.3f));
+        glm::vec3 lightPos = glm::vec3(15.0f, 20.0f, 15.0f); //-lightDir * 30.0f; // Position far away in the opposite direction
         glm::vec3 lightTarget = glm::vec3(0.0f);
 
         // Calculate light view matrix
         glm::mat4 lightView = glm::lookAt(lightPos, lightTarget, glm::vec3(0.0f, 1.0f, 0.0f));
 
         // Calculate orthographic projection for the light
-        float orthoSize = 40.0f;
+        float orthoSize = 15.0f;
         glm::mat4 lightProjection = glm::ortho(-orthoSize, orthoSize,
                                                -orthoSize, orthoSize,
                                                1.0f, 100.0f);

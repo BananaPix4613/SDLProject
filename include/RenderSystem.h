@@ -28,6 +28,7 @@ public:
     virtual ~RenderableObject() = default;
     virtual void prepare(RenderContext& context) = 0;
     virtual void render(RenderContext& context) = 0;
+    virtual void renderShadow(RenderContext& context) = 0;
 
     void setActive(bool active) { isActive = active; }
     bool getActive() const { return isActive; }
@@ -122,6 +123,7 @@ public:
     Frustum frustum;
     bool enableFrustumCulling = true;
     bool enableShadows = true;
+    bool enableShadowDepthPass = false;
     bool showWireframe = false;
     Material* overrideMaterial = nullptr;
 

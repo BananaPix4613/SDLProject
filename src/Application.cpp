@@ -231,100 +231,100 @@ void Application::processInput()
     }
 
     // Only process game inputs if ImGui isn't capturing
-    if (hoveringViewport)
+    //if (hoveringViewport)
+    //{
+    // Camera movement
+    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
     {
-        // Camera movement
-        if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
+        camera->rotate(deltaTime * 1.0f); // Rotate left
+    }
+    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
+    {
+        camera->rotate(-deltaTime * 1.0f); // Rotate right
+    }
+
+    // Camera panning - improved to be view-relative
+    float panSpeed = 5.0f * deltaTime;
+    glm::vec3 forward(0.0f), right(0.0f);
+
+    // Extract forward and right vectors from view matrix
+    glm::mat4 viewMatrix = camera->getViewMatrix();
+
+    // Forward is negative z-axis of view matrix (third row with sign flipped)
+    forward = -glm::vec3(viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2]);
+
+    // Right is positive x-axis of view matrix (first row)
+    right = glm::vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
+
+    // Normalize vectors to ensure consistent movement speed
+    forward = glm::normalize(forward);
+    right = glm::normalize(right);
+
+    // Force movement to be only on the xz-plane (horizontal)
+    forward.y = 0.0f;
+    right.y = 0.0f;
+
+    // Renormalize after zeroing y component
+    if (glm::length(forward) > 0.001f) forward = glm::normalize(forward);
+    if (glm::length(right) > 0.001f) right = glm::normalize(right);
+
+    glm::vec3 panDirection(0.0f);
+
+    // Apply movement based on WASD keys
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+    {
+        panDirection += forward;
+    }
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+    {
+        panDirection -= forward;
+    }
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+    {
+        panDirection -= right;
+    }
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+    {
+        panDirection += right;
+    }
+
+    if (glm::length(panDirection) > 0.001f)
+    {
+        panDirection = glm::normalize(panDirection) * panSpeed;
+        camera->pan(panDirection);
+    }
+
+    // Window size hotkeys (optional)
+    // Hold Ctrl and press + to increase and - to decrease window size
+    if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+        glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS)
+    {
+        static bool plusReleased = true;
+        static bool minusReleased = true;
+
+        // Hold Ctrl and press + to increase window size
+        if (glfwGetKey(window, GLFW_KEY_EQUAL) == GLFW_PRESS && plusReleased)
         {
-            camera->rotate(deltaTime * 1.0f); // Rotate left
+            resizeWindow(width * 1.25f, height * 1.25f);
+            plusReleased = false;
         }
-        if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
+        else if (glfwGetKey(window, GLFW_KEY_EQUAL) == GLFW_RELEASE)
         {
-            camera->rotate(-deltaTime * 1.0f); // Rotate right
+            plusReleased = true;
         }
 
-        // Camera panning - improved to be view-relative
-        float panSpeed = 5.0f * deltaTime;
-        glm::vec3 forward(0.0f), right(0.0f);
-
-        // Extract forward and right vectors from view matrix
-        glm::mat4 viewMatrix = camera->getViewMatrix();
-
-        // Forward is negative z-axis of view matrix (third row with sign flipped)
-        forward = -glm::vec3(viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2]);
-
-        // Right is positive x-axis of view matrix (first row)
-        right = glm::vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
-
-        // Normalize vectors to ensure consistent movement speed
-        forward = glm::normalize(forward);
-        right = glm::normalize(right);
-
-        // Force movement to be only on the xz-plane (horizontal)
-        forward.y = 0.0f;
-        right.y = 0.0f;
-
-        // Renormalize after zeroing y component
-        if (glm::length(forward) > 0.001f) forward = glm::normalize(forward);
-        if (glm::length(right) > 0.001f) right = glm::normalize(right);
-
-        glm::vec3 panDirection(0.0f);
-
-        // Apply movement based on WASD keys
-        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+        // Hold Ctrl and press - to decrease window size
+        if (glfwGetKey(window, GLFW_KEY_MINUS) == GLFW_PRESS && minusReleased)
         {
-            panDirection += forward;
+            resizeWindow(width * 0.75f, height * 0.75f);
+            minusReleased = false;
         }
-        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+        else if (glfwGetKey(window, GLFW_KEY_MINUS) == GLFW_RELEASE)
         {
-            panDirection -= forward;
-        }
-        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-        {
-            panDirection -= right;
-        }
-        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-        {
-            panDirection += right;
-        }
-
-        if (glm::length(panDirection) > 0.001f)
-        {
-            panDirection = glm::normalize(panDirection) * panSpeed;
-            camera->pan(panDirection);
-        }
-
-        // Window size hotkeys (optional)
-        // Hold Ctrl and press + to increase and - to decrease window size
-        if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
-            glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS)
-        {
-            static bool plusReleased = true;
-            static bool minusReleased = true;
-
-            // Hold Ctrl and press + to increase window size
-            if (glfwGetKey(window, GLFW_KEY_EQUAL) == GLFW_PRESS && plusReleased)
-            {
-                resizeWindow(width * 1.25f, height * 1.25f);
-                plusReleased = false;
-            }
-            else if (glfwGetKey(window, GLFW_KEY_EQUAL) == GLFW_RELEASE)
-            {
-                plusReleased = true;
-            }
-
-            // Hold Ctrl and press - to decrease window size
-            if (glfwGetKey(window, GLFW_KEY_MINUS) == GLFW_PRESS && minusReleased)
-            {
-                resizeWindow(width * 0.75f, height * 0.75f);
-                minusReleased = false;
-            }
-            else if (glfwGetKey(window, GLFW_KEY_MINUS) == GLFW_RELEASE)
-            {
-                minusReleased = true;
-            }
+            minusReleased = true;
         }
     }
+    //}
 
     // Toggle debug view
     static bool tabReleased = true;

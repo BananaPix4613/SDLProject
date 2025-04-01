@@ -199,15 +199,30 @@ void VoxelObject::render(RenderContext& context)
         currentMaterial->setParameter("viewPos", context.camera->getPosition());
 
         // Setup main directional light
-        glm::vec3 lightDir = glm::normalize(glm::vec3(-0.5f, -1.0f, -0.3f));
-        currentMaterial->setParameter("lightDir", lightDir);
+        glm::vec3 lightPos = glm::vec3(30.0f, 50.0f, 30.0f);
+        glm::vec3 lightTarget = glm::vec3(0.0f, 0.0f, 0.0f);
+
+        // Calculate light view matrix
+        glm::mat4 lightView = glm::lookAt(lightPos, lightTarget, glm::vec3(0.0f, 1.0f, 0.0f));
+
+        // Calculate orthographic projection for the light
+        float orthoSize = 15.0f;
+        glm::mat4 lightProjection = glm::ortho(-orthoSize, orthoSize,
+            -orthoSize, orthoSize,
+            1.0f, 100.0f);
+
+        // Light space transformation matrix
+        glm::mat4 lightSpaceMatrix = lightProjection * lightView;
+
+        // Set light position and target
+        currentMaterial->setParameter("lightPos", lightPos);
 
         // Light color and intensity
         glm::vec3 lightColor(2.0f, 2.0f, 2.0f);
         currentMaterial->setParameter("lightColor", lightColor);
 
         // Set lighting parameters (these should come from render settings)
-        currentMaterial->setParameter("ambientStrength", 0.3f);  // Increase for brighter ambient
+        currentMaterial->setParameter("ambientStrength", 0.2f);  // Increase for brighter ambient
         currentMaterial->setParameter("diffuseStrength", 0.7f);
         currentMaterial->setParameter("specularStrength", 0.5f);
         currentMaterial->setParameter("shininess", 32.0f);
@@ -216,7 +231,7 @@ void VoxelObject::render(RenderContext& context)
         if (context.enableShadows && context.shadowMapTexture)
         {
             currentMaterial->setParameter("enableShadows", true);
-            currentMaterial->setParameter("lightSpaceMatrix", context.lightSpaceMatrix);
+            currentMaterial->setParameter("lightSpaceMatrix", lightSpaceMatrix);
 
             // Bind shadow map texture
             glActiveTexture(GL_TEXTURE0);
@@ -257,6 +272,45 @@ void VoxelObject::render(RenderContext& context)
 
     // Clean up state
     glBindVertexArray(0);
+}
+
+void VoxelObject::renderShadow(RenderContext& context)
+{
+    if (!grid || !shadowMaterial) return;
+
+    shadowMaterial->bind();
+    Shader* shader = shadowMaterial->getShader();
+
+    if (shader)
+    {
+        // Set light space matrix
+        shader->setMat4("lightSpaceMatrix", context.lightSpaceMatrix);
+
+        // Render depth-only pass
+        glBindVertexArray(cubeMeshVao);
+
+        // Render each visible chunk
+        for (const auto& pair : chunkRenderData)
+        {
+            ChunkRenderData* renderData = pair.second.get();
+
+            // Skip empty chunks
+            if (renderData->instanceCount == 0) continue;
+
+            // Only use position data for shadow pass
+            glBindBuffer(GL_ARRAY_BUFFER, renderData->instanceBuffer);
+            glBufferData(GL_ARRAY_BUFFER,
+                         renderData->instanceMatrices.size() * sizeof(glm::mat4),
+                         renderData->instanceMatrices.data(), GL_STATIC_DRAW);
+
+            // Draw instances
+            glDrawElementsInstanced(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0,
+                                    renderData->instanceCount);
+        }
+
+        // Clean up state
+        glBindVertexArray(0);
+    }
 }
 
 void VoxelObject::updateChunkData(ChunkRenderData* data, const GridChunk* chunk)
