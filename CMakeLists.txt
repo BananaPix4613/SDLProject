@@ -20,7 +20,6 @@ set(GLFW_INSTALL OFF CACHE BOOL "GLFW lib only")
 
 add_subdirectory(deps/glfw)
 add_subdirectory(deps/assimp)
-add_subdirectory(deps/json)
 
 file (GLOB SOURCES
 	src/*.cpp
@@ -47,7 +46,7 @@ file (COPY assets DESTINATION "${CMAKE_BINARY_DIR}")
 file (COPY shaders DESTINATION "${CMAKE_BINARY_DIR}")
 
 add_executable(SDLProject ${SOURCES})
-target_link_libraries(SDLProject ${OPENGL_LIBRARIES} glfw assimp nlohmann_json::nlohmann_json)
+target_link_libraries(SDLProject ${OPENGL_LIBRARIES} glfw assimp)
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET SDLProject PROPERTY CXX_STANDARD 20)

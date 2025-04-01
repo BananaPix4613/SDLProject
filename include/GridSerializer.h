@@ -181,7 +181,7 @@ public:
             grid->clear();
 
             // Read bounds if version >= 2
-            glm::ivec3 minBounds, maxBounds;
+            glm::ivec3 minBounds = glm::ivec3(0.0f), maxBounds = glm::ivec3(0.0f);
             if (version >= 2)
             {
                 file.read(reinterpret_cast<char*>(&minBounds), sizeof(minBounds));

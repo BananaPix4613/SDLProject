@@ -755,19 +755,33 @@ void UIManager::renderViewportPanel()
 {
     if (ImGui::Begin("Viewport", &showViewportPanel, ImGuiWindowFlags_NoScrollbar))
     {
-        // Get content region available for image
-        ImVec2 panelSize = ImGui::GetContentRegionAvail();
+        // Get current content region available for the image
+        ImVec2 viewportSize = ImGui::GetContentRegionAvail();
 
-        // Update application viewport size
-        app->setViewportSize(static_cast<int>(panelSize.x), static_cast<int>(panelSize.y));
+        // Update application viewport size if window size changed
+        if (viewportSize.x > 0 && viewportSize.y > 0)
+        {
+            app->setViewportSize(static_cast<int>(viewportSize.x), static_cast<int>(viewportSize.y));
+        }
 
-        // Display the rendered scene texture
-        if (sceneTexture)
+        // Display the rendered scene texture (sceneTexture should be populated by RenderIntegration)
+        if (sceneTexture > 0)
         {
             ImGui::Image((ImTextureID)(intptr_t)sceneTexture,
-                         panelSize,
-                         ImVec2(0, 1),   // UV0 (flip y axis due to OpenGL/ImGui difference)
-                         ImVec2(1, 0));  // UV1
+                         viewportSize,
+                         ImVec2(0, 1), ImVec2(1, 0)); // Flip UV coordinates to match OpenGL texture coords
+
+            // Store viewport position in screen space for input handling
+            ImVec2 windowPos = ImGui::GetWindowPos();
+            ImVec2 contentPos = ImGui::GetCursorStartPos();
+            app->setViewportPos(
+                static_cast<int>(windowPos.x + contentPos.x),
+                static_cast<int>(windowPos.y + contentPos.y)
+            );
+        }
+        else
+        {
+            ImGui::TextColored(ImVec4(1, 0, 0, 1), "Scene texture not available!");
         }
     }
     ImGui::End();

@@ -189,26 +189,44 @@ void VoxelObject::render(RenderContext& context)
     currentMaterial->bind();
 
     // Set common uniforms
-    Shader* shader = currentMaterial->getShader();
-    if (shader)
+    if (currentMaterial->getShader())
     {
-        shader->setMat4("view", context.viewMatrix);
-        shader->setMat4("projection", context.projectionMatrix);
+        // Set transformation matrices
+        currentMaterial->setParameter("view", context.viewMatrix);
+        currentMaterial->setParameter("projection", context.projectionMatrix);
+
+        // Set camera position for specular lighting
+        currentMaterial->setParameter("viewPos", context.camera->getPosition());
+
+        // Setup main directional light
+        glm::vec3 lightDir = glm::normalize(glm::vec3(-0.5f, -1.0f, -0.3f));
+        currentMaterial->setParameter("lightDir", lightDir);
+
+        // Light color and intensity
+        glm::vec3 lightColor(2.0f, 2.0f, 2.0f);
+        currentMaterial->setParameter("lightColor", lightColor);
+
+        // Set lighting parameters (these should come from render settings)
+        currentMaterial->setParameter("ambientStrength", 0.3f);  // Increase for brighter ambient
+        currentMaterial->setParameter("diffuseStrength", 0.7f);
+        currentMaterial->setParameter("specularStrength", 0.5f);
+        currentMaterial->setParameter("shininess", 32.0f);
 
         // Set shadow mapping parameters if needed
         if (context.enableShadows && context.shadowMapTexture)
         {
-            shader->setBool("enableShadows", true);
-            shader->setMat4("lightSpaceMatrix", context.lightSpaceMatrix);
+            currentMaterial->setParameter("enableShadows", true);
+            currentMaterial->setParameter("lightSpaceMatrix", context.lightSpaceMatrix);
 
             // Bind shadow map texture
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, context.shadowMapTexture);
-            shader->setInt("shadowMap", 0);
+            currentMaterial->setParameter("shadowMap", 0);
+            currentMaterial->setParameter("shadowBias", 0.005f);
         }
         else
         {
-            shader->setBool("enableShadows", false);
+            currentMaterial->setParameter("enableShadows", false);
         }
     }
 
@@ -216,6 +234,9 @@ void VoxelObject::render(RenderContext& context)
     glBindVertexArray(cubeMeshVao);
 
     // Render each visible chunk
+    visibleChunks = 0;
+    visibleCubes = 0;
+
     for (const auto& pair : chunkRenderData)
     {
         ChunkRenderData* renderData = pair.second.get();
@@ -225,6 +246,10 @@ void VoxelObject::render(RenderContext& context)
 
         // Skip chunks that are not visible
         if (!isChunkVisible(renderData, context)) continue;
+
+        // Count visible chunks and cubes
+        visibleChunks++;
+        visibleCubes += renderData->instanceCount;
 
         // Render the chunk
         renderChunk(renderData, context);

@@ -17,10 +17,10 @@ bool ApplicationRenderIntegration::initialize()
     renderSystem->initialize();
 
     // Create shaders
-    Shader* mainShader = renderSystem->createShader("Main", "shaders/VertexShader.glsl", "shaders/FragmentShader.glsl");
-    Shader* shadowShader = renderSystem->createShader("Shadow", "shaders/ShadowMappingVertexShader.glsl", "shaders/ShadowMappingFragmentShader.glsl");
-    Shader* instancedShader = renderSystem->createShader("Instanced", "shaders/InstancedVertexShader.glsl", "shaders/InstancedFragmentShader.glsl");
-    Shader* instancedShadowShader = renderSystem->createShader("InstancedShadow", "shaders/InstancedShadowVertexShader.glsl", "shaders/InstancedShadowFragmentShader.glsl");
+    Shader* mainShader = renderSystem->createShader("Main", "shaders/Vert.glsl", "shaders/Frag.glsl");
+    Shader* shadowShader = renderSystem->createShader("Shadow", "shaders/ShadowVert.glsl", "shaders/ShadowFrag.glsl");
+    Shader* instancedShader = renderSystem->createShader("Instanced", "shaders/InstancedVert.glsl", "shaders/InstancedFrag.glsl");
+    Shader* instancedShadowShader = renderSystem->createShader("InstancedShadow", "shaders/InstancedShadowVert.glsl", "shaders/InstancedShadowFrag.glsl");
 
     // Create voxel object for the grid
     voxelObject = new VoxelObject(application->getGrid());
@@ -94,19 +94,55 @@ void ApplicationRenderIntegration::render()
 {
     if (!renderSystem || !application) return;
 
-    // Perform rendering
-    renderSystem->render(application->getCamera());
+    // MANUAL RENDERING TO MAIN SCREEN
+    int viewport[4];
+    glGetIntegerv(GL_VIEWPORT, viewport);
 
-    // Get render statistics
-    if (voxelObject)
+    // Set viewport to full window size
+    int width, height;
+    application->getWindowSize(width, height);
+    glViewport(0, 0, width, height);
+
+    // Bind the default framebuffer (0)
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    // Clear the framebuffer
+    glClearColor(0.678f, 0.847f, 0.902f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    // Directly render the scene to the screen
+    for (auto* obj : renderSystem->getRenderableObjects())
     {
-        // Update visible cube count in application
-        application->setVisibleCubeCount(voxelObject->getVisibleCubes());
+        if (obj && obj->getActive() && obj->getVisible())
+        {
+            RenderContext context;
+            context.camera = application->getCamera();
+            context.viewMatrix = application->getCamera()->getViewMatrix();
+            context.projectionMatrix = application->getCamera()->getProjectionMatrix();
+            context.enableFrustumCulling = application->getRenderSettings().enableFrustumCulling;
+            context.enableShadows = application->getRenderSettings().enableShadows;
+
+            // Render directly to the screen
+            obj->render(context);
+        }
     }
 
+    // Restore previous viewport
+    glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+
+    // Perform rendering
+    //renderSystem->render(application->getCamera());
+
+    // Get render statistics
+    //if (voxelObject)
+    //{
+    //    // Update visible cube count in application
+    //    application->setVisibleCubeCount(voxelObject->getVisibleCubes());
+    //}
+
     // Get the final rendered texture for UI display
-    unsigned int finalTexture = renderSystem->getFinalRenderTarget()->getColorTexture();
-    application->getUIManager()->setSceneTexture(finalTexture);
+    //unsigned int finalTexture = renderSystem->getFinalRenderTarget()->getColorTexture();
+    //application->getUIManager()->setSceneTexture(finalTexture);
 }
 
 void ApplicationRenderIntegration::resizeViewport(int width, int height)

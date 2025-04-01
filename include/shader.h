@@ -23,6 +23,9 @@ public:
         std::ifstream vShaderFile;
         std::ifstream fShaderFile;
 
+        std::cout << "Loading Vert: " << vertexPath << std::endl
+                  << "Loading Frag: " << fragmentPath << std::endl;
+
         // ensure ifstream objects can throw exceptions:
         vShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
         fShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);

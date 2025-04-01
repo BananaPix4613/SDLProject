@@ -36,7 +36,7 @@ private:
     // Active profiling points (currently being timed)
     struct ActivePoint {
         std::string name;
-        double startTime;
+        double startTime = 0.0;
     };
 
     std::vector<ActivePoint> activePoints;

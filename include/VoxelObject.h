@@ -17,15 +17,23 @@ struct ChunkRenderData
     glm::ivec3 chunkPos;
 
     // Bounding volume for frustum culling
-    glm::vec3 center;
-    float radius;
+    glm::vec3 center = glm::vec3(0.0f);
+    float radius = 0.0f;
 
     // Cached data
     std::vector<glm::mat4> instanceMatrices;
     std::vector<glm::vec3> instanceColors;
 
     // Constructor
-    ChunkRenderData(const glm::ivec3& pos) : chunkPos(pos)
+    ChunkRenderData(const glm::ivec3& pos)
+        : vao(0),
+          vertexBuffer(0),
+          instanceBuffer(0),
+          instanceCount(0),
+          dirty(true),
+          chunkPos(pos),
+          center(0.0f, 0.0f, 0.0f),
+          radius(0.0f)
     {
         // Setup VAO/VBO when created
         glGenVertexArrays(1, &vao);

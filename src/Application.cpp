@@ -4,7 +4,7 @@
 #include <iostream>
 
 Application::Application(int windowWidth, int windowHeight)
-    : width(windowWidth), height(windowHeight),
+    : width(windowWidth), height(windowHeight), isFullscreen(false),
       window(nullptr), grid(nullptr), camera(nullptr),
       renderIntegration(nullptr), uiManager(nullptr),
       lastFrame(0.0f), deltaTime(0.0f), visibleCubeCount(0),
@@ -128,7 +128,7 @@ void Application::run()
         update();
 
         // 1. Start UI frame
-        uiManager->beginFrame();
+        //uiManager->beginFrame();
 
         // 2. Update render integration (updates the scene)
         renderIntegration->update();
@@ -137,7 +137,7 @@ void Application::run()
         renderIntegration->render();
 
         // 4. Finish UI rendering
-        uiManager->render();
+        //uiManager->render();
 
         // Swap buffers
         glfwSwapBuffers(window);

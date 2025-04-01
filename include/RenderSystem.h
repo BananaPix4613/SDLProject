@@ -93,6 +93,11 @@ public:
         if (shader) shader->setVec3(name, value);
     }
 
+    void setParameter(const std::string& name, const glm::vec3& value)
+    {
+        if (shader) shader->setVec3(name, value);
+    }
+
     void setParameter(const std::string& name, glm::vec4& value)
     {
         if (shader) shader->setVec4(name, value);
@@ -123,6 +128,20 @@ public:
     // Shadow mapping data
     unsigned int shadowMapTexture = 0;
     glm::mat4 lightSpaceMatrix;
+
+    RenderContext()
+        : camera(nullptr),
+          viewMatrix(1.0f),
+          projectionMatrix(1.0f),
+          enableFrustumCulling(true),
+          enableShadows(true),
+          showWireframe(false),
+          overrideMaterial(nullptr),
+          shadowMapTexture(0),
+          lightSpaceMatrix(1.0f)
+    {
+
+    }
 };
 
 // Render target for output
