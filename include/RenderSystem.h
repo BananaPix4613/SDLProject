@@ -131,6 +131,17 @@ public:
     unsigned int shadowMapTexture = 0;
     glm::mat4 lightSpaceMatrix;
 
+    // Clustered rendering data
+    uint32_t clusterDimX = 16;
+    uint32_t clusterDimY = 8;
+    uint32_t clusterDimZ = 24;
+    unsigned int lightGrid = 0;
+    unsigned int lightIndexList = 0;
+    unsigned int decalGrid = 0;
+    unsigned int decalIndexList = 0;
+    float nearClip = 0.1f;
+    float farClip = 100.0f;
+
     RenderContext()
         : camera(nullptr),
           viewMatrix(1.0f),

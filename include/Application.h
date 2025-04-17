@@ -1,174 +1,134 @@
 #pragma once
 
-#include "CubeGrid.h"
-#include "Camera.h"
-#include "Frustum.h"
-#include "GridSerializer.h"
-#include "Profiler.h"
-#include "RenderSettings.h"
-#include <Shader.h>
-#include <GLFW/glfw3.h>
-#include <algorithm>
 #include <string>
-#include <limits>
-#include <ctime>
-
-// Required for Windows file dialog integration
-#define GLFW_EXPOSE_NATIVE_WIN32
-#include <GLFW/glfw3native.h>
+#include <memory>
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+#include "Camera.h"
+#include "ClusteredRenderSystem.h"
+#include "CubeGrid.h"
+#include "UIManager.h"
+#include "EventSystem.h"
+#include "MemoryManager.h"
 
 // Forward declarations
-class ApplicationRenderIntegration;
-class UIManager;
-class Frustum;
+class InputManager;
+class EntityManager;
+class PhysicsSystem;
+class AudioSystem;
+class Editor;
+
+// Render settings for configuration
+struct RenderSettings
+{
+    int windowWidth = 1280;
+    int windowHeight = 720;
+    bool vsync = true;
+    int pixelSize = 2;            // For pixel art aesthetic
+    bool enablePaletteConstraint = true;
+    int paletteSize = 64;
+    bool enableDithering = true;
+    float ditherStrength = 0.5f;
+    bool enablePostProcessing = true;
+    int clusterDimX = 16;
+    int clusterDimY = 8;
+    int clusterDimZ = 24;
+    float timeOfDay = 12.0f;      // Noon by default
+    bool debugClusters = false;
+    bool debugChunks = false;
+};
 
 class Application
 {
-private:
-    GLFWmonitor* primaryMonitor;
-    GLFWwindow* window;
-    int width, height;
-    bool isFullscreen;
-
-    // Core systems
-    CubeGrid* grid;
-    IsometricCamera* camera;
-    ApplicationRenderIntegration* renderIntegration;
-    UIManager* uiManager;
-    RenderSettings renderSettings;
-    Profiler profiler;
-
-    // Frame timing
-    float lastFrame;
-    float deltaTime;
-
-    // Rendering statistics
-    int visibleCubeCount;
-
-    // Frustum for culling
-    Frustum viewFrustum;
-
-    struct CullingStats {
-        int totalActiveCubes;
-        int visibleCubes;
-        int culledCubes;
-        float cullingPercentage;
-        float lastUpdateTime;
-        std::vector<float> fpsHistory;
-        std::vector<float> cullingHistory;
-
-        CullingStats() : totalActiveCubes(0), visibleCubes(0), culledCubes(0),
-            cullingPercentage(0.0f), lastUpdateTime(0.0f)
-        {
-            fpsHistory.resize(100, 0.0f);
-            cullingHistory.resize(100, 0.0f);
-        }
-    };
-
-    CullingStats cullingStats;
-
-    // UI state
-    bool showUI;
-
-    // Viewport variables
-    int viewportX, viewportY, viewportWidth, viewportHeight;
-    bool viewportActive;
-
-    // UI state variables
-    glm::vec3 selectedCubeColor;
-    bool isEditing;
-    int brushSize;
-    int selectedCubeX, selectedCubeY, selectedCubeZ;
-    int chunkViewDistance = 5;
-
-    // Auto-save features
-    bool enableAutoSave;
-    int autoSaveInterval; // In minutes
-    std::string autoSaveFolder;
-    double lastAutoSaveTime;
-
 public:
-    Application(int windowWidth, int windowHeight);
-    ~Application();
+    // Singleton access
+    static Application& getInstance();
 
+    // Core application
     bool initialize();
     void run();
+    void shutdown();
 
-    // Statistics and visiblity
-    int getVisibleCubeCount() const { return visibleCubeCount; }
-    void setVisibleCubeCount(int visibleCount);
-    bool isCubeVisible(int x, int y, int z) const;
+    // Time management
+    float getDeltaTime() const;
+    float getTotalTime() const;
+
+    // Camera access
+    Camera* getCamera() const;
+    void setCamera(Camera* camera);
+
+    // Configuration access
+    RenderSettings& getRenderSettings();
+    const RenderSettings& getRenderSettings() const;
+
+    // Subsystem access
+    ClusteredRenderSystem* getRenderer() const;
+    CubeGrid* getGrid() const;
+    UIManager* getUIManager() const;
+    InputManager* getInputManager() const;
+    EntityManager* getEntityManager() const;
+    PhysicsSystem* getPhysicsSystem() const;
+    AudioSystem* getAudioSystem() const;
+    EventSystem* getEventSystem() const;
+    MemoryManager* getMemoryManager() const;
+    Editor* getEditor() const;
 
     // Window management
-    void getWindowSize(int& w, int& h) const { w = width, h = height; }
-    void resizeWindow(int newWidth, int newHeight);
-    void resizeWindow(float newWidth, float newHeight);
-    void toggleFullscreen();
-    bool getIsFullscreen() const { return isFullscreen; }
-    GLFWwindow* getWindow() const { return window; }
+    GLFWwindow* getWindow() const;
+    void setWindowTitle(const std::string& title);
+    void setWindowSize(int width, int height);
+    bool isWindowMinimized() const;
 
-    // Viewport management
-    void setViewportSize(int width, int height);
-    void setViewportPos(int x, int y);
-    bool isViewportActive() const { return viewportActive; }
-    void setCameraAspectRatio(float aspect);
-
-    // Settings management
-    void updateRenderSettings();
-    RenderSettings& getRenderSettings() { return renderSettings; }
-    void setupShadowMap();
-
-    // Access to core components
-    CubeGrid* getGrid() const { return grid; }
-    IsometricCamera* getCamera() const { return camera; }
-    Profiler& getProfiler() { return profiler; }
-    UIManager* getUIManager() const { return uiManager; }
-    ApplicationRenderIntegration* getRenderIntegration() const { return renderIntegration; }
-
-    // Cube editing
-    void setCubeAt(int x, int y, int z, bool active, const glm::vec3& color);
-    bool pickCube(int& outX, int& outY, int& outZ);
-    void clearGrid(bool resetFloor);
-
-    // Editing state
-    void setEditingMode(bool editing) { isEditing = editing; }
-    bool getEditingMode() const { return isEditing; }
-    void setBrushSize(int size) { brushSize = size; }
-    int getBrushSize() const { return brushSize; }
-    void setSelectedCubeColor(const glm::vec3& color) { selectedCubeColor = color; }
-    const glm::vec3& getSelectedCubeColor() const { return selectedCubeColor; }
-    void setSelectedCubeCoords(int x, int y, int z)
-    {
-        selectedCubeX = x;
-        selectedCubeY = y;
-        selectedCubeZ = z;
-    }
-
-    // Auto-save settings
-    void setAutoSaveSettings(bool enable, int intervalMinutes, const std::string& folder)
-    {
-        enableAutoSave = enable;
-        autoSaveInterval = intervalMinutes;
-        autoSaveFolder = folder;
-        lastAutoSaveTime = glfwGetTime(); // Reset timer
-    }
+    // Application status
+    bool isRunning() const;
+    void quit();
 
 private:
+    Application();  // Private constructor for singleton
+    ~Application(); // Private destructor for singleton
+
+    // Singleton instance
+    static Application* s_instance;
+
+    // Core systems
+    GLFWwindow* m_window;
+    std::unique_ptr<ClusteredRenderSystem> m_renderer;
+    std::unique_ptr<CubeGrid> m_grid;
+    std::unique_ptr<Scene> m_scene;
+    std::unique_ptr<UIManager> m_uiManager;
+    std::unique_ptr<InputManager> m_inputManager;
+    std::unique_ptr<EntityManager> m_entityManager;
+    std::unique_ptr<PhysicsSystem> m_physicsSystem;
+    std::unique_ptr<AudioSystem> m_audioSystem;
+    std::unique_ptr<EventSystem> m_eventSystem;
+    std::unique_ptr<MemoryManager> m_memoryManager;
+    std::unique_ptr<Editor> m_editor;
+
+    // Camera (owned by scene, not application)
+    Camera* m_activeCamera;
+
+    // Timing
+    float m_deltaTime;
+    float m_lastFrameTime;
+    float m_totalTime;
+
+    // Settings
+    RenderSettings m_renderSettings;
+    bool m_isRunning;
+    bool m_isWindowMinimized;
+
+    // Private initialization helpers
     bool initializeWindow();
-    void processInput();
+    bool initializeRenderer();
+    bool initializeSubsystems();
+    void setupDefaultScene();
+
+    // Event callbacks
+    static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
+    static void windowMinimizeCallback(GLFWwindow* window, int minimized);
+
+    // Update and render
     void update();
-    void updateViewFrustum();
-
-    // File handling
-    std::string generateAutoSaveFilename() const;
-    void performAutoSave();
-
-    // Static callbacks
-    static void framebufferSizeCallback(GLFWwindow* window, int width, int height);
-    static void mouseCallback(GLFWwindow* window, double xpos, double ypos);
-    static void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
-    static void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
-    static void GLAPIENTRY errorCallback(GLenum source, GLenum type, GLuint id,
-                                         GLenum severity, GLsizei length,
-                                         const GLchar* message, const void* userParam);
+    void render();
+    void processInput();
 };

@@ -1,114 +1,194 @@
 #include "CubeGrid.h"
 
-GridChunk::GridChunk(const glm::ivec3& position)
-    : chunkPosition(position), active(false)
+// CubeChunk Implementation
+CubeChunk::CubeChunk(const glm::ivec3& position)
+    : GridChunk<Cube>(position)
 {
-    // Initialize all cubes to inactive
-    for (int x = 0; x < CHUNK_SIZE; x++)
-    {
-        for (int y = 0; y < CHUNK_SIZE; y++)
-        {
-            for (int z = 0; z < CHUNK_SIZE; z++)
-            {
-                cubes[x][y][z].active = false;
-            }
-        }
-    }
+    // Initialize with empty cubes
 }
 
-void GridChunk::setCube(int localX, int localY, int localZ, const Cube& cube)
+bool CubeChunk::isCellActive(int localX, int localY, int localZ) const
 {
     if (localX >= 0 && localX < CHUNK_SIZE &&
         localY >= 0 && localY < CHUNK_SIZE &&
         localZ >= 0 && localZ < CHUNK_SIZE)
     {
-        cubes[localX][localY][localZ] = cube;
-
-        // Set chunk to active if any cube is active
-        if (cube.active)
-        {
-            active = true;
-        }
-        else
-        {
-            // Check if any other cube is still active
-            active = hasAnyCubes();
-        }
-    }
-}
-
-const Cube& GridChunk::getCube(int localX, int localY, int localZ) const
-{
-    static Cube defaultCube;
-    if (localX >= 0 && localX < CHUNK_SIZE &&
-        localY >= 0 && localY < CHUNK_SIZE &&
-        localZ >= 0 && localZ < CHUNK_SIZE)
-    {
-        return cubes[localX][localY][localZ];
-    }
-    return defaultCube;
-}
-
-bool GridChunk::hasAnyCubes() const
-{
-    for (int x = 0; x < CHUNK_SIZE; x++)
-    {
-        for (int y = 0; y < CHUNK_SIZE; y++)
-        {
-            for (int z = 0; z < CHUNK_SIZE; z++)
-            {
-                if (cubes[x][y][z].active)
-                {
-                    return true;
-                }
-            }
-        }
+        int index = coordsToIndex(localX, localY, localZ);
+        return m_cells[index].active;
     }
     return false;
 }
 
-std::vector<glm::ivec3> GridChunk::getAffectedChunks(const glm::vec3& worldPos, float radius) const
+// CubeGrid Implementation
+CubeGrid::CubeGrid(int initialSize, float gridSpacing)
+    : Grid<Cube>(gridSpacing)
 {
-    // Convert world position to chunk-local coordinates
-    glm::vec3 localPos = worldPos - glm::vec3(
-        chunkPosition.x * CHUNK_SIZE,
-        chunkPosition.y * CHUNK_SIZE,
-        chunkPosition.z * CHUNK_SIZE
+    createInitialFloor(initialSize);
+}
+
+CubeGrid::~CubeGrid()
+{
+    // Base class destructor will handle cleanup
+}
+
+void CubeGrid::setCube(int x, int y, int z, const Cube& cube)
+{
+    // Use base class implementation
+    setCell(x, y, z, cube);
+}
+
+const Cube& CubeGrid::getCube(int x, int y, int z) const
+{
+    // Use baes class implementation
+    return getCell(x, y, z);
+}
+
+bool CubeGrid::isCubeActive(int x, int y, int z) const
+{
+    // Use base class implementation
+    return isCellActive(x, y, z);
+}
+
+std::vector<Cube> CubeGrid::getVisibleCubesInFrustum(const glm::mat4& viewProj) const
+{
+    std::vector<Cube> visibleCubes;
+
+    // Simple implementation for now, can be optimized with actual frustum culling
+    forEachActiveCell([&](const glm::ivec3& pos, const Cube& cube) {
+        glm::vec3 worldPos = gridToWorldPosition(pos.x, pos.y, pos.z);
+        glm::vec4 clipPos = viewProj * glm::vec4(worldPos, 1.0f);
+
+        // Simple frustum check (can be improved)
+        if (clipPos.w > 0 &&
+            clipPos.x >= -clipPos.w && clipPos.x <= clipPos.w &&
+            clipPos.y >= -clipPos.w && clipPos.y <= clipPos.w &&
+            clipPos.z >= -clipPos.w && clipPos.z <= clipPos.w)
+        {
+            visibleCubes.push_back(cube);
+        }
+                      });
+
+    return visibleCubes;
+}
+
+std::vector<std::tuple<glm::ivec3, Cube>> CubeGrid::querySphere(const glm::vec3& center, float radius) const
+{
+    // Specialized implementation that optimizes for Cube properties
+    std::vector<std::tuple<glm::ivec3, Cube>> result;
+
+    // Convert to grid coordinates
+    glm::ivec3 gridCenter = worldToGridCoordinates(center);
+    int gridRadius = static_cast<int>(std::ceil(radius / m_spacing));
+
+    // Define the box bounds for initial broad check
+    glm::ivec3 minCoord = gridCenter - glm::ivec3(gridRadius);
+    glm::ivec3 maxCoord = gridCenter + glm::ivec3(gridRadius);
+
+    // Pre-compute squared radius for faster distance checks
+    float radiusSq = radius * radius;
+
+    // Gather potentially affected chunks first (optimization)
+    std::unordered_set<glm::ivec3, Vec3Hash, Vec3Equal> affectedChunks;
+
+    glm::ivec3 minChunk(
+        std::floor(float(minCoord.x) / GridChunk<Cube>::CHUNK_SIZE),
+        std::floor(float(minCoord.y) / GridChunk<Cube>::CHUNK_SIZE),
+        std::floor(float(minCoord.z) / GridChunk<Cube>::CHUNK_SIZE)
     );
 
-    std::vector<glm::ivec3> result;
+    glm::ivec3 maxChunk(
+        std::floor(float(maxCoord.x) / GridChunk<Cube>::CHUNK_SIZE),
+        std::floor(float(maxCoord.y) / GridChunk<Cube>::CHUNK_SIZE),
+        std::floor(float(maxCoord.z) / GridChunk<Cube>::CHUNK_SIZE)
+    );
 
-    // Check if this chunk is affected
-    glm::vec3 chunkMin(0.0f);
-    glm::vec3 chunkMax(CHUNK_SIZE - 1);
-
-    // Simple AABB test with radius
-    if (localPos.x + radius >= chunkMin.x && localPos.x - radius <= chunkMax.x &&
-        localPos.y + radius >= chunkMin.y && localPos.y - radius <= chunkMax.y &&
-        localPos.z + radius >= chunkMin.z && localPos.z - radius <= chunkMax.z)
+    // Iterate through chunks in the query area
+    for (int cx = minChunk.x; cx <= maxChunk.x; cx++)
     {
-        result.push_back(chunkPosition);
-    }
+        for (int cy = minChunk.y; cy <= maxChunk.y; cy++)
+        {
+            for (int cz = minChunk.z; cz <= maxChunk.z; cz++)
+            {
+                glm::ivec3 chunkPos(cx, cy, cz);
+                auto it = m_chunks.find(chunkPos);
+                if (it != m_chunks.end() && it->second->isActive())
+                {
+                    // Calculate chunk bounds in world space
+                    glm::vec3 chunkMin = gridToWorldPosition(
+                        cx * GridChunk<Cube>::CHUNK_SIZE,
+                        cy * GridChunk<Cube>::CHUNK_SIZE,
+                        cz * GridChunk<Cube>::CHUNK_SIZE
+                    );
+                    glm::vec3 chunkMax = gridToWorldPosition(
+                        (cx + 1) * GridChunk<Cube>::CHUNK_SIZE - 1,
+                        (cy + 1) * GridChunk<Cube>::CHUNK_SIZE - 1,
+                        (cz + 1) * GridChunk<Cube>::CHUNK_SIZE - 1
+                    );
 
-    // TODO: Add logic to check neighboring chunks if radius extends beyond this chunk
+                    // Check if chunk intersects with sphere
+                    // Simple AABB vs Sphere test
+                    float distSq = 0.0f;
+
+                    // Check each axis for closest point
+                    for (int i = 0; i < 3; i++)
+                    {
+                        float v = center[i];
+                        if (v < chunkMin[i]) distSq += (chunkMin[i] - v) * (chunkMin[i] - v);
+                        else if (v > chunkMax[i]) distSq += (v - chunkMax[i]) * (v - chunkMax[i]);
+                    }
+
+                    // If chunk is within radius, check cells inside the chunk
+                    if (distSq <= radiusSq)
+                    {
+                        GridChunk<Cube>* chunk = it->second;
+
+                        // Check individual cells in the chunk
+                        for (int lx = 0; lx < GridChunk<Cube>::CHUNK_SIZE; lx++)
+                        {
+                            for (int ly = 0; ly < GridChunk<Cube>::CHUNK_SIZE; ly++)
+                            {
+                                for (int lz = 0; lz < GridChunk<Cube>::CHUNK_SIZE; lz++)
+                                {
+                                    if (chunk->isCellActive(lx, ly, lz))
+                                    {
+                                        // Calculate global position
+                                        int gx = cx * GridChunk<Cube>::CHUNK_SIZE + lx;
+                                        int gy = cy * GridChunk<Cube>::CHUNK_SIZE + ly;
+                                        int gz = cz * GridChunk<Cube>::CHUNK_SIZE + lz;
+
+                                        // Get world position
+                                        glm::vec3 worldPos = gridToWorldPosition(gx, gy, gz);
+
+                                        // Check distance from center to cell
+                                        float cellDistSq = glm::distance2(center, worldPos);
+                                        if (cellDistSq <= radiusSq)
+                                        {
+                                            result.push_back(std::make_tuple(
+                                                glm::ivec3(gx, gy, gz),
+                                                chunk->getCell(lx, ly, lz)
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     return result;
 }
 
-CubeGrid::CubeGrid(int initialSize, float gridSpacing)
-    : spacing(gridSpacing),
-      minBounds(0, 0, 0),
-      maxBounds(0, 0, 0)
+void CubeGrid::createInitialFloor(int size)
 {
-    // Initialize with a single chunk at origin
-    getOrCreateChunk(glm::ivec3(0, 0, 0));
-
-    // Create initial floor (can be done more efficiently)
-    for (int x = -initialSize / 2; x < initialSize / 2; x++)
+    // Create initial floor
+    for (int x = -size / 2; x < size / 2; x++)
     {
-        for (int z = -initialSize / 2; z < initialSize / 2; z++)
+        for (int z = -size / 2; z < size / 2; z++)
         {
-            glm::vec3 position = calculatePosition(x, 0, z);
+            glm::vec3 position = gridToWorldPosition(x, 0, z);
             Cube cube(position, glm::vec3(0.9f, 0.9f, 0.9f));
             cube.active = true;
             setCube(x, 0, z, cube);
@@ -116,228 +196,12 @@ CubeGrid::CubeGrid(int initialSize, float gridSpacing)
     }
 
     // Set initial bounds based on the floor
-    minBounds = glm::ivec3(-initialSize / 2, 0, -initialSize / 2);
-    maxBounds = glm::ivec3(initialSize / 2, 0, initialSize / 2);
+    m_minBounds = glm::ivec3(-size / 2, 0, -size / 2);
+    m_maxBounds = glm::ivec3(size / 2, 0, size / 2);
 }
 
-CubeGrid::~CubeGrid()
+GridChunk<Cube>* CubeGrid::createChunk(const glm::ivec3& position)
 {
-    clear();
-}
-
-void CubeGrid::clear()
-{
-    // Delete all chunks
-    for (auto& pair : chunks)
-    {
-        delete pair.second;
-    }
-    chunks.clear();
-
-    // Reset bounds
-    minBounds = glm::ivec3(0, 0, 0);
-    maxBounds = glm::ivec3(0, 0, 0);
-}
-
-void CubeGrid::update(float deltaTime)
-{
-    // Add any grid update logic here
-    // This could include animations, cube creation/destruction, etc.
-}
-
-void CubeGrid::setCube(int x, int y, int z, const Cube& cube)
-{
-    // Calculate which chunk this belongs to
-    glm::ivec3 chunkPos(
-        std::floor(float(x) / GridChunk::CHUNK_SIZE),
-        std::floor(float(y) / GridChunk::CHUNK_SIZE),
-        std::floor(float(z) / GridChunk::CHUNK_SIZE)
-    );
-
-    // Get or create the chunk
-    GridChunk* chunk = getOrCreateChunk(chunkPos);
-
-    // Calculate local coordinates within the chunk
-    int localX = x - (chunkPos.x * GridChunk::CHUNK_SIZE);
-    int localY = y - (chunkPos.y * GridChunk::CHUNK_SIZE);
-    int localZ = z - (chunkPos.z * GridChunk::CHUNK_SIZE);
-
-    // Set the cube in the chunk
-    chunk->setCube(localX, localY, localZ, cube);
-
-    // Update grid bounds if this is an active cube
-    if (cube.active)
-    {
-        expandBounds(glm::ivec3(x, y, z));
-    }
-
-    // Clean up chunks with no active cubes
-    if (!cube.active && !chunk->hasAnyCubes())
-    {
-        chunks.erase(chunkPos);
-        delete chunk;
-    }
-}
-
-const Cube& CubeGrid::getCube(int x, int y, int z) const
-{
-    static Cube defaultCube;
-
-    // Calculate which chunk this belongs to
-    glm::ivec3 chunkPos(
-        std::floor(float(x) / GridChunk::CHUNK_SIZE),
-        std::floor(float(y) / GridChunk::CHUNK_SIZE),
-        std::floor(float(z) / GridChunk::CHUNK_SIZE)
-    );
-
-    // Find the chunk
-    auto it = chunks.find(chunkPos);
-    if (it == chunks.end())
-    {
-        return defaultCube;
-    }
-
-    // Calculate local coordinates within the chunk
-    int localX = x - (chunkPos.x * GridChunk::CHUNK_SIZE);
-    int localY = y - (chunkPos.y * GridChunk::CHUNK_SIZE);
-    int localZ = z - (chunkPos.z * GridChunk::CHUNK_SIZE);
-
-    return it->second->getCube(localX, localY, localZ);
-}
-
-bool CubeGrid::isCubeActive(int x, int y, int z) const
-{
-    return getCube(x, y, z).active;
-}
-
-GridChunk* CubeGrid::getOrCreateChunk(const glm::ivec3& chunkPos)
-{
-    auto it = chunks.find(chunkPos);
-    if (it != chunks.end())
-    {
-        return it->second;
-    }
-
-    // Create new chunk
-    GridChunk* newChunk = new GridChunk(chunkPos);
-    chunks[chunkPos] = newChunk;
-    return newChunk;
-}
-
-void CubeGrid::updateLoadedChunks(const glm::ivec3& centerGridPos, int viewDistance)
-{
-    // Convert grid position to chunk position
-    glm::ivec3 centerChunkPos(
-        std::floor(float(centerGridPos.x) / GridChunk::CHUNK_SIZE),
-        std::floor(float(centerGridPos.y) / GridChunk::CHUNK_SIZE),
-        std::floor(float(centerGridPos.z) / GridChunk::CHUNK_SIZE)
-    );
-
-    // Mark all chunks as unvisited
-    std::unordered_set<glm::ivec3, Vec3Hash> visitedChunks;
-
-    // Load chunks in view distance
-    for (int x = -viewDistance; x <= viewDistance; x++)
-    {
-        for (int y = -viewDistance; y <= viewDistance; y++)
-        {
-            for (int z = -viewDistance; z <= viewDistance; z++)
-            {
-                glm::ivec3 chunkPos = centerChunkPos + glm::ivec3(x, y, z);
-
-                // Use distance check for circular loading
-                float distSq = x * x + y * y + z * z;
-                if (distSq <= viewDistance * viewDistance)
-                {
-                    // Ensure the chunk exists (but don't create if empty)
-                    auto it = chunks.find(chunkPos);
-                    if (it != chunks.end())
-                    {
-                        visitedChunks.insert(chunkPos);
-                    }
-                    else if (x == 0 && y == 0 && z == 0)
-                    {
-                        // Always create the center chunk
-                        getOrCreateChunk(chunkPos);
-                        visitedChunks.insert(chunkPos);
-                    }
-                }
-            }
-        }
-    }
-
-    // Optional: Unload chunks outside view distance
-    // This would require additional logic to save/serialize unloaded chunks
-}
-
-glm::vec3 CubeGrid::calculatePosition(int x, int y, int z) const
-{
-    return glm::vec3(
-        x * spacing,
-        y * spacing,
-        z * spacing
-    );
-}
-
-glm::ivec3 CubeGrid::worldToGridCoordinates(const glm::vec3& worldPos) const
-{
-    return glm::ivec3(
-        static_cast<int>(std::floor(worldPos.x / spacing)),
-        static_cast<int>(std::floor(worldPos.y / spacing)),
-        static_cast<int>(std::floor(worldPos.z / spacing))
-    );
-}
-
-void CubeGrid::expandBounds(const glm::ivec3& pos)
-{
-    minBounds.x = std::min(minBounds.x, pos.x);
-    minBounds.y = std::min(minBounds.y, pos.y);
-    minBounds.z = std::min(minBounds.z, pos.z);
-
-    maxBounds.x = std::max(maxBounds.x, pos.x);
-    maxBounds.y = std::max(maxBounds.y, pos.y);
-    maxBounds.z = std::max(maxBounds.z, pos.z);
-}
-
-int CubeGrid::getActiveChunkCount() const
-{
-    int count = 0;
-
-    for (const auto& pair : chunks)
-    {
-        GridChunk* chunk = pair.second;
-
-        if (chunk->hasAnyCubes())
-        {
-            count++;
-        }
-    }
-
-    return count;
-}
-
-int CubeGrid::getTotalActiveCubeCount() const
-{
-    int totalActiveCubes = 0;
-
-    for (const auto& pair : chunks)
-    {
-        GridChunk* chunk = pair.second;
-
-        for (int x = 0; x < GridChunk::CHUNK_SIZE; x++)
-        {
-            for (int y = 0; y < GridChunk::CHUNK_SIZE; y++)
-            {
-                for (int z = 0; z < GridChunk::CHUNK_SIZE; z++)
-                {
-                    if (chunk->getCube(x, y, z).active)
-                    {
-                        totalActiveCubes++;
-                    }
-                }
-            }
-        }
-    }
-
-    return totalActiveCubes;
+    // Create the specialized chunk type
+    return new CubeChunk(position);
 }
