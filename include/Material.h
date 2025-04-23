@@ -3,7 +3,7 @@
 #include <string>
 #include <unordered_map>
 #include <glad/glad.h>
-#include <glm.hpp>
+#include <glm/glm.hpp>
 #include <Shader.h>
 #include <Texture.h>
 

@@ -31,10 +31,16 @@ endif()
 set(FMOD_LIBRARIES "${FMOD_LIBRARY_PATH}/fmod_vc.lib")
 set(FMOD_DLL_DIR "${FMOD_LIBRARY_PATH}")
 
-file (GLOB SOURCES
+file (GLOB SOURCES CONFIGURE_DEPENDS
 	src/*.cpp
 	src/components/*.cpp
 	src/editor/*.cpp
+	src/Core/*.cpp
+	src/Core/Serialize/*.cpp
+	src/Rendering/*.cpp
+	src/Rendering/Camera/*.cpp
+	src/Utility/*.cpp
+	src/ECS/*.cpp
 	deps/glad/src/glad.c
 	deps/imgui/*.cpp
 	deps/imgui/backends/imgui_impl_opengl3.cpp
@@ -43,20 +49,25 @@ file (GLOB SOURCES
 
 include_directories(SYSTEM
 	include
+	deps/assimp/include
+	deps/fmod/api/core/inc
 	deps/glm
 	deps/glad/include
 	deps/gl3w/include
-	deps/assimp/include
+	deps/glew/include
 	deps/imgui
 	deps/imgui/backends/imgui_impl_opengl3.h
 	deps/imgui/backends/imgui_impl_opengl3_loader.h
 	deps/imgui/backends/imgui_impl_glfw.h
+	deps/nlohmann/include
+	deps/openssl/include
 	deps/rapidjson/include
-	deps/fmod/api/core/inc
+	deps/yaml-cpp/include
+	deps/zlib
 )
 
 # Copy necessary resources to build
-file (COPY assets DESTINATION "${CMAKE_BINARY_DIR}")
+# file (COPY assets DESTINATION "${CMAKE_BINARY_DIR}")
 file (COPY shaders DESTINATION "${CMAKE_BINARY_DIR}")
 
 # Copy FMOD DLLs to build directory

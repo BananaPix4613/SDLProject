@@ -4,7 +4,7 @@
 #include <string>
 #include <unordered_map>
 #include <memory>
-#include <glm.hpp>
+#include <glm/glm.hpp>
 #include <functional>
 
 // Forward declarations

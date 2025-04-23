@@ -1,6 +1,6 @@
 #pragma once
 
-#include <glm.hpp>
+#include <glm/glm.hpp>
 #include <vector>
 
 // Represents a plane in 3D space using normal + distance representation

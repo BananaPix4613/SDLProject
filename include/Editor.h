@@ -5,7 +5,7 @@
 #include <memory>
 #include <unordered_map>
 #include <functional>
-#include <glm.hpp>
+#include <glm/glm.hpp>
 
 // Forward declarations
 class UIManager;

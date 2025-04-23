@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <glm.hpp>
+#include <glm/glm.hpp>
 #include <gtx/norm.hpp>
 #include <memory>
 #include <functional>

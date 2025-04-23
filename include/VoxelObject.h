@@ -2,7 +2,7 @@
 
 #include "RenderSystem.h"
 #include "CubeGrid.h"
-#include <glm.hpp>
+#include <glm/glm.hpp>
 #include <vector>
 #include <unordered_map>
 

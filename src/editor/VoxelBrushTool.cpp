@@ -7,7 +7,7 @@
 #include "CommandManager.h"
 #include "Command.h"
 #include "Ray.h"
-#include <glm.hpp>
+#include <glm/glm.hpp>
 #include <algorithm>
 #include <cmath>
 

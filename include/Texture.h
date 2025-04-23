@@ -2,7 +2,7 @@
 
 #include <string>
 #include <glad/glad.h>
-#include <glm.hpp>
+#include <glm/glm.hpp>
 #include <memory>
 #include <vector>
 #include <unordered_map>

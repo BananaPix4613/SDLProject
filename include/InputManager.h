@@ -5,7 +5,7 @@
 #include <vector>
 #include <functional>
 #include <memory>
-#include <glm.hpp>
+#include <glm/glm.hpp>
 #include <GLFW/glfw3.h>
 
 // Forward declarations

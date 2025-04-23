@@ -4,7 +4,7 @@
 #include "Entity.h"
 #include "Scene.h"
 #include <algorithm>
-#include <glm.hpp>
+#include <glm/glm.hpp>
 #include <gtc/matrix_transform.hpp>
 #include <gtc/quaternion.hpp>
 

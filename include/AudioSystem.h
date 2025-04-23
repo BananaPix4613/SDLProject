@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <memory>
 #include <mutex>
-#include <glm.hpp>
+#include <glm/glm.hpp>
 #include <fmod.hpp>
 
 // Forward declarations

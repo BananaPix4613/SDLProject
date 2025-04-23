@@ -1,6 +1,6 @@
 #pragma once
 
-#include <glm.hpp>
+#include <glm/glm.hpp>
 
 // Performance setting for fine-tuning rendering
 struct RenderSettings

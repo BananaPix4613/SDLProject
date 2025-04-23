@@ -1,7 +1,7 @@
 #pragma once
 
 #include "RenderSystem.h"
-#include <glm.hpp>
+#include <glm/glm.hpp>
 #include <vector>
 #include <memory>
 

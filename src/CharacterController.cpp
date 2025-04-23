@@ -1,7 +1,7 @@
 #include "PhysicsSystem.h"
 #include "components/PhysicsComponent.h"
 #include "Entity.h"
-#include <glm.hpp>
+#include <glm/glm.hpp>
 #include <gtc/matrix_transform.hpp>
 
 CharacterController::CharacterController(PhysicsComponent* physicsComponent) :

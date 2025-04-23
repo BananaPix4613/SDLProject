@@ -2,7 +2,7 @@
 #define DEBUG_RENDERER_H
 
 #include <glad/glad.h>
-#include <glm.hpp>
+#include <glm/glm.hpp>
 #include <utility>
 #include <vector>
 #include "Shader.h"

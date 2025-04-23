@@ -2,7 +2,7 @@
 #include "components/PhysicsComponent.h"
 #include "Entity.h"
 #include "Scene.h"
-#include <glm.hpp>
+#include <glm/glm.hpp>
 #include <gtc/matrix_transform.hpp>
 #include <gtc/quaternion.hpp>
 #include <algorithm>

@@ -5,7 +5,7 @@
 #include <typeindex>
 #include <memory>
 #include <vector>
-#include <glm.hpp>
+#include <glm/glm.hpp>
 #include <gtc/quaternion.hpp>
 
 // Forward declaration

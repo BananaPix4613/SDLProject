@@ -1,7 +1,7 @@
 #pragma once
 
 #include "EditorTool.h"
-#include <glm.hpp>
+#include <glm/glm.hpp>
 #include <vector>
 
 // Forward declarations

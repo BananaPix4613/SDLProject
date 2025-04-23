@@ -165,7 +165,7 @@ include the __VM name and version__ (e.g. `VirtualBox 5.1`).
 Please also include the __GLFW version string__ (`3.2.0 X11 EGL clock_gettime
 /dev/js`), as described
 [here](https://www.glfw.org/docs/latest/intro.html#intro_version_string), the
-__GPU model and driver version__ (e.g. `GeForce GTX660 with 352.79`), and the
+__GPU model and driver version__ (e.g. `GeForce gtx660 with 352.79`), and the
 __output of `glfwinfo`__ (with switches matching any hints you set in your
 code) when reporting this kind of bug.  If this tool doesn't run on the machine,
 mention that instead.

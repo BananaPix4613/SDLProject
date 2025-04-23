@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Component.h"
-#include <glm.hpp>
+#include <glm/glm.hpp>
 #include <string>
 #include <fmod.hpp>
 

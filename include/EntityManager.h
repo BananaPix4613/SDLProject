@@ -8,7 +8,7 @@
 #include <mutex>
 #include <typeindex>
 #include <atomic>
-#include <glm.hpp>
+#include <glm/glm.hpp>
 #include <shared_mutex>
 #include <unordered_set>
 
