@@ -15,15 +15,16 @@
 #include "Rendering/Texture.h"
 #include "Rendering/Material.h"
 #include "Rendering/Mesh.h"
-#include "Rendering/Camera/Camera.h"
 #include "Utility/AABB.h"
 
 namespace PixelCraft::Rendering
 {
 
+    // Forward declarations
     class LightManager;
     class PaletteManager;
     class RenderContext;
+    class Camera;
 
     /**
      * @brief Represents an object that can be rendered
@@ -149,7 +150,13 @@ namespace PixelCraft::Rendering
          * @brief Set the main camera for rendering
          * @param camera The camera to use for rendering
          */
-        void setMainCamera(const Camera& camera);
+        void setMainCamera(const std::shared_ptr<Camera::Camera> camera);
+
+        /**
+         * @brief Get the main camera for rendering
+         * @return The camera used for rendering
+         */
+        std::shared_ptr<Camera::Camera> getMainCamera() const;
 
         /**
          * @brief Set the viewport dimensions

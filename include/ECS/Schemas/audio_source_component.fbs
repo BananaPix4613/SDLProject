@@ -1,0 +1,18 @@
+// audio_source_component.fbs
+// AudioSource schema for AudioSourceComponent
+
+namespace PixelCraft.ECS;
+
+table AudioSourceComponentData{
+audio_clip_path:string;
+volume:float;
+pitch:float;
+loop:bool;
+spatial_blend:float;
+min_distance:float;
+max_distance:float;
+playing:bool;
+}
+
+root_type AudioSourceComponentData;
+file_identifier "AUDS";

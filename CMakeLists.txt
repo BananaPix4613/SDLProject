@@ -20,6 +20,9 @@ set(GLFW_INSTALL OFF CACHE BOOL "GLFW lib only")
 
 add_subdirectory(deps/glfw)
 add_subdirectory(deps/assimp)
+add_subdirectory(deps/flatbuffers
+                 ${CMAKE_CURRENT_BINARY_DIR}/flatbuffers-build
+                 EXCLUDE_FROM_ALL)
 
 # FMOD Setup
 set(FMOD_ROOT_DIR "${CMAKE_SOURCE_DIR}/deps/fmod" CACHE PATH "FMOD root directory")
@@ -33,14 +36,15 @@ set(FMOD_DLL_DIR "${FMOD_LIBRARY_PATH}")
 
 file (GLOB SOURCES CONFIGURE_DEPENDS
 	src/*.cpp
-	src/components/*.cpp
-	src/editor/*.cpp
 	src/Core/*.cpp
 	src/Core/Serialize/*.cpp
 	src/Rendering/*.cpp
 	src/Rendering/Camera/*.cpp
 	src/Utility/*.cpp
+	src/Utility/Serialization/*.cpp
 	src/ECS/*.cpp
+	src/ECS/Components/*.cpp
+	src/Voxel/*.cpp
 	deps/glad/src/glad.c
 	deps/imgui/*.cpp
 	deps/imgui/backends/imgui_impl_opengl3.cpp
@@ -77,7 +81,7 @@ foreach(FMOD_DLL ${FMOD_DLLS})
 endforeach()
 
 add_executable(SDLProject ${SOURCES})
-target_link_libraries(SDLProject ${OPENGL_LIBRARIES} glfw assimp ${FMOD_LIBRARIES})
+target_link_libraries(SDLProject ${OPENGL_LIBRARIES} glfw assimp ${FMOD_LIBRARIES} flatbuffers)
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET SDLProject PROPERTY CXX_STANDARD 20)

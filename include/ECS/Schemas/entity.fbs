@@ -1,0 +1,33 @@
+// entity.fbs
+// FlatBuffers schema for PixelCraft entity serialization
+
+namespace PixelCraft.ECS;
+
+// Component types enumeration
+enum ComponentType : ubyte {
+  Transform = 0,
+  MeshRenderer,
+  Camera,
+  Light,
+  RigidBody,
+  Collider,
+  Script
+}
+
+// Component entry in an entity - type plus serialized data
+table ComponentEntry {
+  type:ComponentType;
+  data:bytes;
+}
+
+// Entity data structure for serialization
+table EntityData {
+  id:uint32;
+  name:string;
+  uuid:string;
+  components:[ComponentEntry];
+  tags:[string];
+}
+
+root_type EntityData;
+file_identifier "ENTY";

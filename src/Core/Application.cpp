@@ -2,6 +2,15 @@
 // Application.cpp
 // -------------------------------------------------------------------------
 #include "Core/Application.h"
+#include "Utility/Serialization/SchemaRegistry.h"
+#include "Voxel/Voxel.h"
+#include "Voxel/ChunkCoord.h"
+#include "Voxel/Chunk.h"
+#include "ECS/Component.h"
+#include "ECS/Components/TransformComponent.h"
+#include "ECS/UUID.h"
+#include "Utility/AABB.h"
+
 #include <algorithm>
 #include <chrono>
 #include <thread>
@@ -13,11 +22,14 @@ namespace PixelCraft::Core
     // Initialize static members
     std::mutex Application::m_instanceMutex;
 
-    Application& Application::getInstance()
+    Application* Application::getInstance()
     {
         std::lock_guard<std::mutex> lock(m_instanceMutex);
-        static Application instance;
-        return instance;
+        if (!s_instance)
+        {
+            s_instance = new Application();
+        }
+        return s_instance;
     }
 
     Application::Application()
@@ -47,6 +59,13 @@ namespace PixelCraft::Core
         // Register the config manager as a subsystem
         registerSubsystem<ConfigManager>(m_config);
 
+        // Initialize serialization system
+        if (!initializeSerializationSystem())
+        {
+            error("Failed to initialize serialization system");
+            return false;
+        }
+
         // Sort subsystems based on dependencies
         if (!sortSubsystemDependencies())
         {
@@ -68,6 +87,49 @@ namespace PixelCraft::Core
         m_initialized = true;
         info("PixelCraft Engine initialized successfully");
         return true;
+    }
+
+    bool Application::initializeSerializationSystem()
+    {
+        using namespace Utility::Serialization;
+
+        info("Initializing serialization system");
+
+        try
+        {
+            auto& registry = SchemaRegistry::getInstance();
+
+            // Register Voxel module types
+            registry.registerType<Voxel::Voxel>("Voxel", {1, 0, 0});
+            registry.registerType<Voxel::ChunkCoord>("ChunkCoord", {1, 0, 0});
+            registry.registerType<Voxel::Chunk>("Chunk", {1, 0, 0});
+
+            // Register ECS types
+            registry.registerType<ECS::Component>("Component", {1, 0, 0});
+            registry.registerType<ECS::TransformComponent>("TransformComponent", {1, 0, 0});
+
+            // Register common math types
+            registry.registerType<glm::vec2>("vec2", {1, 0, 0});
+            registry.registerType<glm::vec3>("vec3", {1, 0, 0});
+            registry.registerType<glm::vec4>("vec4", {1, 0, 0});
+            registry.registerType<glm::quat>("quat", {1, 0, 0});
+            registry.registerType<glm::mat4>("mat4", {1, 0, 0});
+
+            // Register utility types
+            registry.registerType<Utility::AABB>("AABB", {1, 0, 0});
+            registry.registerType<ECS::UUID>("UUID", {1, 0, 0});
+
+            info("Serialization system initialized with " +
+                 std::to_string(registry.getAllSchemaNames().size()) +
+                 " registered types");
+
+            return true;
+        }
+        catch (const std::exception& e)
+        {
+            error("Exception during serialization system initialization: " + std::string(e.what()));
+            return false;
+        }
     }
 
     bool Application::sortSubsystemDependencies()

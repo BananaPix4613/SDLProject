@@ -1,0 +1,24 @@
+// rigid_body_component.fbs
+// RigidBody schema for RigidBodyComponent
+include "common_types.fbs";
+
+namespace PixelCraft.ECS;
+
+enum BodyType : byte
+{
+    Static = 0, Kinematic = 1, Dynamic = 2
+}
+
+table RigidBodyComponentData{
+body_type:BodyType;
+mass:float;
+drag:float;
+angular_drag:float;
+use_gravity:bool;
+is_kinematic:bool;
+linear_velocity:Vec3;
+angular_velocity:Vec3;
+}
+
+root_type RigidBodyComponentData;
+file_identifier "RGBD";

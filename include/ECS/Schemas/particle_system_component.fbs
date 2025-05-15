@@ -1,0 +1,20 @@
+// particle_system_component.fbs
+// ParticleSystem schema for ParticleSystemComponent
+include "common_types.fbs";
+
+namespace PixelCraft.ECS;
+
+table ParticleSystemComponentData{
+max_particles:int;
+emission_rate:float;
+lifetime:float;
+start_speed:float;
+start_size:float;
+start_color:Vec3;
+gravity_modifier:float;
+simulation_space:bool; // 0 = local, 1 = world
+texture_path:string;
+}
+
+root_type ParticleSystemComponentData;
+file_identifier "PRTC";

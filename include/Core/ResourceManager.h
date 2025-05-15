@@ -130,7 +130,7 @@ namespace PixelCraft::Core
                         resource->second->addRef();
                         if (callback)
                         {
-                            callback(std::static_cast<T>(resource->second));
+                            callback(static_cast<T>(resource->second));
                         }
                         return;
                     }

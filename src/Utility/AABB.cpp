@@ -424,23 +424,23 @@ namespace PixelCraft::Utility
         // Draw the 12 edges of the AABB
         // Assumes DebugDraw has a drawLine(start, end, color) method
 
-        // Bottom face
-        DebugDraw::drawLine(corners[0], corners[1], color);
-        DebugDraw::drawLine(corners[1], corners[3], color);
-        DebugDraw::drawLine(corners[3], corners[2], color);
-        DebugDraw::drawLine(corners[2], corners[0], color);
+        //// Bottom face
+        //DebugDraw::drawLine(corners[0], corners[1], color);
+        //DebugDraw::drawLine(corners[1], corners[3], color);
+        //DebugDraw::drawLine(corners[3], corners[2], color);
+        //DebugDraw::drawLine(corners[2], corners[0], color);
 
-        // Top face
-        DebugDraw::drawLine(corners[4], corners[5], color);
-        DebugDraw::drawLine(corners[5], corners[7], color);
-        DebugDraw::drawLine(corners[7], corners[6], color);
-        DebugDraw::drawLine(corners[6], corners[4], color);
+        //// Top face
+        //DebugDraw::drawLine(corners[4], corners[5], color);
+        //DebugDraw::drawLine(corners[5], corners[7], color);
+        //DebugDraw::drawLine(corners[7], corners[6], color);
+        //DebugDraw::drawLine(corners[6], corners[4], color);
 
-        // Connecting edges
-        DebugDraw::drawLine(corners[0], corners[4], color);
-        DebugDraw::drawLine(corners[1], corners[5], color);
-        DebugDraw::drawLine(corners[2], corners[6], color);
-        DebugDraw::drawLine(corners[3], corners[7], color);
+        //// Connecting edges
+        //DebugDraw::drawLine(corners[0], corners[4], color);
+        //DebugDraw::drawLine(corners[1], corners[5], color);
+        //DebugDraw::drawLine(corners[2], corners[6], color);
+        //DebugDraw::drawLine(corners[3], corners[7], color);
     }
 
 } // namespace PixelCraft::Utility

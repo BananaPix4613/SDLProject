@@ -17,7 +17,7 @@ namespace PixelCraft::Core
     {
         if (m_initialized)
         {
-            warn("Subsystem destroyed while still initialized: " + getName());
+            warn("Subsystem destroyed while still initialized: " + m_name);
         }
     }
 

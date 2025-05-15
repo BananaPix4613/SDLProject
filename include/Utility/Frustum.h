@@ -10,6 +10,9 @@
 namespace PixelCraft::Utility
 {
 
+    // Forward declarations
+    class AABB;
+
     /**
      * @brief Enumeration of frustum planes
      */
@@ -234,6 +237,13 @@ namespace PixelCraft::Utility
          * @return True if AABB is at least partially inside the frustum
          */
         bool testAABB(const glm::vec3& min, const glm::vec3& max) const;
+
+        /**
+         * @brief Test if an AABB is inside or intersects the frustum
+         * @param bounds Reference to the AABB
+         * @return True if AABB is at least partially inside the frustum
+         */
+        bool testAABB(const AABB& bounds) const;
 
         /**
          * @brief Detailed intersection test for an AABB

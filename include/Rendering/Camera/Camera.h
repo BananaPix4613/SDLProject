@@ -36,16 +36,43 @@ namespace PixelCraft::Rendering::Camera
         virtual const glm::mat4& getViewMatrix() const;
 
         /**
+         * @brief Set the view matrix for this camera
+         * @param The view matrix to use
+         */
+        virtual void setViewMatrix(const glm::mat4& viewMatrix)
+        {
+            m_viewMatrix = viewMatrix;
+        }
+
+        /**
          * @brief Get the projection matrix for this camera
          * @return The projection matrix
          */
         virtual const glm::mat4& getProjectionMatrix() const;
 
         /**
+         * @brief Set the projection matrix for this camera
+         * @param The projection matrix to use
+         */
+        virtual void setProjectionMatrix(const glm::mat4& projectionMatrix)
+        {
+            m_projectionMatrix = projectionMatrix;
+        }
+
+        /**
          * @brief Get the combined view-projection matrix
          * @return The view-projection matrix
          */
         virtual const glm::mat4& getViewProjectionMatrix() const;
+
+        /**
+         * @brief Set the view projection matrix for this camera
+         * @param The view projection matrix to use
+         */
+        virtual void setViewProjectionMatrix(const glm::mat4& viewProjectionMatrix)
+        {
+            m_viewProjectionMatrix = viewProjectionMatrix;
+        }
 
         /**
          * @brief Get the frustum for this camera

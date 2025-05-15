@@ -94,7 +94,7 @@ namespace PixelCraft::Utility
          * @brief Get the singleton instance
          * @return Reference to the global profiler instance
          */
-        static Profiler& getInstance();
+        static Profiler* getInstance();
 
         /**
          * @brief Initialize the profiler
@@ -296,6 +296,9 @@ namespace PixelCraft::Utility
          * @return Formatted time string
          */
         std::string formatTime(double timeMs);
+
+        // Singleton instance
+        static Profiler* s_instance;
 
         // Main profiling data
         bool m_enabled;                ///< Whether profiling is enabled

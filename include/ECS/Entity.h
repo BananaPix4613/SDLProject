@@ -4,22 +4,20 @@
 #pragma once
 
 #include <memory>
-#include <string>
-#include <cstdint>
+
+#include "ECS/Types.h"
+#include "ECS/UUID.h"
 
 namespace PixelCraft::ECS
 {
 
-    using EntityID = uint32_t;
+    // Forward declarations
     class Registry;
+    class Serializer;
+    class Deserializer;
 
     /**
-     * @brief Lightweight handle to an entity in the ECS architecture
-     *
-     * The Entity class provides a convenient interface for entity operations
-     * and component management through the Registry. It serves as a handle
-     * to a unique entity identifier and maintains a weak reference to the
-     * Registry to avoid ownership cycles.
+     * @brief Lightweight entity handle with component and serialization operations
      */
     class Entity
     {
@@ -30,189 +28,289 @@ namespace PixelCraft::ECS
         Entity();
 
         /**
-         * @brief Construct an entity with the given ID and Registry pointer
-         * @param id The unique entity identifier
-         * @param registry Pointer to the registry that owns this entity
-         */
-        Entity(EntityID id, Registry* registry);
-
-        /**
-         * @brief Construct an entity with the given ID and weak reference to Registry
-         * @param id The unique entity identifier
-         * @param registry Weak pointer to the registry that owns this entity
+         * @brief Constructor with ID and registry reference
+         * @param id The entity ID
+         * @param registry Weak reference to the registry
          */
         Entity(EntityID id, std::weak_ptr<Registry> registry);
 
         /**
-         * @brief Get the entity's unique identifier
-         * @return The entity ID
-         */
-        EntityID getID() const;
-
-        /**
-         * @brief Check if the entity is valid and exists in the registry
-         * @return True if the entity exists in the registry, false otherwise
+         * @brief Check if the entity is valid
+         * @return True if the entity is valid and exists in the registry
          */
         bool isValid() const;
 
         /**
-         * @brief Destroy the entity, removing it from the registry
-         *
-         * This method marks the entity for destruction in the registry.
-         * The actual destruction might be deferred until the next registry update.
+         * @brief Destroy the entity and all its components
          */
         void destroy();
 
         /**
-         * @brief Enable or disable the entity
-         * @param enabled True to enable the entity, false to disable
-         *
-         * Disabled entities are not processed by systems but remain in the registry.
-         */
-        void setEnabled(bool enabled);
-
-        /**
-         * @brief Check if the entity is enabled
-         * @return True if the entity is enabled, false otherwise
-         */
-        bool isEnabled() const;
-
-        /**
-         * @brief Set the entity's name
-         * @param name The name to assign to the entity
-         */
-        void setName(const std::string& name);
-
-        /**
-         * @brief Get the entity's name
-         * @return The entity's name
-         */
-        const std::string& getName() const;
-
-        /**
-         * @brief Set the entity's tag
-         * @param tag The tag to assign to the entity
-         */
-        void setTag(const std::string& tag);
-
-        /**
-         * @brief Get the entity's tag
-         * @return The entity's tag
-         */
-        const std::string& getTag() const;
-
-        /**
          * @brief Add a component to the entity
-         * @tparam T The component type to add
-         * @tparam Args Argument types for the component constructor
-         * @param args Arguments forwarded to the component constructor
-         * @return Pointer to the newly created component, or nullptr if failed
+         * @tparam T Component type
+         * @tparam Args Constructor argument types
+         * @param args Constructor arguments
+         * @return Reference to the created component
          */
         template<typename T, typename... Args>
-        T* addComponent(Args&&... args);
-
-        /**
-         * @brief Get a component from the entity
-         * @tparam T The component type to retrieve
-         * @return Pointer to the component, or nullptr if the entity doesn't have it
-         */
-        template<typename T>
-        T* getComponent();
+        T& addComponent(Args&&... args);
 
         /**
          * @brief Remove a component from the entity
-         * @tparam T The component type to remove
-         * @return True if the component was removed, false if it wasn't found
+         * @tparam T Component type to remove
+         * @return True if component was removed
          */
         template<typename T>
         bool removeComponent();
 
         /**
+         * @brief Get a component from the entity
+         * @tparam T Component type to retrieve
+         * @return Reference to the component
+         */
+        template<typename T>
+        T& getComponent();
+
+        /**
+         * @brief Get a const component from the entity
+         * @tparam T Component type to retrieve
+         * @return Const reference to the component
+         */
+        template<typename T>
+        const T& getComponent() const;
+
+        /**
          * @brief Check if the entity has a specific component
-         * @tparam T The component type to check for
-         * @return True if the entity has the component, false otherwise
+         * @tparam T Component type to check for
+         * @return True if the entity has the component
          */
         template<typename T>
         bool hasComponent() const;
 
         /**
-         * @brief Check if the entity has all of the specified components
-         * @tparam Components The component types to check for
-         * @return True if the entity has all the specified components, false otherwise
+         * @brief Get the component mask for this entity
+         * @return The component mask
          */
-        template<typename... Components>
-        bool hasComponents() const;
+        const ComponentMask& getComponentMask() const;
+        
+        /**
+         * @brief Serialize the entity to the given serializer
+         * @param serializer The serializer to use
+         */
+        void serialize(Serializer& serializer);
 
         /**
-         * @brief Get the registry that owns this entity
-         * @return Pointer to the owning registry, or nullptr if the registry has been destroyed
+         * @brief Deserialize the entity from the given deserializer
+         * @param deserializer The deserializer to use
          */
-        Registry* getRegistry() const;
+        void deserialize(Deserializer& deserializer);
 
         /**
-         * @brief Equality comparison operator
-         * @param other The entity to compare with
-         * @return True if both entities reference the same entity ID and registry, false otherwise
+         * @brief Get the entity's UUID
+         * @return The UUID of the entity
          */
-        bool operator==(const Entity& other) const;
+        UUID getUUID() const;
 
         /**
-         * @brief Inequality comparison operator
-         * @param other The entity to compare with
-         * @return True if the entities reference different entity IDs or registries, false otherwise
+         * @brief Set the entity's UUID
+         * @param uuid The UUID to set
          */
-        bool operator!=(const Entity& other) const;
+        void setUUID(const UUID& uuid);
 
         /**
-         * @brief Less-than comparison operator for ordering in containers
-         * @param other The entity to compare with
-         * @return True if this entity's ID is less than the other's within the same registry, false otherwise
+         * @brief Enable or disable UUID generation for this entity
+         * @param needsUUID True to enable UUID generation
          */
-        bool operator<(const Entity& other) const;
+        void setNeedsUUID(bool needsUUID);
 
         /**
-         * @brief Conversion operator to EntityID
-         * @return The entity's ID
+         * @brief Check if the entity has UUID generation enabled
+         * @return True if UUID generation is enabled
          */
-        operator EntityID() const;
+        bool needsUUID() const;
 
         /**
-         * @brief Check if the entity is null (invalid ID or no registry)
-         * @return True if the entity is null, false otherwise
+         * @brief Set the entity's name
+         * @param name The name to set
+         */
+        void setName(const std::string& name);
+
+        /**
+         * @brief Get the entity's name
+         * @return The name of the entity
+         */
+        std::string getName() const;
+
+        /**
+         * @brief Add a tag to the entity
+         * @param tag The tag to add
+         */
+        void addTag(const std::string& tag);
+
+        /**
+         * @brief Remove a tag from the entity
+         * @param tag The tag to remove
+         */
+        void removeTag(const std::string& tag);
+
+        /**
+         * @brief Check if the entity has a tag
+         * @param tag The tag to check for
+         * @return True if the entity has the tag
+         */
+        bool hasTag(const std::string& tag) const;
+
+        /**
+         * @brief Set the entity's parent
+         * @param parent The parent entity
+         */
+        void setParent(Entity parent);
+
+        /**
+         * @brief Get the entity's parent
+         * @return The parent entity
+         */
+        Entity getParent() const;
+
+        /**
+         * @brief Get the entity's children
+         * @return Vector of child entities
+         */
+        std::vector<Entity> getChildren() const;
+
+        /**
+         * @brief Set the entity's active state
+         * @param active True to set active, false to set inactive
+         */
+        void setActive(bool active);
+
+        /**
+         * @brief Check if the entity is active
+         * @return True if the entity is active
+         */
+        bool isActive() const;
+
+        /**
+         * @brief Get the registry the entity belongs to
+         * @return Shared pointer to the registry
+         */
+        std::shared_ptr<Registry> getRegistry() const;
+
+        /**
+         * @brief Get the entity's ID
+         * @return The ID of the entity
+         */
+        EntityID getID() const
+        {
+            return m_id;
+        }
+
+        /**
+         * @brief Equality comparison
+         * @param other Entity to compare with
+         * @return True if entities are equal
+         */
+        bool operator==(const Entity& other) const
+        {
+            return m_id == other.m_id && m_registry.lock() == other.m_registry.lock();
+        }
+
+        /**
+         * @brief Inequality comparison
+         * @param other Entity to compare with
+         * @return True if entities are not equal
+         */
+        bool operator!=(const Entity& other) const
+        {
+            return !(*this == other);
+        }
+
+        /**
+         * @brief Check if the entity is null
+         * @return True if this is a null entity
          */
         bool isNull() const;
 
         /**
-         * @brief Create a null entity (static factory method)
-         * @return A null entity instance
+         * @brief Create a null entity
+         * @return A null entity
          */
         static Entity Null();
 
     private:
-        EntityID m_id;                       ///< The entity's unique identifier
-        std::weak_ptr<Registry> m_registry;  ///< Weak reference to the owning registry
+        EntityID m_id;                      ///< The entity's ID
+        std::weak_ptr<Registry> m_registry; ///< Weak reference to the registry
     };
+
+    // Template implementations
+    template<typename T, typename... Args>
+    T& Entity::addComponent(Args&&... args)
+    {
+        auto registry = m_registry.lock();
+        if (!registry)
+        {
+            throw std::runtime_error("Entity::addComponent: Registry is invalid");
+        }
+
+        return registry->addComponent<T>(m_id, std::forward<Args>(args)...);
+    }
+
+    template<typename T>
+    bool Entity::removeComponent()
+    {
+        auto registry = m_registry.lock();
+        if (!registry)
+        {
+            return false;
+        }
+
+        return registry->removeComponent<T>(m_id);
+    }
+
+    template<typename T>
+    T& Entity::getComponent()
+    {
+        auto registry = m_registry.lock();
+        if (!registry)
+        {
+            throw std::runtime_error("Entity::getComponent: Registry is invalid");
+        }
+
+        return registry->getComponent<T>(m_id);
+    }
+
+    template<typename T>
+    const T& Entity::getComponent() const
+    {
+        auto registry = m_registry.lock();
+        if (!registry)
+        {
+            throw std::runtime_error("Entity::getComponent: Registry is invalid");
+        }
+
+        return registry->getComponent<T>(m_id);
+    }
+
+    template<typename T>
+    bool Entity::hasComponent() const
+    {
+        auto registry = m_registry.lock();
+        if (!registry)
+        {
+            return false;
+        }
+
+        return registry->hasComponent<T>(m_id);
+    }
 
 } // namespace PixelCraft::ECS
 
-// Template method implementations
-#include "Entity.inl"
-
+// Hash function for using Entity in unordered containers
 namespace std
 {
-    /**
-     * @brief Hash function specialization for Entity
-     *
-     * Enables using Entity as a key in unordered containers.
-     */
     template<>
     struct hash<PixelCraft::ECS::Entity>
     {
-        /**
-         * @brief Calculate hash value for an Entity
-         * @param entity The entity to hash
-         * @return Hash value based on the entity's ID
-         */
         size_t operator()(const PixelCraft::ECS::Entity& entity) const
         {
             return hash<PixelCraft::ECS::EntityID>()(entity.getID());

@@ -20,7 +20,7 @@ namespace PixelCraft::Core
         // Ensure resource is unloaded when destroyed
         if (m_loaded)
         {
-            unload();
+            // would call unload();
         }
     }
 

@@ -1,0 +1,15 @@
+// mesh_renderer_component.fbs
+// MeshRenderer schema for MeshRendererComponent
+
+namespace PixelCraft.ECS;
+
+table MeshRendererComponentData{
+mesh_path:string;
+material_path:string;
+cast_shadows:bool;
+receive_shadows:bool;
+enabled:bool;
+}
+
+root_type MeshRendererComponentData;
+file_identifier "MSHR";

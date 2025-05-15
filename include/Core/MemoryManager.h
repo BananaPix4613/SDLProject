@@ -219,7 +219,7 @@ namespace PixelCraft::Core
             new(ptr) T(std::forward<Args>(args)...);
 
             // Create shared_ptr with custom deleter
-            return std::shared_ptr<T>(ptr, PoolDeleter<T>())
+            return std::shared_ptr<T>(ptr, PoolDeleter<T>());
         }
 
         /**
@@ -251,7 +251,7 @@ namespace PixelCraft::Core
         /**
          * @brief Private destructor for singleton pattern
          */
-        ~MemoryManager();
+        //~MemoryManager();
 
         // Delete copy/move constructors and assignment operators
         MemoryManager(const MemoryManager&) = delete;

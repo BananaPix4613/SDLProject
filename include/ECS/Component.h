@@ -3,38 +3,54 @@
 // -------------------------------------------------------------------------
 #pragma once
 
-#include <memory>
-#include <functional>
-#include <string>
-#include <unordered_map>
-#include <typeindex>
-#include <vector>
-#include <mutex>
+#include "Utility/Serialization/SerializationUtility.h"
+#include "ECS/ComponentTypes.h"
 
-#include "Core/DataNode.h"
+#include <memory>
+#include <string>
+#include <typeindex>
+#include <functional>
+#include <typeindex>
 
 namespace PixelCraft::ECS
 {
 
-    using EntityID = uint32_t;
-    using ComponentTypeID = uint16_t;
+    namespace FlatBuffers
+    {
+        /**
+         * @brief Schema definition for FlatBuffers serialization
+         */
+        class Schema
+        {
+        public:
+            /**
+             * @brief Get the schema definition as a string
+             * @return String representation of the FlatBuffers schema
+             */
+            virtual std::string getDefinition() const = 0;
 
-    // Forward declaration
-    class Component;
+            /**
+             * @brief Get the schema unique identifier
+             * @return The unique identifier for this schema
+             */
+            virtual std::string getIdentifier() const = 0;
 
+            /**
+             * @brief Get the schema version
+             * @return The schema version number
+             */
+            virtual uint32_t getVersion() const = 0;
+        };
+    }
+    
     /**
-     * @brief Type alias for component smart pointers
-     */
-    using ComponentPtr = std::shared_ptr<Component>;
-
-    /**
-     * @brief Base class for all components in the ECS architecture.
+     * @brief Base class for all components in the ECS architecture
      *
-     * Components are data containers that can be attached to entities. They
-     * define the characteristics and behaviors of entities through composition.
-     * This base class provides the common interface that all components must implement.
+     * The Component class defines the interface that all components must implement.
+     * It provides serialization capabilities, lifecycle methods, type identification,
+     * and entity ownership tracking.
      */
-    class Component : public std::enable_shared_from_this<Component>
+    class Component
     {
     public:
         /**
@@ -43,86 +59,68 @@ namespace PixelCraft::ECS
         Component();
 
         /**
-         * @brief Virtual destructor to allow proper cleanup of derived classes
+         * @brief Virtual destructor for proper inheritance
          */
-        virtual ~Component();
+        virtual ~Component() = default;
 
         /**
          * @brief Initialize the component
-         * @return True if initialization was successful, false otherwise
+         *
+         * Called after the component is created and attached to an entity.
+         * Override in derived classes to implement component-specific initialization.
          */
-        virtual bool initialize();
+        virtual void initialize();
 
         /**
-         * @brief Called when component is first added to an entity
-         * Performs initial setup that requires the component to be attached to an entity
+         * @brief Create a copy of this component
+         * @return A unique pointer to a new component instance
          */
-        virtual void start();
+        virtual std::unique_ptr<Component> clone() = 0;
 
         /**
-         * @brief Update component state
-         * @param deltaTime Time elapsed since last update in seconds
-         */
-        virtual void update(float deltaTime);
-
-        /**
-         * @brief Render component visualization (if applicable)
-         */
-        virtual void render();
-
-        /**
-         * @brief Called when component is being destroyed
-         * Perform any cleanup operations here
-         */
-        virtual void onDestroy();
-
-        /**
-         * @brief Set the owner entity of this component
-         * @param owner EntityID of the owning entity
-         */
-        void setOwner(EntityID owner);
-
-        /**
-         * @brief Get the owner entity of this component
-         * @return EntityID of the owning entity
-         */
-        EntityID getOwner() const;
-
-        /**
-         * @brief Get the type name of this component
-         * @return String representation of the component type
-         */
-        virtual std::string getTypeName() const = 0;
-
-        /**
-         * @brief Get the type ID of this component
-         * @return Numeric type identifier
+         * @brief Get the component type ID
+         * @return The unique type identifier for this component
          */
         virtual ComponentTypeID getTypeID() const = 0;
 
         /**
-         * @brief Get the type index of this component
-         * @return std::type_index representing the component type
+         * @brief Get the component type name
+         * @return The string representation of the component type
          */
-        virtual std::type_index getTypeIndex() const = 0;
+        virtual std::string getTypeName() const = 0;
 
         /**
-         * @brief Serialize component state to a data node
-         * @param node DataNode to serialize to
+         * @brief Set the entity that owns this component
+         * @param owner The entity ID of the owner
          */
-        virtual void serialize(Core::DataNode& node) const;
+        void setOwner(EntityID owner);
 
         /**
-         * @brief Deserialize component state from a data node
-         * @param node DataNode to deserialize from
+         * @brief Get the entity that owns this component
+         * @return The entity ID of the owner
          */
-        virtual void deserialize(const Core::DataNode& node);
+        EntityID getOwner() const
+        {
+            return m_owner;
+        }
 
         /**
-         * @brief Create a clone of this component
-         * @return Shared pointer to a new component with the same type and state
+         * @brief Get the component version
+         * @return The version number for backward compatibility
          */
-        virtual ComponentPtr clone() const = 0;
+        uint32_t getVersion() const
+        {
+            return m_version;
+        }
+
+        /**
+         * @brief Set the component version
+         * @param version The version number to set
+         */
+        void setVersion(uint32_t version)
+        {
+            m_version = version;
+        }
 
         /**
          * @brief Enable or disable the component
@@ -132,142 +130,75 @@ namespace PixelCraft::ECS
 
         /**
          * @brief Check if the component is enabled
-         * @return True if enabled, false if disabled
+         * @return True if the component is enabled
          */
         bool isEnabled() const;
 
-        /**
-         * @brief Check if the component is initialized
-         * @return True if initialized, false otherwise
-         */
-        bool isInitialized() const;
-
-    protected:
-        /** Owner entity ID */
-        EntityID m_owner;
-
-        /** Enabled state */
-        bool m_enabled;
-
-        /** Initialization state */
-        bool m_initialized;
-    };
-
-    /**
-     * @brief Factory for component registration and creation
-     *
-     * Provides a central registry for component types and handles
-     * creation of components by type name or ID.
-     */
-    class ComponentFactory
-    {
-    public:
-        /** Type definition for component creation function */
-        using CreateComponentFunc = std::function<ComponentPtr()>;
-
-        /**
-         * @brief Register a component type with the factory
-         * @param name Type name of the component
-         * @param typeID Unique type ID for the component
-         * @param createFunc Function to create instances of the component
-         * @return True if registration was successful, false otherwise
-         */
-        static bool registerComponent(const std::string& name, ComponentTypeID typeID, CreateComponentFunc createFunc);
-
-        /**
-         * @brief Create a component by type name
-         * @param name Type name of the component to create
-         * @return Shared pointer to the created component, or nullptr if type not found
-         */
-        static ComponentPtr createComponent(const std::string& name);
-
-        /**
-         * @brief Create a component by type ID
-         * @param typeID Type ID of the component to create
-         * @return Shared pointer to the created component, or nullptr if type not found
-         */
-        static ComponentPtr createComponent(ComponentTypeID typeID);
-
-        /**
-         * @brief Get the type ID for a component type name
-         * @param name Type name to look up
-         * @return Component type ID, or 0 if not found
-         */
-        static ComponentTypeID getComponentTypeID(const std::string& name);
-
-        /**
-         * @brief Get the type name for a component type ID
-         * @param typeID Type ID to look up
-         * @return Component type name, or empty string if not found
-         */
-        static std::string getComponentTypeName(ComponentTypeID typeID);
-
-        /**
-         * @brief Template helper for component registration
-         * @tparam T Component type to register
-         * @param name Type name for the component
-         * @return True if registration was successful, false otherwise
-         */
-        template<typename T>
-        static bool registerComponent(const std::string& name)
+        // Virtual serialization methods
+        virtual Utility::Serialization::SerializationResult serialize(Utility::Serialization::Serializer& serializer) const
         {
-            auto typeID = T::getStaticTypeID();
-            return registerComponent(name, typeID, []() -> ComponentPtr {
-                return std::make_shared<T>();
-                                     });
+            auto result = serializer.beginObject("Component");
+            if (!result) return result;
+
+            result = serializer.writeField("owner", m_owner);
+            if (!result) return result;
+
+            result = serializer.writeField("version", m_version);
+            if (!result) return result;
+
+            return serializer.endObject();
         }
 
-        /**
-         * @brief Get all registered component type names
-         * @return Vector of component type names
-         */
-        static std::vector<std::string> getRegisteredComponentNames();
+        virtual Utility::Serialization::SerializationResult deserialize(Utility::Serialization::Deserializer& deserializer)
+        {
+            auto result = deserializer.beginObject("Component");
+            if (!result) return result;
 
-        /**
-         * @brief Check if a component type is registered
-         * @param name Type name to check
-         * @return True if registered, false otherwise
-         */
-        static bool isComponentRegistered(const std::string& name);
+            result = deserializer.readField("owner", m_owner);
+            if (!result) return result;
 
-        /**
-         * @brief Check if a component type ID is registered
-         * @param typeID Type ID to check
-         * @return True if registered, false otherwise
-         */
-        static bool isComponentRegistered(ComponentTypeID typeID);
+            result = deserializer.readField("version", m_version);
+            if (!result) return result;
 
-    private:
-        /** Map of component type names to type IDs */
-        static std::unordered_map<std::string, ComponentTypeID> s_typeIDs;
+            return deserializer.endObject();
+        }
 
-        /** Map of component type IDs to type names */
-        static std::unordered_map<ComponentTypeID, std::string> s_typeNames;
+        static void defineSchema(Utility::Serialization::Schema& schema)
+        {
+            schema.addField("owner", Utility::Serialization::ValueType::EntityRef);
+            schema.addField("version", Utility::Serialization::ValueType::UInt32);
+        }
 
-        /** Map of component type IDs to factory functions */
-        static std::unordered_map<ComponentTypeID, CreateComponentFunc> s_factories;
+        static std::string getStaticTypeName()
+        {
+            return "Component";
+        }
 
-        /** Mutex for thread-safe access to registration maps */
-        static std::mutex s_registryMutex;
+    protected:
+        EntityID m_owner;       ///< ID of the entity that owns this component
+        uint32_t m_version;     ///< The component version for backward compatibility
+        bool m_enabled;         ///< Flag indicating if this component is enabled
     };
 
     /**
-     * @brief Macro for defining component type information
+     * @brief Macro for component type definition
      *
-     * Automatically implements the type-related methods required by the Component base class.
+     * Use this macro in derived component classes to implement
+     * the required type identification and schema methods.
      *
-     * @param TypeName The class name of the component
-     * @param TypeID Unique numeric ID for the component type
+     * @param TypeName The name of the component class
+     * @param TypeID The unique ID for this component type
      */
 #define DEFINE_COMPONENT_TYPE(TypeName, TypeID) \
     static ComponentTypeID getStaticTypeID() { return TypeID; } \
-    ComponentTypeID getTypeID() const override { return TypeID; } \
-    std::string getTypeName() const override { return #TypeName; } \
-    std::type_index getTypeIndex() const override { return std::type_index(typeid(TypeName)); } \
-    ComponentPtr clone() const override { \
-        auto clone = std::make_shared<TypeName>(*this); \
-        clone->initialize(); \
-        return clone; \
+    static std::string getTypeName() { return #TypeName; } \
+    static void defineSchema(Utility::Serialization::Schema& schema); \
+    static bool s_registered; \
+    static bool registerComponent() { \
+        ComponentRegistry::getInstance().registerComponent<TypeName>(#TypeName); \
+        auto& schemaRegistry = Utility::Serialization::SchemaRegistry::getInstance(); \
+        schemaRegistry.registerType<TypeName>(#TypeName, {1, 0, 0}); \
+        return true; \
     }
 
 } // namespace PixelCraft::ECS

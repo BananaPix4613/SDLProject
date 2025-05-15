@@ -28,7 +28,7 @@ namespace PixelCraft::Core
          * @brief Get the singleton instance of the Application
          * @return Reference to the Application instance
          */
-        static Application& getInstance();
+        static Application* getInstance();
 
         /**
          * @brief Deleted copy constructor to enforce singleton
@@ -135,6 +135,12 @@ namespace PixelCraft::Core
         Application();
 
         /**
+         * @brief Initialize all serialization types
+         * @return True if initialization was successful
+         */
+        bool initializeSerializationSystem();
+
+        /**
          * @brief Sort subsystems based on their dependencies
          * @return True if dependencies could be resolved without cycles
          */
@@ -147,6 +153,9 @@ namespace PixelCraft::Core
          * @return True if initialization was successful
          */
         bool initializeSubsystem(const std::type_index& typeIndex, std::set<std::type_index>& initializedSystems);
+
+        // Singleton instance
+        static Application* s_instance;
 
         // Member variables
         std::unordered_map<std::type_index, std::shared_ptr<Subsystem>> m_subsystems;

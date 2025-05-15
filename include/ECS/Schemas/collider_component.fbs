@@ -1,0 +1,23 @@
+// collider_component.fbs
+// Collider schema for RigidBodyComponent
+include "common_types.fbs";
+
+namespace PixelCraft.ECS;
+
+enum ColliderType : byte
+{
+    Box = 0, Sphere = 1, Capsule = 2, Mesh = 3
+}
+
+table ColliderComponentData{
+collider_type:ColliderType;
+is_trigger:bool;
+size:Vec3;
+radius:float;
+height:float;
+material_name:string;
+mesh_path:string;
+}
+
+root_type ColliderComponentData;
+file_identifier "CLDR";

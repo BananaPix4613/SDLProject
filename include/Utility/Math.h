@@ -5,8 +5,8 @@
 
 #include <random>
 #include <glm/glm.hpp>
-#include <gtc/quaternion.hpp>
-#include <gtx/quaternion.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/quaternion.hpp>
 
 namespace PixelCraft::Utility
 {

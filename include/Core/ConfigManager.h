@@ -14,7 +14,7 @@
 #include <atomic>
 
 #include "Core/Subsystem.h"
-#include "Events/Event.h"
+//#include "Events/Event.h"
 #include "glm/glm.hpp"
 
 namespace PixelCraft::Core
@@ -198,7 +198,7 @@ namespace PixelCraft::Core
         /**
          * @brief Private destructor for singleton
          */
-        ~ConfigManager();
+        //~ConfigManager();
 
         /**
          * @brief Check watched files for changes
@@ -271,59 +271,59 @@ namespace PixelCraft::Core
     /**
      * @brief Event for configuration changes
      */
-    class ConfigChangeEvent : public Events::Event
-    {
-    public:
-        /**
-         * @brief Constructor
-         * @param key Changed configuration key
-         * @param section Section containing the key
-         */
-        ConfigChangeEvent(const std::string& key, const std::string& section)
-            : m_key(key), m_section(section);
-        {
-        }
+    //class ConfigChangeEvent : public Events::Event
+    //{
+    //public:
+    //    /**
+    //     * @brief Constructor
+    //     * @param key Changed configuration key
+    //     * @param section Section containing the key
+    //     */
+    //    ConfigChangeEvent(const std::string& key, const std::string& section)
+    //        : m_key(key), m_section(section)
+    //    {
+    //    }
 
-        /**
-         * @brief Get the changed key
-         * @return Configuration key
-         */
-        const std::string& getKey() const
-        {
-            return m_key;
-        }
+    //    /**
+    //     * @brief Get the changed key
+    //     * @return Configuration key
+    //     */
+    //    const std::string& getKey() const
+    //    {
+    //        return m_key;
+    //    }
 
-        /**
-         * @brief Get the section
-         * @return Section name
-         */
-        const std::string& getSection() const
-        {
-            return m_section;
-        }
+    //    /**
+    //     * @brief Get the section
+    //     * @return Section name
+    //     */
+    //    const std::string& getSection() const
+    //    {
+    //        return m_section;
+    //    }
 
-        /**
-         * @brief Get the event type name
-         * @return Type name string
-         */
-        std::string getTypeName() const override
-        {
-            return "ConfigChangeEvent";
-        }
+    //    /**
+    //     * @brief Get the event type name
+    //     * @return Type name string
+    //     */
+    //    std::string getTypeName() const override
+    //    {
+    //        return "ConfigChangeEvent";
+    //    }
 
-        /**
-         * @brief Get the event type index
-         * @return Type index for event system
-         */
-        static std::type_index getTypeIndex()
-        {
-            return std::type_index(typeid(ConfigChangeEvent));
-        }
+    //    /**
+    //     * @brief Get the event type index
+    //     * @return Type index for event system
+    //     */
+    //    static std::type_index getTypeIndex()
+    //    {
+    //        return std::type_index(typeid(ConfigChangeEvent));
+    //    }
 
-    private:
-        std::string m_key;
-        std::string m_section;
-    };
+    //private:
+    //    std::string m_key;
+    //    std::string m_section;
+    //};
 
     /**
      * @brief Helper for file change monitoring
@@ -428,12 +428,12 @@ namespace PixelCraft::Core
     std::string ConfigManager::get<std::string>(const std::string& key, const std::string& defaultValue) const;
 
     template<>
-    std::vec2 ConfigManager::get<glm::vec2>(const std::string& key, const glm::vec2& defaultValue) const;
+    glm::vec2 ConfigManager::get<glm::vec2>(const std::string& key, const glm::vec2& defaultValue) const;
 
     template<>
-    std::vec3 ConfigManager::get<glm::vec3>(const std::string& key, const glm::vec3& defaultValue) const;
+    glm::vec3 ConfigManager::get<glm::vec3>(const std::string& key, const glm::vec3& defaultValue) const;
 
     template<>
-    std::vec4 ConfigManager::get<glm::vec4>(const std::string& key, const glm::vec4& defaultValue) const;
+    glm::vec4 ConfigManager::get<glm::vec4>(const std::string& key, const glm::vec4& defaultValue) const;
 
 } // namespace PixelCraft::Core

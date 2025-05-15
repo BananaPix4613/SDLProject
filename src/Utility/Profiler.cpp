@@ -23,17 +23,17 @@ namespace PixelCraft::Utility
 
     ScopedProfiler::ScopedProfiler(const std::string& name) : m_name(name)
     {
-        if (Profiler::getInstance().isProfilingEnabled())
+        if (Profiler::getInstance()->isProfilingEnabled())
         {
-            Profiler::getInstance().beginSample(m_name);
+            Profiler::getInstance()->beginSample(m_name);
         }
     }
 
     ScopedProfiler::~ScopedProfiler()
     {
-        if (Profiler::getInstance().isProfilingEnabled())
+        if (Profiler::getInstance()->isProfilingEnabled())
         {
-            Profiler::getInstance().endSample();
+            Profiler::getInstance()->endSample();
         }
     }
 
@@ -41,10 +41,13 @@ namespace PixelCraft::Utility
     // Profiler Implementation
     //-------------------------------------------------------------------------
 
-    Profiler& Profiler::getInstance()
+    Profiler* Profiler::getInstance()
     {
-        static Profiler instance;
-        return instance;
+        if (!s_instance)
+        {
+            s_instance = new Profiler();
+        }
+        return s_instance;
     }
 
     Profiler::Profiler()

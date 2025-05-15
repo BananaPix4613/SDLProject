@@ -2,8 +2,9 @@
 // Frustum.cpp
 // -------------------------------------------------------------------------
 #include "Utility/Frustum.h"
-#include <gtc/matrix_access.hpp>
-#include <gtc/type_ptr.hpp>
+#include "Utility/AABB.h"
+#include <glm/gtc/matrix_access.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <cmath>
 
 #ifdef _MSC_VER
@@ -283,6 +284,39 @@ namespace PixelCraft::Utility
 
     bool Frustum::testAABB(const glm::vec3& min, const glm::vec3& max) const
     {
+        // Quick test - if any plane has the box completely on the negative side,
+        // the box is outside the frustum
+        for (const auto& plane : m_planes)
+        {
+            const glm::vec3& normal = plane.getNormal();
+
+            // Find the corner of the box that is furthest in the direction of the plane normal
+            glm::vec3 p;
+            p.x = (normal.x > 0.0f) ? max.x : min.x;
+            p.y = (normal.y > 0.0f) ? max.y : min.y;
+            p.z = (normal.z > 0.0f) ? max.z : min.z;
+
+            // If this corner is outside, the entire box is outside
+            if (plane.getSignedDistance(p) < 0.0f)
+            {
+                return false;
+            }
+        }
+
+        // If we get here, the box is either intersecting or inside the frustum
+        return true;
+    }
+
+    bool Frustum::testAABB(const AABB& bounds) const
+    {
+        if (bounds.isValid())
+        {
+            return false;
+        }
+
+        glm::vec3 min = bounds.getMin();
+        glm::vec3 max = bounds.getMax();
+
         // Quick test - if any plane has the box completely on the negative side,
         // the box is outside the frustum
         for (const auto& plane : m_planes)

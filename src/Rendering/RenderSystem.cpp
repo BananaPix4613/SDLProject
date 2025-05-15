@@ -8,10 +8,14 @@
 #include "Rendering/RenderContext.h"
 #include "Rendering/LightManager.h"
 #include "Rendering/PaletteManager.h"
+#include "Rendering/Camera/Camera.h"
 #include "Utility/LineBatchRenderer.h"
 #include "Utility/FileSystem.h"
+
 #include <algorithm>
 #include <glm/gtc/matrix_transform.hpp>
+
+namespace Camera = PixelCraft::Rendering::Camera;
 
 namespace PixelCraft::Rendering
 {
@@ -72,7 +76,6 @@ namespace PixelCraft::Rendering
         }
 
         // Set default viewport to match window size
-        App* app = Core::Application::getInstance();
         int width, height;
         Core::Application::getInstance().getWindowSize(width, height);
         setViewport(0, 0, width, height);
@@ -291,13 +294,24 @@ namespace PixelCraft::Rendering
         m_uiQueue.clear();
     }
 
-    void RenderSystem::setMainCamera(const Camera& camera)
+    void RenderSystem::setMainCamera(const std::shared_ptr<Camera::Camera> camera)
     {
         // Update render context with camera information
         m_renderContext.setViewMatrix(camera.getViewMatrix());
         m_renderContext.setProjectionMatrix(camera.getProjectionMatrix());
         m_renderContext.setCameraPosition(camera.getPosition());
         m_renderContext.updateMatrices();
+    }
+
+    std::shared_ptr<Camera::Camera> RenderSystem::getMainCamera() const
+    {
+        Camera::Camera outCamera;
+
+        outCamera.setViewMatrix(m_renderContext.getViewMatrix());
+        outCamera.setProjectionMatrix(m_renderContext.getProjectionMatrix());
+        outCamera.setViewProjectionMatrix(m_renderContext.getViewProjectionMatrix());
+
+        return outCamera;
     }
 
     void RenderSystem::setViewport(int x, int y, int width, int height)
@@ -321,7 +335,7 @@ namespace PixelCraft::Rendering
     std::shared_ptr<Shader> RenderSystem::createShader(const std::string& name)
     {
         // Get the resource manager
-        auto* resourceManager = Core::Application::getInstance()->getSubsystem<Core::ResourceManager>();
+        std::shared_ptr<Core::ResourceManager> resourceManager = Core::Application::getInstance().getSubsystem<Core::ResourceManager>();
         if (!resourceManager)
         {
             Log::error("Failed to get ResourceManager for shader creation");
@@ -342,7 +356,7 @@ namespace PixelCraft::Rendering
     std::shared_ptr<Texture> RenderSystem::createTexture(const std::string& name)
     {
         // Get the resource manager
-        auto* resourceManager = Core::Application::getInstance()->getSubsystem<Core::ResourceManager>();
+        std::shared_ptr<Core::ResourceManager> resourceManager = Core::Application::getInstance().getSubsystem<Core::ResourceManager>();
         if (!resourceManager)
         {
             Log::error("Failed to get ResourceManager for texture creation");
@@ -363,7 +377,7 @@ namespace PixelCraft::Rendering
     std::shared_ptr<Material> RenderSystem::createMaterial(const std::string& name)
     {
         // Get the resource manager
-        auto* resourceManager = Core::Application::getInstance()->getSubsystem<Core::ResourceManager>();
+        std::shared_ptr<Core::ResourceManager> resourceManager = Core::Application::getInstance().getSubsystem<Core::ResourceManager>();
         if (!resourceManager)
         {
             Log::error("Failed to get ResourceManager for material creation");
@@ -384,7 +398,7 @@ namespace PixelCraft::Rendering
     std::shared_ptr<Mesh> RenderSystem::createMesh(const std::string& name)
     {
         // Get the resource manager
-        auto* resourceManager = Core::Application::getInstance()->getSubsystem<Core::ResourceManager>();
+        std::shared_ptr<Core::ResourceManager> resourceManager = Core::Application::getInstance().getSubsystem<Core::ResourceManager>();
         if (!resourceManager)
         {
             Log::error("Failed to get ResourceManager for mesh creation");

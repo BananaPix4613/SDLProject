@@ -1,0 +1,17 @@
+// transform_component.fbs
+// FlatBuffers schema for TransformComponent
+include "common_types.fbs";
+
+namespace PixelCraft.ECS;
+
+table TransformComponentData{
+local_position:Vec3;
+local_rotation:Quat;
+local_scale:Vec3;
+parent:uint32;
+children: [uint32] ;
+world_transform_dirty:bool;
+}
+
+root_type TransformComponentData;
+file_identifier "TRFM";

@@ -3,7 +3,7 @@
 // -------------------------------------------------------------------------
 #include "Core/ConfigManager.h"
 #include "Core/Logger.h"
-#include "Events/EventSystem.h"
+//#include "Events/EventSystem.h"
 #include "Core/Application.h"
 
 #include <fstream>
@@ -27,26 +27,26 @@ namespace PixelCraft::Core
     std::unique_ptr<ConfigManager> ConfigManager::s_instance = nullptr;
     std::once_flag ConfigManager::s_onceFlag;
 
-    ConfigManager& ConfigManager::getInstance()
+    /*ConfigManager& ConfigManager::getInstance()
     {
         std::call_once(s_onceFlag, [] {
             s_instance = std::unique_ptr<ConfigManager>(new ConfigManager());
                        });
         return *s_instance;
-    }
+    }*/
 
     ConfigManager::ConfigManager() : m_fileWatcher(std::make_unique<FileWatcher>())
     {
         // Constructor - nothing to do here
     }
 
-    ConfigManager::~ConfigManager()
+    /*ConfigManager::~ConfigManager()
     {
         if (m_fileWatcher)
         {
             m_fileWatcher.reset();
         }
-    }
+    }*/
 
     bool ConfigManager::initialize()
     {
@@ -634,30 +634,30 @@ namespace PixelCraft::Core
         }
     }
 
-    void ConfigManager::notifyConfigChange(const std::string& key, const std::string& section)
-    {
-        // Create event for the change
-        ConfigChangeEvent event(key, section);
+    //void ConfigManager::notifyConfigChange(const std::string& key, const std::string& section)
+    //{
+    //    // Create event for the change
+    //    ConfigChangeEvent event(key, section);
 
-        // Notify local callbacks
-        std::unordered_map<uint64_t, ConfigChangeCallback> callbacks;
-        {
-            std::lock_guard<std::mutex> lock(m_configMutex);
-            callbacks = m_changeCallbacks;
-        }
+    //    // Notify local callbacks
+    //    std::unordered_map<uint64_t, ConfigChangeCallback> callbacks;
+    //    {
+    //        std::lock_guard<std::mutex> lock(m_configMutex);
+    //        callbacks = m_changeCallbacks;
+    //    }
 
-        for (const auto& [id, callback] : callbacks)
-        {
-            callback(event);
-        }
+    //    for (const auto& [id, callback] : callbacks)
+    //    {
+    //        callback(event);
+    //    }
 
-        // Dispatch through the event system if available
-        auto eventSystem = Application::getInstance().getSubsystem<Events::EventSystem>();
-        if (eventSystem)
-        {
-            eventSystem->dispatch(event);
-        }
-    }
+    //    // Dispatch through the event system if available
+    //    auto eventSystem = Application::getInstance().getSubsystem<Events::EventSystem>();
+    //    if (eventSystem)
+    //    {
+    //        eventSystem->dispatch(event);
+    //    }
+    //}
 
     std::string ConfigManager::getFileFormat(const std::string& filename) const
     {

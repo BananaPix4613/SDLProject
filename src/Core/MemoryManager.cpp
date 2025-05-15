@@ -2,7 +2,8 @@
 // MemoryManager.cpp
 // -------------------------------------------------------------------------
 #include "Core/MemoryManager.h"
-#include "Logger.h"
+#include "Core/Logger.h"
+
 #include <algorithm>
 #include <vector>
 
@@ -26,13 +27,13 @@ namespace PixelCraft::Core
         m_stats.deallocationCount = 0;
     }
 
-    MemoryManager::~MemoryManager()
+    /*MemoryManager::~MemoryManager()
     {
         if (m_initialized)
         {
             shutdown();
         }
-    }
+    }*/
 
     MemoryManager& MemoryManager::getInstance()
     {

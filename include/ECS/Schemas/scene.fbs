@@ -1,0 +1,31 @@
+// scene.fbs
+// FlatBuffers schema for PixelCraft scene serialization
+
+namespace PixelCraft.ECS;
+
+// Entry in the entity name map - mapping string names to entity IDs
+table EntityNameMapEntry {
+  name:string;
+  entity_id:uint32;
+}
+
+// Entry in the entity tag map - mapping tags to collections of entity IDs
+table EntityTagMapEntry {
+  tag:string;
+  entities:[uint32];
+}
+
+// The main Scene data structure
+table SceneData {
+  name:string;
+  path:string;
+  schema_version:uint32 = 1;
+  main_camera:uint32 = 0;
+  root_entities:[uint32];
+  entity_name_map:[EntityNameMapEntry];
+  entity_tag_map:[EntityTagMapEntry];
+  dirty_chunks:[[int32]];  // Array of chunk coordinates [x,y,z]
+}
+
+root_type SceneData;
+file_identifier "SCNE";

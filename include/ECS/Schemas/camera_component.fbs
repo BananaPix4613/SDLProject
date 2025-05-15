@@ -1,0 +1,22 @@
+// camera_component.fbs
+// Camera schema for CameraComponent
+
+namespace PixelCraft.ECS;
+
+enum CameraType : byte
+{
+    Perspective = 0, Orthographic = 1
+}
+
+table CameraComponentData{
+camera_type:CameraType;
+fov:float;
+ortho_size:float;
+near_plane:float;
+far_plane:float;
+aspect_ratio:float;
+is_main:bool;
+}
+
+root_type CameraComponentData;
+file_identifier "CAMR";

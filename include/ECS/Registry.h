@@ -3,40 +3,47 @@
 // -------------------------------------------------------------------------
 #pragma once
 
-#include <unordered_set>
-#include <unordered_map>
-#include <bitset>
-#include <queue>
-#include <memory>
-#include <typeindex>
-#include <mutex>
-#include <type_traits>
-
+#include "ECS/UUID.h"
 #include "ECS/ComponentPool.h"
+#include "ECS/ComponentRegistry.h"
+#include "ECS/EntityMetadata.h"
+#include "Utility/Serialization/SerializationUtility.h"
+
+#include <memory>
+#include <map>
+#include <unordered_map>
+#include <vector>
+#include <shared_mutex>
 
 namespace PixelCraft::ECS
 {
 
     // Forward declarations
-    template <typename T> class ComponentPool;
-    template <typename... Components> class View;
+    class Entity;
+    class Component;
 
-    // Constants
-    constexpr uint32_t MAX_COMPONENT_TYPES = 64;
-    constexpr uint32_t INVALID_ENTITY = 0;
-
-    // Type definitions
-    using ComponentMask = std::bitset<MAX_COMPONENT_TYPES>;
-    using EntityID = uint32_t;
+    template <typename... Components>
+    class ComponentView;
 
     /**
-     * @brief Central registry for entities and components
+     * @brief Thread safety documentation for Registry
      *
-     * The Registry is the core of the ECS system, managing entity creation,
-     * component storage, and providing efficient queries for entities with
-     * specific component combinations.
+     * The Registry class is thread-safe for the following operations:
+     * - Multiple readers can access entity metadata concurrently
+     * - Multiple readers can access components concurrently
+     * - Writers obtain exclusive access to the registry for entity creation/destruction
+     * - Component access obtains locks on specific component pools
+     *
+     * Locking strategy uses shared_mutex for read-heavy operations and
+     * regular mutex for entity creation/destruction.
+     *
+     * Thread safety guarantees:
+     * - Entity creation/destruction is thread-safe
+     * - Component addition/removal is thread-safe
+     * - Entity metadata operations are thread-safe
+     * - Component queries are thread-safe
      */
-    class Registry
+    class Registry : public std::enable_shared_from_this<Registry>
     {
     public:
         /**
@@ -51,275 +58,531 @@ namespace PixelCraft::ECS
 
         /**
          * @brief Create a new entity
+         * @param generateUUID Whether to generate a UUID for this entity
          * @return The ID of the newly created entity
-         *
-         * Entity IDs are non-zero unsigned integers. Zero is reserved
-         * as an invalid entity ID.
+         * @thread_safety Thread-safe, acquires entity lock
          */
-        EntityID createEntity();
+        EntityID createEntity(bool generateUUID = false);
+
+        /**
+         * @brief Create a new entity with name
+         * @param name The name of the entity
+         * @param generateUUID Whether to generate a UUID for this entity
+         * @return The ID of the newly created entity
+         * @thread_safety Thread-safe, acquires entity lock
+         */
+        EntityID createEntity(const std::string& name, bool generateUUID = true);
 
         /**
          * @brief Destroy an entity and all its components
-         * @param entity Entity ID to destroy
+         * @param entity The entity ID to destroy
          * @return True if the entity was successfully destroyed
-         *
-         * When an entity is destroyed, all its components are removed,
-         * and its ID is recycled for future entity creation.
+         * @thread_safety Thread-safe, acquires entity and component locks
          */
         bool destroyEntity(EntityID entity);
 
         /**
          * @brief Check if an entity is valid
-         * @param entity Entity ID to check
+         * @param entity The entity ID to check
          * @return True if the entity exists in the registry
+         * @thread_safety Thread-safe, acquires shared entity lock
          */
         bool isValid(EntityID entity) const;
-
-        /**
-         * @brief Get the total number of entities
-         * @return The number of active entities
-         */
-        size_t getEntityCount() const;
-
-        /**
-         * @brief Get a reference to the set of all entities
-         * @return Const reference to the entity set
-         */
-        const std::unordered_set<EntityID>& getEntities() const;
 
         /**
          * @brief Add a component to an entity
          * @tparam T Component type to add
          * @tparam Args Constructor argument types
-         * @param entity Entity ID to add component to
-         * @param args Constructor arguments forwarded to component constructor
-         * @return Pointer to the new component, or nullptr if entity is invalid
-         *
-         * If the entity already has a component of this type, the existing
-         * component is returned instead of creating a new one.
+         * @param entity Entity ID to add the component to
+         * @param args Constructor arguments for the component
+         * @return Reference to the added component
+         * @thread_safety Thread-safe, acquires component lock
          */
         template<typename T, typename... Args>
-        T* addComponent(EntityID entity, Args&&... args)
-        {
-            if (!isValid(entity))
-            {
-                return nullptr;
-            }
-
-            // Register component type if not already registered
-            ComponentTypeID typeID = registerComponentType<T>();
-
-            // Get or create the component pool
-            auto pool = getComponentPool<T>();
-
-            // Create the component
-            T* component = pool->create(entity, std::forward<Args>(args)...);
-
-            // Update the entity's component mask
-            m_entityMasks[entity].set(typeID);
-
-            return component;
-        }
-
-        /**
-         * @brief Get a component from an entity
-         * @tparam T Component type to get
-         * @param entity Entity ID to get component from
-         * @return Pointer to the component, or nullptr if entity doesn't have it
-         */
-        template<typename T>
-        T* getComponent(EntityID entity)
-        {
-            if (!isValid(entity))
-            {
-                return nullptr;
-            }
-
-            // Get the component pool
-            auto pool = getComponentPool<T>();
-
-            // Get the component
-            return pool->get(entity);
-        }
+        T& addComponent(EntityID entity, Args&&... args);
 
         /**
          * @brief Remove a component from an entity
          * @tparam T Component type to remove
-         * @param entity Entity ID to remove component from
-         * @return True if component was removed, false if entity didn't have it
+         * @param entity Entity ID to remove the component from
+         * @return True if the component was removed successfully
+         * @thread_safety Thread-safe, acquires component lock
          */
         template<typename T>
-        bool removeComponent(EntityID entity)
-        {
-            if (!isValid(entity))
-            {
-                return false;
-            }
+        bool removeComponent(EntityID entity);
 
-            // Get the component type ID
-            ComponentTypeID typeID = registerComponentType<T>();
+        /**
+         * @brief Get a component from an entity
+         * @tparam T Component type to get
+         * @param entity Entity ID to get the component from
+         * @return Reference to the component
+         * @thread_safety Thread-safe, acquires shared component lock
+         * @throws std::out_of_range if the entity doesn't have this component
+         */
+        template<typename T>
+        T& getComponent(EntityID entity);
 
-            // Get the component pool
-            auto pool = getComponentPool<T>();
-
-            // Remove the component
-            bool removed = pool->remove(entity);
-
-            // Update the entity's component mask
-            if (removed)
-            {
-                m_entityMasks[entity].reset(typeID);
-            }
-
-            return removed;
-        }
+        /**
+         * @brief Get a const component from an entity
+         * @tparam T Component type to get
+         * @param entity Entity ID to get the component from
+         * @return Const reference to the component
+         * @thread_safety Thread-safe, acquires shared component lock
+         * @throws std::out_of_range if the entity doesn't have this component
+         */
+        template <typename T>
+        const T& getComponent(EntityID entity) const;
 
         /**
          * @brief Check if an entity has a component
-         * @tparam T Component type to check
+         * @tparam T Component type to check for
          * @param entity Entity ID to check
-         * @return True if entity has the component
+         * @return True if the entity has the component
+         * @thread_safety Thread-safe, acquires shared component lock
          */
         template<typename T>
-        bool hasComponent(EntityID entity) const
+        bool hasComponent(EntityID entity) const;
+
+        /**
+         * @brief Get a view of entities with the specified component types
+         * @tparam Components Component types to include in the view
+         * @return View of entities with the specified components
+         * @thread_safety Thread-safe, acquires shared component lock
+         */
+        template<typename... Components>
+        ComponentView<Components...> view();
+
+        /**
+         * @brief Serialize an entity to binary format
+         * @param entity Entity ID to serialize
+         * @param serializer Serializer to use
+         * @return Serialization result with success
+         * @thread_safety Thread-safe, acquires shared locks
+         */
+        Utility::Serialization::SerializationResult serialize(EntityID entity, Utility::Serialization::Serializer& serializer);
+
+        /**
+         * @brief Deserialize an entity from binary format
+         * @param entity Entity ID to deserialize into
+         * @param deserializer Deserializer to use
+         * @return Serialization result with success
+         * @thread_safety Thread-safe, acquires exclusive locks
+         */
+        Utility::Serialization::SerializationResult deserialize(EntityID entity, Utility::Serialization::Deserializer& deserializer);
+
+        /**
+         * @brief Serialize all entities to binary format
+         * @param serializer Serializer to use
+         * @return Serialization result with success
+         * @thread_safety Thread-safe, acquires shared locks
+         */
+        Utility::Serialization::SerializationResult serializeAll(Utility::Serialization::Serializer& serializer);
+
+        /**
+         * @brief Deserialize all entities from binary format
+         * @param deserializer Deserializer to use
+         * @return Serialization result with success
+         * @thread_safety Thread-safe, acquires exclusive locks
+         */
+        Utility::Serialization::SerializationResult deserializeAll(Utility::Serialization::Deserializer& deserializer);
+
+        /**
+         * @brief Get the UUID for an entity
+         * @param entity Entity ID to get the UUID for
+         * @return UUID of the entity
+         * @thread_safety Thread-safe, delegates to EntityMetadata
+         */
+        UUID getEntityUUID(EntityID entity) const;
+
+        /**
+         * @brief Set the UUID for an entity
+         * @param entity Entity ID to set the UUID for
+         * @param uuid UUID to assign
+         * @thread_safety Thread-safe, delegates to EntityMetadata
+         */
+        void setEntityUUID(EntityID entity, const UUID& uuid);
+
+        /**
+         * @brief Get an entity by its UUID
+         * @param uuid UUID to look up
+         * @return Entity ID, or 0 if not found
+         * @thread_safety Thread-safe, delegates to EntityMetadata
+         */
+        EntityID getEntityByUUID(const UUID& uuid) const;
+
+        /**
+         * @brief Set the name of an entity
+         * @param entity Entity ID to name
+         * @param name Name to assign
+         * @thread_safety Thread-safe, delegates to EntityMetadata
+         */
+        void setEntityName(EntityID entity, const std::string& name);
+
+        /**
+         * @brief Get the name of an entity
+         * @param entity Entity ID to get the name for
+         * @return Name of the entity, or empty string if not set
+         * @thread_safety Thread-safe, delegates to EntityMetadata
+         */
+        std::string getEntityName(EntityID entity) const;
+
+        /**
+         * @brief Find an entity by name
+         * @param name name to search for
+         * @return Entity ID, or INVALID_ENTITY_ID if not found
+         * @thread_safety Thread-safe, delegates to EntityMetadata
+         */
+        EntityID findEntityByName(const std::string& name) const;
+
+        /**
+         * @brief Add a tag to an entity
+         * @param entity Entity ID to tag
+         * @param tag Tag to add
+         * @thread_safety Thread-safe, delegates to EntityMetadata
+         */
+        void addTag(EntityID entity, const std::string& tag);
+
+        /**
+         * @brief Remove a tag from an entity
+         * @param entity Entity ID to untag
+         * @param tag Tag to remove
+         * @thread_safety Thread-safe, delegates to EntityMetadata
+         */
+        void removeTag(EntityID entity, const std::string& tag);
+
+        /**
+         * @brief Check if an entity has a tag
+         * @param entity Entity ID to check
+         * @param tag Tag to check for
+         * @return True if the entity has the tag
+         * @thread_safety Thread-safe, delegates to EntityMetadata
+         */
+        bool hasTag(EntityID entity, const std::string& tag) const;
+
+        /**
+         * @brief Find entities by tag
+         * @param tag Tag to search for
+         * @return Vector of entity IDs with the tag
+         * @thread_safety Thread-safe, delegates to EntityMetadata
+         */
+        std::vector<EntityID> findEntitiesByTag(const std::string& tag) const;
+
+        /**
+         * @brief Enable or disable UUID generation for an entity
+         * @param entity Entity ID
+         * @param needsUUID Whether the entity needs a UUID
+         * @thread_safety Thread-safe, delegates to EntityMetadata
+         */
+        void setEntityNeedsUUID(EntityID entity, bool needsUUID);
+
+        /**
+         * @brief Check if an entity has UUID generation enabled
+         * @param entity Entity ID
+         * @return True if UUID generation is enabled
+         * @thread_safety Thread-safe, delegates to EntityMetadata
+         */
+        bool entityNeedsUUID(EntityID entity) const;
+
+        /**
+         * @brief Set an entity's parent
+         * @param entity Entity ID
+         * @param parent Parent entity ID
+         * @return True if successful
+         * @thread_safety Thread-safe, delegates to EntityMetadata
+         */
+        bool setEntityParent(EntityID entity, EntityID parent);
+
+        /**
+         * @brief Get an entity's parent
+         * @param entity Entity ID
+         * @return Parent entity ID, or INVALID_ENTITY_ID if no parent
+         * @thread_safety Thread-safe, delegates to EntityMetadata
+         */
+        EntityID getEntityParent(EntityID entity) const;
+
+        /**
+         * @brief Get an entity's children
+         * @param entity Entity ID
+         * @return Vector of child entity IDs
+         * @thread_safety Thread-safe, delegates to EntityMetadata
+         */
+        std::vector<EntityID> getEntityChildren(EntityID entity) const;
+
+        /**
+         * @brief Set an entity's active state
+         * @param entity Entity ID
+         * @param active True to set active, false to set inactive
+         * @return True if successful
+         * @thread_safety Thread-safe, delegates to EntityMetadata
+         */
+        bool setEntityActive(EntityID entity, bool active);
+
+        /**
+         * @brief Check if an entity is active
+         * @param entity Entity ID
+         * @return True if the entity is active
+         * @thread_safety Thread-safe, delegates to EntityMetadata
+         */
+        bool isEntityActive(EntityID entity) const;
+
+        /**
+         * @brief Get the entity metadata manager
+         * @return Reference to the entity metadata manager
+         * @thread_safety This method does not provide thread safety for the returned reference
+         */
+        EntityMetadata& getEntityMetadata();
+
+        /**
+         * @brief Get the entity metadata manager (const version)
+         * @return Const reference to the entity metadata manager
+         * @thread_safety This method does not provide thread safety for the returned reference
+         */
+        const EntityMetadata& getEntityMetadata() const;
+
+        /**
+         * @brief Get all entities
+         * @return Const reference to the entity set
+         * @thread_safety Thread-safe, acquires shared entity lock
+         */
+        const std::vector<EntityID>& getEntities() const;
+
+        /**
+         * @brief Get the component mask for an entity
+         * @param entity Entity ID
+         * @return Component mask for the entity
+         * @thread_safety Thread-safe, acquires shared component lock
+         */
+        const ComponentMask& getEntityMask(EntityID entity) const;
+
+        /**
+         * @brief Get all component pools
+         * @return Map of component type IDs to component pools
+         * @thread_safety Thread-safe, acquires shared component lock
+         */
+        const std::map<ComponentTypeID, std::shared_ptr<IComponentPool>>& getAllComponentPools() const;
+
+        /**
+         * @brief Get the number of entities in the registry
+         * @return Entity count
+         * @thread_safety Thread-safe, acquires shared entity lock
+         */
+        size_t getEntityCount() const;
+
+        /**
+         * @brief Get raw component data for an entity
+         * @param entity The entity ID to get the component for
+         * @param typeID The component type ID
+         * @return Pointer to component data or nullptr if not found
+         * @thread_safety Thread-safe, acquires shared component lock
+         */
+        void* getComponentRaw(EntityID entity, ComponentTypeID typeID);
+
+        /**
+         * @brief Remove all components from an entity
+         * @param entity Entity ID
+         * @thread_safety Thread-safe, acquires exclusive component lock
+         */
+        void removeAllComponents(EntityID entity);
+
+    private:
+        // Mutex for entity operations
+        mutable std::shared_mutex m_entityMutex;
+
+        // Mutex for component operations
+        mutable std::shared_mutex m_componentMutex;
+
+        // Entity storage
+        std::vector<EntityID> m_entities;
+        std::map<EntityID, ComponentMask> m_entityMasks;
+        EntityID m_nextEntityID = 1;
+
+        // Component storage
+        std::map<ComponentTypeID, std::shared_ptr<IComponentPool>> m_componentPools;
+
+        // Entity metadata manager
+        EntityMetadata m_entityMetadata;
+
+        /**
+         * @brief Get or create a component pool
+         * @tparam T Component type
+         * @return Shared pointer to the component pool
+         * @thread_safety Assumes m_componentMutex is already locked
+         */
+        template <typename T>
+        std::shared_ptr<ComponentPool<T>> getComponentPool();
+
+        /**
+         * @brief Register a component type
+         * @tparam T Component type
+         * @return Component type ID
+         * @thread_safety Thread-safe, uses ComponentRegistry
+         */
+        template <typename T>
+        static ComponentTypeID registerComponentType();
+    };
+
+    // Template implementation for addComponent
+    template <typename T, typename... Args>
+    T& Registry::addComponent(EntityID entity, Args&&... args)
+    {
+        // First validate entity with a shared lock
         {
+            std::shared_lock entityLock(m_entityMutex);
+            if (!isValid(entity))
+            {
+                throw std::runtime_error("Invalid entity");
+            }
+        }
+
+        // Register component type
+        ComponentTypeID typeID = registerComponentType<T>();
+
+        // Now acquire exclusive lock for component operations
+        std::unique_lock componentLock(m_componentMutex);
+
+        // Get or create the component pool
+        auto pool = getComponentPool<T>();
+
+        // Create the component
+        T& component = pool->create(entity, std::forward<Args>(args)...);
+
+        // Update the entity's component mask
+        m_entityMasks[entity].set(typeID);
+
+        return component;
+    }
+
+    // Template implementation for removeComponent
+    template <typename T>
+    bool Registry::removeComponent(EntityID entity)
+    {
+        // First validate entity with a shared lock
+        {
+            std::shared_lock entityLock(m_entityMutex);
             if (!isValid(entity))
             {
                 return false;
             }
-
-            // Get the component type ID
-            ComponentTypeID typeID = s_componentTypes.at(std::type_index(typeid(T)));
-
-            // Check the entity's component mask
-            return m_entityMasks.at(entity).test(typeID);
         }
 
-        /**
-         * @brief Register a component type
-         * @tparam T Component type to register
-         * @return The component type ID
-         *
-         * This method is called automatically the first time a component
-         * type is used. It assigns a unique ID to each component type.
-         */
-        template<typename T>
-        static ComponentTypeID registerComponentType()
+        // Get the component type ID
+        ComponentTypeID typeID = registerComponentType<T>();
+
+        // Acquire exclusive lock for component operations
+        std::unique_lock componentLock(m_componentMutex);
+
+        // Get the component pool
+        auto pool = getComponentPool<T>();
+
+        // Remove the component
+        if (pool->destroy(entity))
         {
-            std::lock_guard<std::mutex> lock(s_componentTypesMutex);
-
-            auto index = std::type_index(typeid(T));
-            auto it = s_componentTypes.find(index);
-
-            if (it != s_componentTypes.end())
-            {
-                return it->second;
-            }
-
-            ComponentTypeID id = s_nextComponentTypeID++;
-            if (id >= MAX_COMPONENT_TYPES)
-            {
-                throw std::runtime_error("Maximum number of component types reached");
-            }
-
-            s_componentTypes[index] = id;
-            return id;
+            // Update the entity's component mask
+            m_entityMasks[entity].reset(typeID);
+            return true;
         }
 
-        /**
-         * @brief Get the component mask for an entity
-         * @param entity Entity ID to get mask for
-         * @return The component mask, indicating which component types the entity has
-         */
-        const ComponentMask& getComponentMask(EntityID entity) const;
+        return false;
+    }
 
-        /**
-         * @brief Create a view for iterating entities with specific components
-         * @tparam Components Component types to include in the view
-         * @return A view object for iteration
-         *
-         * The view provides efficient iteration over all entities that have
-         * all of the specified component types, with direct access to those
-         * components.
-         */
-        template<typename... Components>
-        View<Components...> view()
+    // Template implementation for getComponent
+    template <typename T>
+    T& Registry::getComponent(EntityID entity)
+    {
+        // First validate entity with a shared lock
         {
-            return View<Components...>(*this);
-        }
-
-        /**
-         * @brief Get the component pool for a component type
-         * @tparam T Component type to get pool for
-         * @return Shared pointer to the component pool
-         *
-         * If the pool doesn't exist yet, it is created.
-         */
-        template<typename T>
-        std::shared_ptr<ComponentPool<T>> getComponentPool()
-        {
-            auto typeIndex = std::type_index(typeid(T));
-            auto it = m_componentPools.find(typeIndex);
-
-            if (it != m_componentPools.end())
+            std::shared_lock entityLock(m_entityMutex);
+            if (!isValid(entity))
             {
-                return std::static_pointer_cast<ComponentPool<T>>(it->second);
+                throw std::runtime_error("Invalid entity");
             }
-
-            // Create a new component pool
-            ComponentTypeID typeID = registerComponentType<T>();
-            auto pool = std::make_shared<ComponentPool<T>>(typeID);
-            m_componentPools[typeIndex] = pool;
-
-            return pool;
         }
 
-        /**
-         * @brief Serialize the registry state
-         * @param node Data node to serialize into
-         */
-        void serialize(Core::DataNode& node) const;
+        // Acquire shared lock for component access
+        std::shared_lock componentLock(m_componentMutex);
 
-        /**
-         * @brief Deserialize registry state
-         * @param node Data node to deserialize from
-         */
-        void deserialize(const Core::DataNode& node);
+        auto pool = getComponentPool<T>();
+        return pool->get(entity);
+    }
 
-        /**
-         * @brief Clear all entities and components
-         *
-         * Removes all entities and components from the registry,
-         * but keeps component type registrations.
-         */
-        void clear();
+    // Template implementation for const getComponent
+    template <typename T>
+    const T& Registry::getComponent(EntityID entity) const
+    {
+        // First validate entity with a shared lock
+        {
+            std::shared_lock entityLock(m_entityMutex);
+            if (!isValid(entity))
+            {
+                throw std::runtime_error("Invalid entity");
+            }
+        }
 
-    private:
-        /**
-         * @brief Generate a new entity ID
-         * @return A new unique entity ID
-         */
-        EntityID generateEntityID();
+        // Acquire shared lock for component access
+        std::shared_lock componentLock(m_componentMutex);
 
-        /**
-         * @brief Recycle an entity ID for future use
-         * @param entity Entity ID to recycle
-         */
-        void recycleEntityID(EntityID entity);
+        // Need to cast away const here to use the pool
+        // This is safe because we return a const reference
+        auto registry = const_cast<Registry*>(this);
+        auto pool = registry->getComponentPool<T>();
+        return pool->get(entity);
+    }
 
-        // Core ECS data
-        std::unordered_set<EntityID> m_entities;
-        std::unordered_map<EntityID, ComponentMask> m_entityMasks;
-        std::unordered_map<std::type_index, std::shared_ptr<IComponentPool>> m_componentPools;
+    // Template implementation for hasComponent
+    template <typename T>
+    bool Registry::hasComponent(EntityID entity) const
+    {
+        // First validate entity with a shared lock
+        {
+            std::shared_lock entityLock(m_entityMutex);
+            if (!isValid(entity))
+            {
+                throw false;
+            }
+        }
 
-        // Entity ID generation
-        EntityID m_nextEntityID;
-        std::queue<EntityID> m_freeEntityIDs;
+        // Get the component type ID
+        ComponentTypeID typeID = registerComponentType<T>();
 
-        // Component type registration
-        static std::unordered_map<std::type_index, ComponentTypeID> s_componentTypes;
-        static ComponentTypeID s_nextComponentTypeID;
-        static std::mutex s_componentTypesMutex;
-    };
+        // Check if the entity's mask has the bit set
+        return m_entityMasks.at(entity)[typeID];
+    }
+
+    // Template implementation for view
+    template <typename... Components>
+    ComponentView<Components...> Registry::view()
+    {
+        return ComponentView<Components...>(*this);
+    }
+
+    // Template implementation for getComponentPool
+    template <typename T>
+    std::shared_ptr<ComponentPool<T>> Registry::getComponentPool()
+    {
+        // Note: This assumes m_componentMutex is already locked
+
+        // Get the component type ID
+        ComponentTypeID typeID = registerComponentType<T>();
+
+        // Check if pool exists
+        auto it = m_componentPools.find(typeID);
+        if (it != m_componentPools.end())
+        {
+            return std::static_pointer_cast<ComponentPool<T>>(it->second);
+        }
+
+        // Create new pool
+        auto pool = std::make_shared<ComponentPool<T>>();
+        m_componentPools[typeID] = pool;
+
+        return pool;
+    }
+
+    // Template implementation for registerComponentType
+    template <typename T>
+    ComponentTypeID Registry::registerComponentType()
+    {
+        return ComponentRegistry::getComponentTypeID<T>();
+    }
 
 } // namespace PixelCraft::ECS

@@ -73,7 +73,10 @@ namespace PixelCraft::Core
          * @brief Get the name of the subsystem
          * @return The subsystem name as a string
          */
-        virtual std::string getName() const = 0;
+        virtual std::string getName() const = 0
+        {
+            return "";
+        }
 
         /**
          * @brief Get the dependencies of this subsystem
@@ -84,6 +87,9 @@ namespace PixelCraft::Core
     protected:
         /** @brief Flag indicating whether the subsystem has been initialized */
         bool m_initialized;
+
+        /** @brief Name of the subsystem */
+        std::string m_name;
 
         /** @brief Flag indicating whether the subsystem is active */
         bool m_active;

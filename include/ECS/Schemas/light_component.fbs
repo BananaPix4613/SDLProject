@@ -1,0 +1,25 @@
+// light_component.fbs
+// Light schema for LightComponent
+include "common_types.fbs";
+
+namespace PixelCraft.ECS;
+
+enum LightType : byte
+{
+    Directional = 0, Point = 1, Spot = 2
+}
+
+table LightComponentData{
+light_type:LightType;
+color:Vec3;
+intensity:float;
+range:float;
+inner_angle:float;
+outer_angle:float;
+cast_shadows:bool;
+shadow_bias:float;
+shadow_resolution:int;
+}
+
+root_type LightComponentData;
+file_identifier "LGHT";

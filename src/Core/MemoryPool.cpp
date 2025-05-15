@@ -2,11 +2,12 @@
 // MemoryPool.cpp
 // -------------------------------------------------------------------------
 #include "Core/MemoryPool.h"
+#include "Core/Logger.h"
+
 #include <algorithm>
 #include <cassert>
 #include <cstring>
 #include <new>
-#include "Core/Logger.h"
 
 namespace PixelCraft::Core
 {
