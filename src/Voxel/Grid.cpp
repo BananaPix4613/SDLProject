@@ -2,14 +2,17 @@
 // Grid.cpp
 // -------------------------------------------------------------------------
 #include "Voxel/Grid.h"
+#include "Voxel/ChunkManager.h"
+#include "Voxel/ChunkCoord.h"
+#include "Voxel/Chunk.h"
 #include "Core/Logger.h"
 #include "Core/Application.h"
 #include "Utility/Profiler.h"
+#include "Utility/AABB.h"
 #include "Utility/Ray.h"
+#include "Utility/Serialization/SerializationUtility.h"
 
 #include <algorithm>
-
-namespace Log = PixelCraft::Core;
 
 namespace PixelCraft::Voxel
 {
@@ -38,11 +41,11 @@ namespace PixelCraft::Voxel
     {
         if (m_initialized)
         {
-            Log::warn("Grid already initialized");
+            Core::warn("Grid already initialized");
             return true;
         }
 
-        Log::info("Initializing voxel grid with chunk size: " + m_chunkSize);
+        Core::info("Initializing voxel grid with chunk size: " + std::to_string(m_chunkSize));
 
         // Get the ChunkManager from the application
         auto app = Core::Application::getInstance();
@@ -50,7 +53,7 @@ namespace PixelCraft::Voxel
 
         if (!m_chunkManager)
         {
-            Log::error("Failed to initialize Grid: ChunkManager not found");
+            Core::error("Failed to initialize Grid: ChunkManager not found");
             return false;
         }
 
@@ -65,7 +68,7 @@ namespace PixelCraft::Voxel
             return;
         }
 
-        Log::info("Shutting down voxel grid");
+        Core::info("Shutting down voxel grid");
 
         // Release reference to chunks
         m_chunkManager.reset();
@@ -360,101 +363,114 @@ namespace PixelCraft::Voxel
         return false;
     }
 
-    bool Grid::serialize(ECS::Serializer& serializer) const
+    Utility::Serialization::SerializationResult Grid::serialize(Utility::Serialization::Serializer& serializer) const
     {
         if (!m_initialized)
         {
-            return false;
+            return Utility::Serialization::SerializationResult("Grid::serialize: Grid is not initialized");
         }
 
-        // Begin grid object
-        serializer.beginObject("Grid");
+        // Begin serializing the object
+        auto result = serializer.beginObject("Grid");
+        if (!result) return result;
 
         // Write grid properties
-        serializer.write(m_chunkSize);
+        result = serializer.writeField("chunkSize", m_chunkSize);
+        if (!result) return result;
 
         // Write bounds
-        serializer.writeVec3(m_bounds.getMin());
-        serializer.writeVec3(m_bounds.getMax());
+        result = serializer.writeField("bounds", m_bounds);
+        if (!result) return result;
 
         // Write default voxel
-        serializer.write(m_defaultVoxel.type);
-        serializer.write(m_defaultVoxel.data);
+        result = serializer.writeField("defaultVoxel", m_defaultVoxel);
+        if (!result) return result;
 
         // Write loaded chunks
         auto loadedChunks = getLoadedChunkCoords();
-        serializer.beginArray("chunks", loadedChunks.size());
+        result = serializer.beginArray("chunks", loadedChunks.size());
+        if (!result) return result;
 
         for (const auto& coord : loadedChunks)
         {
             auto chunk = getChunk(coord);
+            result = serializer.writeField("chunkCoord", coord);
+            if (!result) return result;
             if (chunk)
             {
-                chunk->serialize(serializer);
+                result = chunk->serialize(serializer);
+                if (!result) return result;
             }
         }
-
-        serializer.endArray();
+        result = serializer.endArray();
+        if (!result) return result;
 
         // End grid object
-        serializer.endObject();
-
-        return true;
+        return serializer.endObject();
     }
 
-    bool Grid::deserialize(ECS::Deserializer& deserializer)
+    Utility::Serialization::SerializationResult Grid::deserialize(Utility::Serialization::Deserializer& deserializer)
     {
         if (!m_initialized)
         {
             if (!initialize())
             {
-                return false;
+                return Utility::Serialization::SerializationResult("Grid::deserialize: Grid failed to initialize");
             }
         }
 
-        // Begin grid object
-        if (!deserializer.beginObject("Grid"))
-        {
-            return false;
-        }
+        // Begin deserializing the object
+        auto result = deserializer.beginObject("Grid");
+        if (!result) return result;
 
         // Read grid properties
-        deserializer.read(m_chunkSize);
+        result = deserializer.readField("chunkSize", m_chunkSize);
+        if (!result) return result;
 
         // Read bounds
-        glm::vec3 boundsMin, boundsMax;
-        deserializer.readVec3(boundsMin);
-        deserializer.readVec3(boundsMax);
-        m_bounds = Utility::AABB(boundsMin, boundsMax);
+        result = deserializer.readField("bounds", m_bounds);
+        if (!result) return result;
 
         // Read default voxel
-        deserializer.read(m_defaultVoxel.type);
-        deserializer.read(m_defaultVoxel.data);
+        result = deserializer.readField("defaultVoxel", m_defaultVoxel);
+        if (!result) return result;
 
         // Read chunks
         size_t chunkCount;
-        if (deserializer.beginArray("chunks", chunkCount))
+        result = deserializer.beginArray("chunks", chunkCount);
+        if (!result) return result;
+
+        for (size_t i = 0; i < chunkCount; i++)
         {
-            for (size_t i = 0; i < chunkCount; i++)
+            ChunkCoord chunkCoord;
+            deserializer.readField("chunkCoord", chunkCoord);
+            if (!result) return result;
+
+            auto chunk = createChunk(chunkCoord);
+            if (chunk)
             {
-                glm::vec3 coord;
-                deserializer.readVec3(coord);
-                ChunkCoord chunkCoord(coord.x, coord.y, coord.z);
-
-                auto chunk = createChunk(chunkCoord);
-                if (chunk)
-                {
-                    chunk->deserialize(deserializer);
-                }
+                result = chunk->deserialize(deserializer);
+                if (!result) return result;
             }
-
-            deserializer.endArray();
         }
+        result = deserializer.endArray();
+        if (!result) return result;
 
         // End grid object
-        deserializer.endObject();
+        return deserializer.endObject();
+    }
 
-        return true;
+    void Grid::defineSchema(Utility::Serialization::Schema& schema)
+    {
+        schema.addField("chunkSize", Utility::Serialization::ValueType::Int64);
+        schema.addField("bounds", Utility::Serialization::ValueType::Object);
+        schema.addField("defaultVoxel", Utility::Serialization::ValueType::Object);
+        schema.addArrayField("chunks", Utility::Serialization::ValueType::Object);
+    }
+
+    std::string Grid::getTypeName()
+    {
+        return "Grid";
     }
 
     std::vector<ChunkCoord> Grid::getLoadedChunkCoords() const

@@ -1,11 +1,10 @@
 // -------------------------------------------------------------------------
-// Utility/Serialization/BinaryDeserializer.cpp
+// BinaryDeserializer.cpp
 // -------------------------------------------------------------------------
 #include "Utility/Serialization/BinaryDeserializer.h"
 #include "Core/Logger.h"
-#include <cstring>
 
-namespace Log = PixelCraft::Core;
+#include <cstring>
 
 namespace PixelCraft::Utility::Serialization
 {
@@ -35,7 +34,7 @@ namespace PixelCraft::Utility::Serialization
             }
             else
             {
-                Log::error("Invalid binary serialization format header");
+                Core::error("Invalid binary serialization format header");
             }
         }
     }
@@ -567,6 +566,143 @@ namespace PixelCraft::Utility::Serialization
         return SerializationResult();
     }
 
+    SerializationResult BinaryDeserializer::readVec2(glm::vec2& value)
+    {
+        auto result = verifyValueType(ValueType::Vec2);
+        if (!result) return result;
+
+        // Read two floats
+        result = readRawData(&value, sizeof(float) * 2);
+        if (!result) return result;
+
+        // Update array state if needed
+        if (!m_arrayStack.empty())
+            m_arrayStack.top().count++;
+
+        return SerializationResult();
+    }
+
+    SerializationResult BinaryDeserializer::readIVec2(glm::ivec2& value)
+    {
+        auto result = verifyValueType(ValueType::IVec2);
+        if (!result) return result;
+
+        // Read two floats
+        result = readRawData(&value, sizeof(int) * 2);
+        if (!result) return result;
+
+        // Update array state if needed
+        if (!m_arrayStack.empty())
+            m_arrayStack.top().count++;
+
+        return SerializationResult();
+    }
+
+    SerializationResult BinaryDeserializer::readVec3(glm::vec3& value)
+    {
+        auto result = verifyValueType(ValueType::Vec3);
+        if (!result) return result;
+
+        // Read three floats
+        result = readRawData(&value, sizeof(float) * 3);
+        if (!result) return result;
+
+        if (!m_arrayStack.empty())
+            m_arrayStack.top().count++;
+
+        return SerializationResult();
+    }
+
+    SerializationResult BinaryDeserializer::readIVec3(glm::ivec3& value)
+    {
+        auto result = verifyValueType(ValueType::IVec3);
+        if (!result) return result;
+
+        // Read three floats
+        result = readRawData(&value, sizeof(int) * 3);
+        if (!result) return result;
+
+        if (!m_arrayStack.empty())
+            m_arrayStack.top().count++;
+
+        return SerializationResult();
+    }
+
+    SerializationResult BinaryDeserializer::readVec4(glm::vec4& value)
+    {
+        auto result = verifyValueType(ValueType::Vec4);
+        if (!result) return result;
+
+        // Read four floats
+        result = readRawData(&value, sizeof(float) * 4);
+        if (!result) return result;
+
+        if (!m_arrayStack.empty())
+            m_arrayStack.top().count++;
+
+        return SerializationResult();
+    }
+
+    SerializationResult BinaryDeserializer::readIVec4(glm::ivec4& value)
+    {
+        auto result = verifyValueType(ValueType::IVec4);
+        if (!result) return result;
+
+        // Read four floats
+        result = readRawData(&value, sizeof(int) * 4);
+        if (!result) return result;
+
+        if (!m_arrayStack.empty())
+            m_arrayStack.top().count++;
+
+        return SerializationResult();
+    }
+
+    SerializationResult BinaryDeserializer::readMat3(glm::mat3& value)
+    {
+        auto result = verifyValueType(ValueType::Mat3);
+        if (!result) return result;
+
+        // Read 9 floats (mat3 is 3x3)
+        result = readRawData(&value, sizeof(float) * 9);
+        if (!result) return result;
+
+        if (!m_arrayStack.empty())
+            m_arrayStack.top().count++;
+
+        return SerializationResult();
+    }
+
+    SerializationResult BinaryDeserializer::readMat4(glm::mat4& value)
+    {
+        auto result = verifyValueType(ValueType::Mat4);
+        if (!result) return result;
+
+        // Read 16 floats (mat4 is 4x4)
+        result = readRawData(&value, sizeof(float) * 16);
+        if (!result) return result;
+
+        if (!m_arrayStack.empty())
+            m_arrayStack.top().count++;
+
+        return SerializationResult();
+    }
+
+    SerializationResult BinaryDeserializer::readQuat(glm::quat& value)
+    {
+        auto result = verifyValueType(ValueType::Quat);
+        if (!result) return result;
+
+        // Read 4 floats (x, y, z, w)
+        result = readRawData(&value, sizeof(float) * 4);
+        if (!result) return result;
+
+        if (!m_arrayStack.empty())
+            m_arrayStack.top().count++;
+
+        return SerializationResult();
+    }
+
     SerializationResult BinaryDeserializer::readString(std::string& value)
     {
         auto result = verifyValueType(ValueType::String);
@@ -626,7 +762,7 @@ namespace PixelCraft::Utility::Serialization
         return SerializationResult();
     }
 
-    SerializationResult BinaryDeserializer::readEntityRef(uint64_t& entityId)
+    SerializationResult BinaryDeserializer::readEntityRef(uint32_t& entityId)
     {
         auto result = verifyValueType(ValueType::EntityRef);
         if (!result) return result;
@@ -654,9 +790,9 @@ namespace PixelCraft::Utility::Serialization
             // Default to parsing as number if no resolver
             try
             {
-                entityId = std::stoull(entityName);
+                entityId = std::stoul(entityName);
             }
-            catch (const std::exception& e)
+            catch (const std::exception&)
             {
                 return SerializationResult("Failed to parse entity ID: " + entityName);
             }
@@ -693,7 +829,7 @@ namespace PixelCraft::Utility::Serialization
         {
             if (!m_resourceResolver(resourceName))
             {
-                Log::warn("Resource not found: " + resourceName);
+                Core::warn("Resource not found: " + resourceName);
             }
         }
 

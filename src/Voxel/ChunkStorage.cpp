@@ -2,6 +2,7 @@
 // ChunkStorage.cpp
 // -------------------------------------------------------------------------
 #include "Voxel/ChunkStorage.h"
+#include "Voxel/ChunkCoord.h"
 #include "Voxel/Chunk.h"
 #include "Core/Logger.h"
 #include "Utility/FileSystem.h"
@@ -12,11 +13,17 @@
 #include <fstream>
 #include <filesystem>
 #include <chrono>
-#include <zlib.h>
+#include <cstring>
+#include <glm/glm.hpp>
+
+#ifdef _WIN32
+#include <sys/stat.h>
+#else
+#include <sys/stat.h>
+#endif
 
 using StringUtils = PixelCraft::Utility::StringUtils;
 namespace fs = std::filesystem;
-namespace Log = PixelCraft::Core;
 
 namespace PixelCraft::Voxel
 {
@@ -59,26 +66,26 @@ namespace PixelCraft::Voxel
     {
         if (m_initialized)
         {
-            Log::warn("ChunkStorage already initialized");
+            Core::warn("ChunkStorage already initialized");
             return true;
         }
 
         // Ensure directories exist
         if (!ensureDirectoriesExist())
         {
-            Log::error("Failed to create world directories: " + m_worldPath);
+            Core::error("Failed to create world directories: " + m_worldPath);
             return false;
         }
 
         m_initialized = true;
-        Log::info("ChunkStorage initialized for world: " + m_worldPath);
+        Core::info("ChunkStorage initialized for world: " + m_worldPath);
 
         return true;
     }
 
     bool ChunkStorage::saveChunk(const Chunk& chunk)
     {
-        using namespace Utility::Serialization;
+        using namespace PixelCraft::Utility::Serialization;
 
         const ChunkCoord& coord = chunk.getCoord();
         std::string chunkPath = getChunkFilePath(coord);
@@ -89,7 +96,7 @@ namespace PixelCraft::Voxel
         {
             if (!Utility::FileSystem::createDirectory(dirPath))
             {
-                Log::error("Failed to create directory: " + dirPath);
+                Core::error("Failed to create directory: " + dirPath);
                 return false;
             }
         }
@@ -98,7 +105,7 @@ namespace PixelCraft::Voxel
         auto result = SerializationUtility::serializeToFile(chunk, chunkPath);
         if (!result)
         {
-            Log::error("Failed to serialize chunk: " + result.error);
+            Core::error("Failed to serialize chunk: " + result.error);
             return false;
         }
 
@@ -117,7 +124,7 @@ namespace PixelCraft::Voxel
 
     bool ChunkStorage::loadChunk(const ChunkCoord& coord, Chunk& chunk)
     {
-        using namespace Utility::Serialization;
+        using namespace PixelCraft::Utility::Serialization;
 
         std::string chunkPath = getChunkFilePath(coord);
 
@@ -131,7 +138,7 @@ namespace PixelCraft::Voxel
         auto result = SerializationUtility::deserializeFromFile(chunk, chunkPath);
         if (!result)
         {
-            Log::error("Failed to deserialize chunk: " + result.error);
+            Core::error("Failed to deserialize chunk: " + result.error);
             return false;
         }
 
@@ -163,7 +170,7 @@ namespace PixelCraft::Voxel
     {
         if (!m_initialized)
         {
-            Log::error("ChunkStorage not initialized");
+            Core::error("ChunkStorage not initialized");
             return false;
         }
 
@@ -191,7 +198,7 @@ namespace PixelCraft::Voxel
         }
         else
         {
-            Log::error("Failed to delete chunk file: " + filepath);
+            Core::error("Failed to delete chunk file: " + filepath);
         }
 
         return success;
@@ -265,7 +272,7 @@ namespace PixelCraft::Voxel
                         }
                         catch (const std::exception& e)
                         {
-                            Log::warn("Invalid chunk filename format: " + filename);
+                            Core::warn("Invalid chunk filename format: " + filename + " - " + e.what());
                         }
                     }
                 }
@@ -273,7 +280,7 @@ namespace PixelCraft::Voxel
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception while enumerating chunks: " + std::string(e.what()));
+            Core::error("Exception while enumerating chunks: " + std::string(e.what()));
         }
 
         return coords;
@@ -298,17 +305,25 @@ namespace PixelCraft::Voxel
             }
         }
 
-        // Cache miss, get from filesystem
+        // Cache miss, get from filesystem using std::filesystem
         std::string filepath = getChunkFilePath(coord);
 
-        struct stat fileStat;
-        if (stat(filepath.c_str(), &fileStat) != 0)
+        try
+        {
+            if (!fs::exists(filepath))
+            {
+                return false;
+            }
+
+            auto fileTime = fs::last_write_time(filepath);
+            lastModified = std::chrono::duration_cast<std::chrono::seconds>(
+                fileTime.time_since_epoch()).count();
+            size = static_cast<size_t>(fs::file_size(filepath));
+        }
+        catch (const std::exception&)
         {
             return false;
         }
-
-        lastModified = fileStat.st_mtime;
-        size = fileStat.st_size;
 
         // Cache the result
         cacheMetadata(coord, lastModified, size);
@@ -319,7 +334,7 @@ namespace PixelCraft::Voxel
     void ChunkStorage::setCompressionLevel(int level)
     {
         // Ensure level is in valid range
-        m_compressionLevel = glm::max(0, glm::min(9, level));
+        m_compressionLevel = std::max(0, std::min(9, level));
     }
 
     size_t ChunkStorage::getTotalStorageSize() const
@@ -344,13 +359,13 @@ namespace PixelCraft::Voxel
             {
                 if (fs::is_regular_file(entry) && entry.path().extension() == ".chunk")
                 {
-                    totalSize += fs::file_size(entry.path());
+                    totalSize += static_cast<size_t>(fs::file_size(entry.path()));
                 }
             }
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception while calculating storage size: " + std::string(e.what()));
+            Core::error("Exception while calculating storage size: " + std::string(e.what()));
         }
 
         return totalSize;
@@ -385,14 +400,14 @@ namespace PixelCraft::Voxel
 
             if (success && isValidChunkFile(filepath))
             {
-                Log::info("Repaired chunk file from backup: " + filepath);
+                Core::info("Repaired chunk file from backup: " + filepath);
                 return true;
             }
         }
 
         // If repair failed, delete the corrupted file
         Utility::FileSystem::deleteFile(filepath);
-        Log::warn("Deleted corrupted chunk file that couldn't be repaired: " + filepath);
+        Core::warn("Deleted corrupted chunk file that couldn't be repaired: " + filepath);
 
         return false;
     }
@@ -481,7 +496,7 @@ namespace PixelCraft::Voxel
         }
         catch (const std::exception& e)
         {
-            Log::error("Failed to create directories: " + std::string(e.what()));
+            Core::error("Failed to create directories: " + std::string(e.what()));
             return false;
         }
     }
@@ -510,7 +525,7 @@ namespace PixelCraft::Voxel
             // Read and verify file header
             char magic[4];
             file.read(magic, 4);
-            if (memcmp(magic, FILE_MAGIC, 4) != 0)
+            if (std::memcmp(magic, FILE_MAGIC, 4) != 0)
             {
                 return false;
             }

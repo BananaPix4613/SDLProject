@@ -9,6 +9,7 @@
 #include <cstring>
 #include <new>
 
+// In namespace PixelCraft
 namespace PixelCraft::Core
 {
 

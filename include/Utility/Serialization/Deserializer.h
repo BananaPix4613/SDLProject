@@ -4,6 +4,7 @@
 #pragma once
 
 #include "Utility/Serialization/SerializationTypes.h"
+#include "Utility/Serialization/SchemaRegistry.h"
 #include "Utility/Serialization/Schema.h"
 
 #include <string>
@@ -11,6 +12,8 @@
 #include <memory>
 #include <cstdint>
 #include <functional>
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 namespace PixelCraft::Utility::Serialization
 {
@@ -114,6 +117,69 @@ namespace PixelCraft::Utility::Serialization
         virtual SerializationResult readDouble(double& value) = 0;
 
         /**
+         * @brief Read a glm::vec2 value
+         * @param value Output parameter for glm::vec2 value
+         * @return Result of the operation
+         */
+        virtual SerializationResult readVec2(glm::vec2& value) = 0;
+
+        /**
+         * @brief Read a glm::ivec2 value
+         * @param value Output parameter for glm::ivec2 value
+         * @return Result of the operation
+         */
+        virtual SerializationResult readIVec2(glm::ivec2& value) = 0;
+
+        /**
+         * @brief Read a glm::vec3 value
+         * @param value Output parameter for glm::vec3 value
+         * @return Result of the operation
+         */
+        virtual SerializationResult readVec3(glm::vec3& value) = 0;
+
+        /**
+         * @brief Read a glm::ivec3 value
+         * @param value Output parameter for glm::ivec3 value
+         * @return Result of the operation
+         */
+        virtual SerializationResult readIVec3(glm::ivec3& value) = 0;
+
+        /**
+         * @brief Read a glm::vec4 value
+         * @param value Output parameter for glm::vec4 value
+         * @return Result of the operation
+         */
+        virtual SerializationResult readVec4(glm::vec4& value) = 0;
+
+        /**
+         * @brief Read a glm::ivec4 value
+         * @param value Output parameter for glm::ivec4 value
+         * @return Result of the operation
+         */
+        virtual SerializationResult readIVec4(glm::ivec4& value) = 0;
+
+        /**
+         * @brief Read a glm::mat3 value
+         * @param value Output parameter for glm::mat3 value
+         * @return Result of the operation
+         */
+        virtual SerializationResult readMat3(glm::mat3& value) = 0;
+
+        /**
+         * @brief Read a glm::mat4 value
+         * @param value Output parameter for glm::mat4 value
+         * @return Result of the operation
+         */
+        virtual SerializationResult readMat4(glm::mat4& value) = 0;
+
+        /**
+         * @brief Read a glm::quat value
+         * @param value Output parameter for glm::quat value
+         * @return Result of the operation
+         */
+        virtual SerializationResult readQuat(glm::quat& value) = 0;
+
+        /**
          * @brief Read a string value
          * @param value Output parameter for string value
          * @return Result of the operation
@@ -134,7 +200,7 @@ namespace PixelCraft::Utility::Serialization
          * @param entityId Output parameter for entity ID
          * @return Result of the operation
          */
-        virtual SerializationResult readEntityRef(uint64_t& entityId) = 0;
+        virtual SerializationResult readEntityRef(uint32_t& entityId) = 0;
 
         /**
          * @brief Read a resource reference
@@ -187,7 +253,12 @@ namespace PixelCraft::Utility::Serialization
         template<typename T>
         SerializationResult readValue(T& value)
         {
+            // Reject const references
+            static_assert(!std::is_const_v<T>, "Cannot deserialize into const references");
+            
             // Default implementation delegates to schema-based deserialization
+            static_assert(has_getTypeName<T>::value,
+                "Type used with Deserializer::readValue must have a static getTypeName() method.");
             auto schema = SchemaRegistry::getInstance().getSchema(T::getTypeName());
             if (!schema)
             {
@@ -209,7 +280,7 @@ namespace PixelCraft::Utility::Serialization
          * @brief Set entity resolver function
          * @param resolver Function to resolve entity references
          */
-        void setEntityResolver(std::function<uint64_t(const std::string&)> resolver)
+        void setEntityResolver(std::function<uint32_t(const std::string&)> resolver)
         {
             m_entityResolver = std::move(resolver);
         }
@@ -232,7 +303,7 @@ namespace PixelCraft::Utility::Serialization
     protected:
         SerializationFormat m_format;
         std::vector<std::string> m_objectStack;
-        std::function<uint64_t(const std::string&)> m_entityResolver;
+        std::function<uint32_t(const std::string&)> m_entityResolver;
         std::function<bool(const std::string&)> m_resourceResolver;
     };
 
@@ -248,6 +319,15 @@ namespace PixelCraft::Utility::Serialization
     template<> SerializationResult Deserializer::readValue<uint64_t>(uint64_t& value);
     template<> SerializationResult Deserializer::readValue<float>(float& value);
     template<> SerializationResult Deserializer::readValue<double>(double& value);
+    template<> SerializationResult Deserializer::readValue<glm::vec2>(glm::vec2& value);
+    template<> SerializationResult Deserializer::readValue<glm::ivec2>(glm::ivec2& value);
+    template<> SerializationResult Deserializer::readValue<glm::vec3>(glm::vec3& value);
+    template<> SerializationResult Deserializer::readValue<glm::ivec3>(glm::ivec3& value);
+    template<> SerializationResult Deserializer::readValue<glm::vec4>(glm::vec4& value);
+    template<> SerializationResult Deserializer::readValue<glm::ivec4>(glm::ivec4& value);
+    template<> SerializationResult Deserializer::readValue<glm::mat3>(glm::mat3& value);
+    template<> SerializationResult Deserializer::readValue<glm::mat4>(glm::mat4& value);
+    template<> SerializationResult Deserializer::readValue<glm::quat>(glm::quat& value);
     template<> SerializationResult Deserializer::readValue<std::string>(std::string& value);
 
 } // namespace PixelCraft::Utility::Serialization

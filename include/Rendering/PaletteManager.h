@@ -3,15 +3,16 @@
 // -------------------------------------------------------------------------
 #pragma once
 
+#include "Core/Subsystem.h"
+#include "Core/Resource.h"
+#include "Rendering/Texture.h"
+#include "Rendering/Shader.h"
+
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 #include <glm/glm.hpp>
-
-#include "Core/Resource.h"
-#include "Rendering/Texture.h"
-#include "Rendering/Shader.h"
 
 namespace PixelCraft::Rendering
 {
@@ -35,7 +36,7 @@ namespace PixelCraft::Rendering
      * for pixel art rendering. It supports palette constraints, dithering, palette
      * swapping, time-of-day variations, and integration with the shader system.
      */
-    class PaletteManager
+    class PaletteManager : public Core::Subsystem
     {
     public:
         /**
@@ -46,18 +47,38 @@ namespace PixelCraft::Rendering
         /**
          * @brief Destructor that ensures proper cleanup
          */
-        ~PaletteManager();
+        ~PaletteManager() override;
 
         /**
          * @brief Initializes the palette manager and creates default palettes
          * @return True if initialization was successful
          */
-        bool initialize();
+        bool initialize() override;
+
+        /**
+         * @brief Update the palette manager
+         * @param deltaTime Time elapsed since last update
+         */
+        void update(float deltaTime) override;
+
+        /**
+         * @brief Render palette-related elements
+         */
+        void render() override;
 
         /**
          * @brief Releases all resources and resets the manager state
          */
-        void shutdown();
+        void shutdown() override;
+
+        /**
+         * @brief Get the name of the subsystem
+         * @return The subsystem name
+         */
+        std::string getName() const override
+        {
+            return "PaletteManager";
+        }
 
         /**
          * @brief Loads a palette from a file (supports PAL, GPL, and HEX formats)

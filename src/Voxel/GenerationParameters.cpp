@@ -2,9 +2,8 @@
 // GenerationParameters.cpp
 // -------------------------------------------------------------------------
 #include "Voxel/GenerationParameters.h"
+#include "Utility/Serialization/SerializationUtility.h"
 #include "Core/Logger.h"
-
-namespace Log = PixelCraft::Core;
 
 namespace PixelCraft::Voxel
 {
@@ -33,7 +32,7 @@ namespace PixelCraft::Voxel
     {
         if (min > max)
         {
-            Log::warn("Min height greater than max height, swapping values");
+            Core::warn("Min height greater than max height, swapping values");
             std::swap(min, max);
         }
 
@@ -447,220 +446,405 @@ namespace PixelCraft::Voxel
         }
 
         // Preset not found
-        Log::warn("Preset '" + presetName + "' not found");
+        Core::warn("Preset '" + presetName + "' not found");
         return false;
     }
 
-    void GenerationParameters::serialize(ECS::Serializer& serializer) const
+    Utility::Serialization::SerializationResult GenerationParameters::serialize(Utility::Serialization::Serializer& serializer) const
     {
+        // Begin serializing the parameters
+        auto result = serializer.beginObject(getTypeName());
+        if (!result) return result;
+
         // Serialize basic properties
-        serializer.write(static_cast<int>(m_terrainMode));
-        serializer.write(m_minHeight);
-        serializer.write(m_maxHeight);
-        serializer.write(m_waterLevel);
-        serializer.write(m_waterEnabled);
-        serializer.write(m_cavesEnabled);
-        serializer.write(m_caveDensity);
-        serializer.write(m_caveSize);
-        serializer.writeString(m_terrainNoiseLayer);
-        serializer.writeString(m_caveNoiseLayer);
-        serializer.writeString(m_featureNoiseLayer);
-        serializer.writeString(m_biomeNoiseLayer);
-        serializer.write(m_terrainRoughness);
-        serializer.write(m_terrainErosion);
-        serializer.write(static_cast<int>(m_featurePlacementPattern));
-        serializer.write(m_featureDensity);
-        serializer.write(m_biomeBlendDistance);
-        serializer.writeString(m_featurePlacementControl);
-        serializer.writeString(m_distributionControl);
+        result = serializer.writeField("terrainMode", static_cast<int>(m_terrainMode));
+        if (!result) return result;
+
+        result = serializer.writeField("minHeight", m_minHeight);
+        if (!result) return result;
+
+        result = serializer.writeField("maxHeight", m_maxHeight);
+        if (!result) return result;
+
+        result = serializer.writeField("waterLevel", m_waterLevel);
+        if (!result) return result;
+
+        result = serializer.writeField("waterEnabled", m_waterEnabled);
+        if (!result) return result;
+
+        result = serializer.writeField("cavesEnabled", m_cavesEnabled);
+        if (!result) return result;
+
+        result = serializer.writeField("caveDensity", m_caveDensity);
+        if (!result) return result;
+
+        result = serializer.writeField("caveSize", m_caveSize);
+        if (!result) return result;
+
+        result = serializer.writeField("terrainRoughness", m_terrainRoughness);
+        if (!result) return result;
+
+        result = serializer.writeField("terrainErosion", m_terrainErosion);
+        if (!result) return result;
+
+        result = serializer.writeField("featurePlacementPattern", static_cast<int>(m_featurePlacementPattern));
+        if (!result) return result;
+
+        result = serializer.writeField("featureDensity", m_featureDensity);
+        if (!result) return result;
+
+        result = serializer.writeField("biomeBlendDistance", m_biomeBlendDistance);
+        if (!result) return result;
+
+        result = serializer.writeField("featurePlacementControl", m_featurePlacementControl);
+        if (!result) return result;
+
+        result = serializer.writeField("distributionControl", m_distributionControl);
+        if (!result) return result;
 
         // Serialize feature type enabled flags
-        serializer.beginArray("enabledFeatureTypes", m_enabledFeatureTypes.size());
+        result = serializer.beginArray("enabledFeatureTypes", m_enabledFeatureTypes.size());
+        if (!result) return result;
+
         for (const auto& [type, enabled] : m_enabledFeatureTypes)
         {
-            serializer.writeString(type);
-            serializer.write(enabled);
+            result = serializer.writeField("type", type);
+            if (!result) return result;
+
+            result = serializer.writeField("enabled", enabled);
+            if (!result) return result;
         }
-        serializer.endArray();
+
+        result = serializer.endArray();
+        if (!result) return result;
 
         // Serialize feature type densities
-        serializer.beginArray("featureTypeDensities", m_featureTypeDensities.size());
+        result = serializer.beginArray("featureTypeDensities", m_featureTypeDensities.size());
+        if (!result) return result;
+
         for (const auto& [type, density] : m_featureTypeDensities)
         {
-            serializer.writeString(type);
-            serializer.write(density);
+            result = serializer.writeField("type", type);
+            if (!result) return result;
+
+            result = serializer.writeField("density", density);
+            if (!result) return result;
         }
-        serializer.endArray();
+        
+        result = serializer.endArray();
+        if (!result) return result;
 
         // Serialize custom parameters
-        serializer.beginArray("floatParams", m_floatParams.size());
+        result = serializer.beginArray("floatParams", m_floatParams.size());
+        if (!result) return result;
+
         for (const auto& [name, value] : m_floatParams)
         {
-            serializer.writeString(name);
-            serializer.write(value);
-        }
-        serializer.endArray();
+            result = serializer.writeField("name", name);
+            if (!result) return result;
 
-        serializer.beginArray("intParams", m_intParams.size());
+            result = serializer.writeField("value", value);
+            if (!result) return result;
+        }
+        
+        result = serializer.endArray();
+        if (!result) return result;
+
+        result = serializer.beginArray("intParams", m_intParams.size());
+        if (!result) return result;
+
         for (const auto& [name, value] : m_intParams)
         {
-            serializer.writeString(name);
-            serializer.write(value);
-        }
-        serializer.endArray();
+            result = serializer.writeField("name", name);
+            if (!result) return result;
 
-        serializer.beginArray("boolParams", m_boolParams.size());
+            result = serializer.writeField("value", value);
+            if (!result) return result;
+        }
+        
+        result = serializer.endArray();
+        if (!result) return result;
+
+        result = serializer.beginArray("boolParams", m_boolParams.size());
+        if (!result) return result;
+
         for (const auto& [name, value] : m_boolParams)
         {
-            serializer.writeString(name);
-            serializer.write(value);
-        }
-        serializer.endArray();
+            result = serializer.writeField("name", name);
+            if (!result) return result;
 
-        serializer.beginArray("stringParams", m_stringParams.size());
+            result = serializer.writeField("value", value);
+            if (!result) return result;
+        }
+        
+        result = serializer.endArray();
+        if (!result) return result;
+
+        result = serializer.beginArray("stringParams", m_stringParams.size());
+        if (!result) return result;
+
         for (const auto& [name, value] : m_stringParams)
         {
-            serializer.writeString(name);
-            serializer.writeString(value);
-        }
-        serializer.endArray();
+            result = serializer.writeField("name", name);
+            if (!result) return result;
 
-        serializer.beginArray("vec3Params", m_vec3Params.size());
+            result = serializer.writeField("value", value);
+            if (!result) return result;
+        }
+        
+        result = serializer.endArray();
+        if (!result) return result;
+
+        result = serializer.beginArray("vec3Params", m_vec3Params.size());
+        if (!result) return result;
+
         for (const auto& [name, value] : m_vec3Params)
         {
-            serializer.writeString(name);
-            serializer.writeVec3(value);
+            result = serializer.writeField("name", name);
+            if (!result) return result;
+
+            result = serializer.writeField("value", value);
+            if (!result) return result;
         }
-        serializer.endArray();
+        
+        result = serializer.endArray();
+        if (!result) return result;
+
+        return serializer.endObject();
     }
 
-    void GenerationParameters::deserialize(ECS::Deserializer& deserializer)
+    Utility::Serialization::SerializationResult GenerationParameters::deserialize(Utility::Serialization::Deserializer& deserializer)
     {
         // Reset to defaults first
         initializeDefaults();
 
-        // Deserialize basic properties
-        int tempTerrainMode;
-        deserializer.read(tempTerrainMode);
-        m_terrainMode = static_cast<TerrainMode>(tempTerrainMode);
+        // Begin deserializing the parameters
+        auto result = deserializer.beginObject(getTypeName());
+        if (!result) return result;
 
-        deserializer.read(m_minHeight);
-        deserializer.read(m_maxHeight);
-        deserializer.read(m_waterLevel);
-        deserializer.read(m_waterEnabled);
-        deserializer.read(m_cavesEnabled);
-        deserializer.read(m_caveDensity);
-        deserializer.read(m_caveSize);
-        deserializer.readString(m_terrainNoiseLayer);
-        deserializer.readString(m_caveNoiseLayer);
-        deserializer.readString(m_featureNoiseLayer);
-        deserializer.readString(m_biomeNoiseLayer);
-        deserializer.read(m_terrainRoughness);
-        deserializer.read(m_terrainErosion);
+        // Deserialize basic properties
+        int tempMode;
+        result = deserializer.readField("terrainMode", tempMode);
+        if (!result) return result;
+        m_terrainMode = static_cast<TerrainMode>(tempMode);
+
+        result = deserializer.readField("minHeight", m_minHeight);
+        if (!result) return result;
+
+        result = deserializer.readField("maxHeight", m_maxHeight);
+        if (!result) return result;
+
+        result = deserializer.readField("waterLevel", m_waterLevel);
+        if (!result) return result;
+
+        result = deserializer.readField("waterEnabled", m_waterEnabled);
+        if (!result) return result;
+
+        result = deserializer.readField("cavesEnabled", m_cavesEnabled);
+        if (!result) return result;
+
+        result = deserializer.readField("caveDensity", m_caveDensity);
+        if (!result) return result;
+
+        result = deserializer.readField("caveSize", m_caveSize);
+        if (!result) return result;
+
+        result = deserializer.readField("terrainRoughness", m_terrainRoughness);
+        if (!result) return result;
+
+        result = deserializer.readField("terrainErosion", m_terrainErosion);
+        if (!result) return result;
 
         int tempPattern;
-        deserializer.read(tempPattern);
+        result = deserializer.readField("featurePlacementPattern", tempPattern);
+        if (!result) return result;
         m_featurePlacementPattern = static_cast<PlacementPattern>(tempPattern);
 
-        deserializer.read(m_featureDensity);
-        deserializer.read(m_biomeBlendDistance);
-        deserializer.readString(m_featurePlacementControl);
-        deserializer.readString(m_distributionControl);
+        result = deserializer.readField("featureDensity", m_featureDensity);
+        if (!result) return result;
+
+        result = deserializer.readField("biomeBlendDistance", m_biomeBlendDistance);
+        if (!result) return result;
+
+        result = deserializer.readField("featurePlacementControl", m_featurePlacementControl);
+        if (!result) return result;
+
+        result = deserializer.readField("distributionControl", m_distributionControl);
+        if (!result) return result;
 
         size_t arraySize;
         // Deseserialize feature type enabled flags
-        deserializer.beginArray("enabledFeatureTypes", arraySize);
-        for (int i = 0; i < arraySize; i++)
+        result = deserializer.beginArray("enabledFeatureTypes", arraySize);
+        if (!result) return result;
+
+        for (size_t i = 0; i < arraySize; i++)
         {
             std::string type;
-            deserializer.readString(type);
+            result = deserializer.readField("type", type);
+            if (!result) return result;
 
             bool enabled;
-            deserializer.read(enabled);
+            result = deserializer.readField("enabled", enabled);
+            if (!result) return result;
 
             m_enabledFeatureTypes[type] = enabled;
         }
-        deserializer.endArray();
+        
+        result = deserializer.endArray();
+        if (!result) return result;
 
         // Deserialize feature type densities
-        deserializer.beginArray("featureTypeDensities", arraySize);
-        for (int i = 0; i < arraySize; i++)
+        result = deserializer.beginArray("featureTypeDensities", arraySize);
+        if (!result) return result;
+
+        for (size_t i = 0; i < arraySize; i++)
         {
             std::string type;
-            deserializer.readString(type);
+            result = deserializer.readField("type", type);
+            if (!result) return result;
 
             float density;
-            deserializer.read(density);
+            result = deserializer.readField("density", density);
+            if (!result) return result;
 
             m_featureTypeDensities[type] = density;
         }
-        deserializer.endArray();
+        
+        result = deserializer.endArray();
+        if (!result) return result;
 
         // Deserialize custom parameters
-        deserializer.beginArray("floatParams", arraySize);
-        for (int i = 0; i < arraySize; i++)
+        result = deserializer.beginArray("floatParams", arraySize);
+        if (!result) return result;
+
+        for (size_t i = 0; i < arraySize; i++)
         {
             std::string type;
-            deserializer.readString(type);
+            result = deserializer.readField("type", type);
+            if (!result) return result;
 
             float value;
-            deserializer.read(value);
+            result = deserializer.readField("value", value);
+            if (!result) return result;
 
             m_floatParams[type] = value;
         }
-        deserializer.endArray();
 
-        deserializer.beginArray("intParams", arraySize);
-        for (int i = 0; i < arraySize; i++)
+        result = deserializer.endArray();
+        if (!result) return result;
+
+        result = deserializer.beginArray("intParams", arraySize);
+        if (!result) return result;
+
+        for (size_t i = 0; i < arraySize; i++)
         {
             std::string type;
-            deserializer.readString(type);
+            result = deserializer.readField("type", type);
+            if (!result) return result;
 
             int value;
-            deserializer.read(value);
+            result = deserializer.readField("value", value);
+            if (!result) return result;
 
             m_intParams[type] = value;
         }
-        deserializer.endArray();
+        
+        result = deserializer.endArray();
+        if (!result) return result;
 
-        deserializer.beginArray("boolParams", arraySize);
-        for (int i = 0; i < arraySize; i++)
+        result = deserializer.beginArray("boolParams", arraySize);
+        if (!result) return result;
+
+        for (size_t i = 0; i < arraySize; i++)
         {
             std::string type;
-            deserializer.readString(type);
+            result = deserializer.readField("type", type);
+            if (!result) return result;
 
             bool value;
-            deserializer.read(value);
+            result = deserializer.readField("value", value);
+            if (!result) return result;
 
             m_boolParams[type] = value;
         }
-        deserializer.endArray();
+        
+        result = deserializer.endArray();
+        if (!result) return result;
 
-        deserializer.beginArray("stringParams", arraySize);
-        for (int i = 0; i < arraySize; i++)
+        result = deserializer.beginArray("stringParams", arraySize);
+        if (!result) return result;
+
+        for (size_t i = 0; i < arraySize; i++)
         {
             std::string type;
-            deserializer.readString(type);
+            result = deserializer.readField("type", type);
+            if (!result) return result;
 
             std::string value;
-            deserializer.readString(value);
+            result = deserializer.readField("value", value);
+            if (!result) return result;
 
             m_stringParams[type] = value;
         }
-        deserializer.endArray();
+        
+        result = deserializer.endArray();
+        if (!result) return result;
 
-        deserializer.beginArray("vec3Params", arraySize);
-        for (int i = 0; i < arraySize; i++)
+        result = deserializer.beginArray("vec3Params", arraySize);
+        if (!result) return result;
+
+        for (size_t i = 0; i < arraySize; i++)
         {
             std::string type;
-            deserializer.readString(type);
+            result = deserializer.readField("type", type);
+            if (!result) return result;
 
             glm::vec3 value;
-            deserializer.readVec3(value);
+            result = deserializer.readField("value", value);
+            if (!result) return result;
 
             m_vec3Params[type] = value;
         }
-        deserializer.endArray();
+        
+        result = deserializer.endArray();
+        if (!result) return result;
+
+        return deserializer.endObject();
+    }
+
+    void GenerationParameters::defineSchema(Utility::Serialization::Schema& schema)
+    {
+        schema.addField("terrainMode", Utility::Serialization::ValueType::Int64, true);
+        schema.addField("minHeight", Utility::Serialization::ValueType::Float, true);
+        schema.addField("maxHeight", Utility::Serialization::ValueType::Float, true);
+        schema.addField("waterLevel", Utility::Serialization::ValueType::Float, true);
+        schema.addField("waterEnabled", Utility::Serialization::ValueType::Bool, true);
+        schema.addField("caveEnabled", Utility::Serialization::ValueType::Bool, true);
+        schema.addField("caveDensity", Utility::Serialization::ValueType::Float, true);
+        schema.addField("caveSize", Utility::Serialization::ValueType::Float, true);
+        schema.addField("terrainNoiseLayer", Utility::Serialization::ValueType::String, true);
+        schema.addField("caveNoiseLayer", Utility::Serialization::ValueType::String, true);
+        schema.addField("featureNoiseLayer", Utility::Serialization::ValueType::String, true);
+        schema.addField("biomeNoiseLayer", Utility::Serialization::ValueType::String, true);
+        schema.addField("terrainRoughness", Utility::Serialization::ValueType::Float, true);
+        schema.addField("terrainErosion", Utility::Serialization::ValueType::Float, true);
+        schema.addField("featurePlacementPattern", Utility::Serialization::ValueType::Int64, true);
+        schema.addField("featureDensity", Utility::Serialization::ValueType::Float, true);
+        schema.addField("biomeBlendDistance", Utility::Serialization::ValueType::Float, true);
+        schema.addField("featurePlacementControl", Utility::Serialization::ValueType::String, true);
+        schema.addField("distributionControl", Utility::Serialization::ValueType::String, true);
+        schema.addArrayField("enabledFeatureTypes", Utility::Serialization::ValueType::Bool, true);
+        schema.addArrayField("featureTypeDensities", Utility::Serialization::ValueType::Float, true);
+        schema.addArrayField("floatParams", Utility::Serialization::ValueType::Float, true);
+        schema.addArrayField("intParams", Utility::Serialization::ValueType::Int64, true);
+        schema.addArrayField("boolParams", Utility::Serialization::ValueType::Bool, true);
+        schema.addArrayField("stringParams", Utility::Serialization::ValueType::String, true);
+        schema.addArrayField("vec3Params", Utility::Serialization::ValueType::Vec3, true);
+    }
+
+    std::string GenerationParameters::getTypeName()
+    {
+        return "GenerationParameters";
     }
 
     void GenerationParameters::initializeDefaults()

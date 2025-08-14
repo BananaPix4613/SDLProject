@@ -6,13 +6,14 @@
 #include "Voxel/ChunkCoord.h"
 #include "Voxel/Voxel.h"
 #include "Utility/Serialization/SerializationUtility.h"
+#include "Utility/Serialization/SerializationTypes.h"
 #include "Utility/AABB.h"
-#include "ECS/Serializer.h"
-#include "ECS/Deserializer.h"
 
 #include <memory>
 #include <vector>
 #include <atomic>
+#include <array>
+#include <string>
 
 namespace PixelCraft::Voxel
 {
@@ -266,7 +267,7 @@ namespace PixelCraft::Voxel
         // Serialization methods
         static void defineSchema(Utility::Serialization::Schema& schema)
         {
-            schema.addField("coord", Utility::Serialization::ValueType::Object);
+            schema.addField("coord", Utility::Serialization::ValueType::Vec3);
             schema.addField("size", Utility::Serialization::ValueType::Int32);
             schema.addField("voxels", Utility::Serialization::ValueType::Binary);
             schema.addField("empty", Utility::Serialization::ValueType::Bool);
@@ -274,8 +275,6 @@ namespace PixelCraft::Voxel
 
         Utility::Serialization::SerializationResult serialize(Utility::Serialization::Serializer& serializer) const
         {
-            using namespace Utility::Serialization;
-
             auto result = serializer.beginObject("Chunk");
             if (!result) return result;
 
@@ -316,8 +315,6 @@ namespace PixelCraft::Voxel
 
         Utility::Serialization::SerializationResult deserialize(Utility::Serialization::Deserializer& deserializer)
         {
-            using namespace Utility::Serialization;
-
             auto result = deserializer.beginObject("Chunk");
             if (!result) return result;
 
@@ -360,9 +357,9 @@ namespace PixelCraft::Voxel
 
                 if (actualSize > 0 && actualSize != dataSize)
                 {
-                    return SerializationResult("Voxel data size mismatch: expected " +
-                                               std::to_string(dataSize) + ", got " +
-                                               std::to_string(actualSize));
+                    return PixelCraft::Utility::Serialization::SerializationResult("Voxel data size mismatch: expected " +
+                                                                                   std::to_string(dataSize) + ", got " +
+                                                                                   std::to_string(actualSize));
                 }
             }
             else

@@ -214,11 +214,11 @@ namespace PixelCraft::ECS
 
             for (size_t i = 0; i < childCount; ++i)
             {
-                uint64_t childID;
+                uint32_t childID;
                 result = deserializer.readEntityRef(childID);
                 if (!result) return result;
 
-                m_children.push_back(childID);
+                m_children.push_back(static_cast<EntityID>(childID));
             }
 
             result = deserializer.endArray();
@@ -236,20 +236,12 @@ namespace PixelCraft::ECS
             Component::defineSchema(schema);
 
             // Add transform-specific fields
-            schema.addField("localPosition", Utility::Serialization::ValueType::Object);
-            schema.addField("localRotation", Utility::Serialization::ValueType::Object);
-            schema.addField("localScale", Utility::Serialization::ValueType::Object);
+            schema.addField("localPosition", Utility::Serialization::ValueType::Vec3);
+            schema.addField("localRotation", Utility::Serialization::ValueType::Quat);
+            schema.addField("localScale", Utility::Serialization::ValueType::Vec3);
             schema.addField("parent", Utility::Serialization::ValueType::EntityRef);
             schema.addArrayField("children", Utility::Serialization::ValueType::EntityRef);
         }
-
-        static std::string getTypeName()
-        {
-            return "TransformComponent";
-        }
-
-        // Define component type with ID 1 (first component type)
-        DEFINE_COMPONENT_TYPE(TransformComponent, 1)
 
     private:
         Utility::Transform m_localTransform;     ///< Local space transform

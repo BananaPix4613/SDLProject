@@ -2,25 +2,22 @@
 // NoiseGenerator.cpp
 // -------------------------------------------------------------------------
 #include "Voxel/NoiseGenerator.h"
+#include "Voxel/NoiseLayer.h"
 #include "Core/Logger.h"
 #include "Utility/Math.h"
 #include "Utility/Random.h"
-#include "ECS/Serializer.h"
-#include "ECS/Deserializer.h"
+#include "Utility/Serialization/SerializationUtility.h"
 
 #include <algorithm>
 #include <random>
 #include <cmath>
-
-namespace Log = PixelCraft::Core;
 
 namespace PixelCraft::Voxel
 {
 
     NoiseGenerator::NoiseGenerator()
     {
-        // Initialize with default values
-        validateParameters();
+        // Nothing to initialize
     }
 
     NoiseGenerator::~NoiseGenerator()
@@ -30,123 +27,95 @@ namespace PixelCraft::Voxel
 
     float NoiseGenerator::generate(float x, float y, float z) const
     {
-        // Apply scale and offset to coordinates
-        glm::vec3 pos = applyScaleAndOffset(x, y, z, m_scale, m_offset);
-
-        // Apply domain warping if enabled
-        if (m_warpEnabled)
+        if (m_layers.empty())
         {
-            float warpX = computeWarp(m_warpType, pos.x, pos.y, pos.z, m_warpAmplitude, m_warpFrequency);
-            float warpY = computeWarp(m_warpType, pos.x + 123.456f, pos.y + 789.012f, pos.z + 345.678f, m_warpAmplitude, m_warpFrequency);
-            float warpZ = computeWarp(m_warpType, pos.x + 901.234f, pos.y + 567.890f, pos.z + 123.456f, m_warpAmplitude, m_warpFrequency);
-
-            pos.x += warpX;
-            pos.y += warpY;
-            pos.z += warpZ;
+            Core::error("NoiseGenerator::generate: Missing noise layers for noise generation");
+            return 0.0f;
         }
 
-        // If there are layers, use them
-        if (!m_layers.empty())
+        float result = 0.0f;
+        float totalWeight = 0.0f;
+
+        // Start with the first layer as the base
+        bool firstLayer = true;
+
+        for (auto [id, layer] : m_layers)
         {
-            float result = 0.0f;
-            float totalWeight = 0.0f;
-
-            // Start with the first layer as the base
-            bool firstLayer = true;
-
-            for (const auto& layer : m_layers)
+            if (!layer->isLayerEnabled())
             {
-                if (!layer.enabled)
-                {
-                    continue;
-                }
-
-                // Apply the layer's scale and offset
-                glm::vec3 layerPos = applyScaleAndOffset(pos.x, pos.y, pos.z, layer.scale, layer.offset);
-
-                // Apply the layer's warping if enabled
-                if (layer.warpEnabled)
-                {
-                    float warpX = computeWarp(layer.warpType, layerPos.x, layerPos.y, layerPos.z,
-                                              layer.warpAmplitude, layer.warpFrequency);
-                    float warpY = computeWarp(layer.warpType, layerPos.x + 123.456f, layerPos.y + 789.012f,
-                                              layerPos.z + 345.678f, layer.warpAmplitude, layer.warpFrequency);
-                    float warpZ = computeWarp(layer.warpType, layerPos.x + 901.234f, layerPos.y + 567.890f,
-                                              layerPos.z + 123.456f, layer.warpAmplitude, layer.warpFrequency);
-
-                    layerPos.x += warpX;
-                    layerPos.y += warpY;
-                    layerPos.z += warpZ;
-                }
-
-                // Generate noise value for this layer
-                float layerValue;
-                if (layer.fractalType == FractalType::None)
-                {
-                    layerValue = generateSingle(layer.noiseType, layerPos.x * layer.frequency,
-                                                layerPos.y * layer.frequency, layerPos.z * layer.frequency);
-                }
-                else
-                {
-                    layerValue = generateFractal(layer.noiseType, layer.fractalType,
-                                                 layerPos.x * layer.frequency, layerPos.y * layer.frequency,
-                                                 layerPos.z * layer.frequency, layer.octaves,
-                                                 layer.persistence, layer.lacunarity);
-                }
-
-                // Scale by amplitude
-                layerValue *= layer.amplitude;
-
-                // Combine with previous result
-                if (firstLayer)
-                {
-                    result = layerValue;
-                    firstLayer = false;
-                }
-                else
-                {
-                    result = combineValues(result, layerValue, layer.combineOp, layer.weight);
-                }
-
-                totalWeight += layer.weight;
+                continue;
             }
 
-            // Normalize if total weight is not zero
-            if (totalWeight > 0.0f && !firstLayer)
+            // Apply scale and offset to coordinates
+            glm::vec3 pos = applyScaleAndOffset(x, y, z, layer->getLayerScale(), layer->getLayerOffset());
+
+            // Apply domain warping if enabled
+            if (layer->isWarpEnabled())
             {
-                result /= totalWeight;
+                float warpX = computeWarp(layer->getWarpType(), pos.x, pos.y, pos.z, layer->getWarpAmplitude(), layer->getWarpFrequency());
+                float warpY = computeWarp(layer->getWarpType(), pos.x + 123.456f, pos.y + 789.012f, pos.z + 345.678f, layer->getWarpAmplitude(), layer->getWarpFrequency());
+                float warpZ = computeWarp(layer->getWarpType(), pos.x + 901.234f, pos.y + 567.890f, pos.z + 123.456f, layer->getWarpAmplitude(), layer->getWarpFrequency());
+
+                pos.x += warpX;
+                pos.y += warpY;
+                pos.z += warpZ;
             }
 
-            // Apply custom modifier if set
-            if (m_modifier)
+            // Apply the layer's scale and offset
+            glm::vec3 layerPos = applyScaleAndOffset(pos.x, pos.y, pos.z, layer->getLayerScale(), layer->getLayerOffset());
+
+            // Apply the layer's warping if enabled
+            if (layer->isWarpEnabled())
             {
-                result = m_modifier(result);
+                float warpX = computeWarp(layer->getWarpType(), layerPos.x, layerPos.y, layerPos.z,
+                                            layer->getWarpAmplitude(), layer->getWarpFrequency());
+                float warpY = computeWarp(layer->getWarpType(), layerPos.x + 123.456f, layerPos.y + 789.012f,
+                                            layerPos.z + 345.678f, layer->getWarpAmplitude(), layer->getWarpFrequency());
+                float warpZ = computeWarp(layer->getWarpType(), layerPos.x + 901.234f, layerPos.y + 567.890f,
+                                            layerPos.z + 123.456f, layer->getWarpAmplitude(), layer->getWarpFrequency());
+
+                layerPos.x += warpX;
+                layerPos.y += warpY;
+                layerPos.z += warpZ;
             }
 
-            return result;
+            // Generate noise value for this layer
+            float layerValue;
+            if (layer->getLayerFractalType() == NoiseLayer::FractalType::None)
+            {
+                layerValue = generateSingle(layer->getLayerNoiseType(), layerPos.x * layer->getLayerFrequency(),
+                                            layerPos.y * layer->getLayerFrequency(), layerPos.z * layer->getLayerFrequency());
+            }
+            else
+            {
+                layerValue = generateFractal(layer->getLayerNoiseType(), layer->getLayerFractalType(),
+                                                layerPos.x * layer->getLayerFrequency(), layerPos.y * layer->getLayerFrequency(),
+                                                layerPos.z * layer->getLayerFrequency(), layer->getLayerOctaves(),
+                                                layer->getLayerPersistence(), layer->getLayerLacunarity());
+            }
+
+            // Scale by amplitude
+            layerValue *= layer->getLayerAmplitude();
+
+            // Combine with previous result
+            if (firstLayer)
+            {
+                result = layerValue;
+                firstLayer = false;
+            }
+            else
+            {
+                result = combineValues(result, layerValue, layer->getLayerCombineOperation(), layer->getLayerWeight());
+            }
+
+            totalWeight += layer->getLayerWeight();
         }
 
-        // No layers, use the base settings
-        float result;
-
-        // Scale coordinates by frequency
-        pos.x *= m_frequency;
-        pos.y *= m_frequency;
-        pos.z *= m_frequency;
-
-        // Generate noise value
-        if (m_fractalType == FractalType::None)
+        // Normalize if total weight is not zero
+        if (totalWeight > 0.0f && !firstLayer)
         {
-            result = generateSingle(m_noiseType, pos.x, pos.y, pos.z);
+            result /= totalWeight;
         }
-        else
-        {
-            result = generateFractal(m_noiseType, m_fractalType, pos.x, pos.y, pos.z,
-                                     m_octaves, m_persistence, m_lacunarity);
-        }
-
-        // Scale by amplitude
-        result *= m_amplitude;
 
         // Apply custom modifier if set
         if (m_modifier)
@@ -178,387 +147,48 @@ namespace PixelCraft::Voxel
         return m_seed;
     }
 
-    void NoiseGenerator::setNoiseType(NoiseType type)
-    {
-        m_noiseType = type;
-    }
-
-    NoiseGenerator::NoiseType NoiseGenerator::getNoiseType() const
-    {
-        return m_noiseType;
-    }
-
-    void NoiseGenerator::setFractalType(FractalType type)
-    {
-        m_fractalType = type;
-    }
-
-    NoiseGenerator::FractalType NoiseGenerator::getFractalType() const
-    {
-        return m_fractalType;
-    }
-
-    void NoiseGenerator::setOctaves(int octaves)
-    {
-        m_octaves = std::max(1, std::min(10, octaves));
-    }
-
-    int NoiseGenerator::getOctaves() const
-    {
-        return m_octaves;
-    }
-
-    void NoiseGenerator::setLacunarity(float lacunarity)
-    {
-        m_lacunarity = std::max(1.0f, std::min(4.0f, lacunarity));
-    }
-
-    float NoiseGenerator::getLacunarity() const
-    {
-        return m_lacunarity;
-    }
-
-    void NoiseGenerator::setPersistence(float persistence)
-    {
-        m_persistence = std::max(0.0f, std::min(1.0f, persistence));
-    }
-
-    float NoiseGenerator::getPersistence() const
-    {
-        return m_persistence;
-    }
-
-    void NoiseGenerator::setFrequency(float frequency)
-    {
-        m_frequency = frequency;
-    }
-
-    float NoiseGenerator::getFrequency() const
-    {
-        return m_frequency;
-    }
-
-    void NoiseGenerator::setAmplitude(float amplitude)
-    {
-        m_amplitude = amplitude;
-    }
-
-    float NoiseGenerator::getAmplitude() const
-    {
-        return m_amplitude;
-    }
-
-    void NoiseGenerator::setScale(const glm::vec3& scale)
-    {
-        m_scale = scale;
-    }
-
-    glm::vec3 NoiseGenerator::getScale() const
-    {
-        return m_scale;
-    }
-
-    void NoiseGenerator::setOffset(const glm::vec3& offset)
-    {
-        m_offset = offset;
-    }
-
-    glm::vec3 NoiseGenerator::getOffset() const
-    {
-        return m_offset;
-    }
-
-    void NoiseGenerator::enableWarp(bool enable)
-    {
-        m_warpEnabled = enable;
-    }
-
-    bool NoiseGenerator::isWarpEnabled() const
-    {
-        return m_warpEnabled;
-    }
-
-    void NoiseGenerator::setWarpType(WarpType type)
-    {
-        m_warpType = type;
-    }
-
-    NoiseGenerator::WarpType NoiseGenerator::getWarpType() const
-    {
-        return m_warpType;
-    }
-
-    void NoiseGenerator::setWarpAmplitude(float amplitude)
-    {
-        m_warpAmplitude = amplitude;
-    }
-
-    float NoiseGenerator::getWarpAmplitude() const
-    {
-        return m_warpAmplitude;
-    }
-
-    void NoiseGenerator::setWarpFrequency(float frequency)
-    {
-        m_warpFrequency = frequency;
-    }
-
-    float NoiseGenerator::getWarpFrequency() const
-    {
-        return m_warpFrequency;
-    }
-
-    void NoiseGenerator::setInterpolation(InterpolationType interp)
-    {
-        m_interpolation = interp;
-    }
-
-    NoiseGenerator::InterpolationType NoiseGenerator::getInterpolation() const
-    {
-        return m_interpolation;
-    }
-
-    bool NoiseGenerator::createLayer(const std::string& name)
+    std::shared_ptr<NoiseLayer> NoiseGenerator::createLayer(const std::string& name)
     {
         if (name.empty())
         {
-            Log::error("Layer name cannot be empty");
-            return false;
+            Core::error("Layer name cannot be empty");
+            return nullptr;
         }
 
         // Check if layer already exists
-        if (m_layerIndices.find(name) != m_layerIndices.end())
+        if (m_layerNameToId.find(name) != m_layerNameToId.end())
         {
-            Log::warn("Layer '" + name + "' already exists");
-            return false;
+            Core::warn("Layer '" + name + "' already exists");
+            return nullptr;
         }
+
+        // Generate new ID
+        int id = getNextLayerId();
 
         // Create new layer with default values
-        NoiseLayer layer;
-        layer.name = name;
+        auto layer = std::make_shared<NoiseLayer>(name, true);
 
         // Add to layers list
-        m_layers.push_back(layer);
-        m_layerIndices[name] = m_layers.size() - 1;
+        m_layers[id] = layer;
+        m_layerNameToId[name] = id;
 
-        return true;
+        return layer;
     }
 
-    bool NoiseGenerator::removeLayer(const std::string& name)
+    bool NoiseGenerator::removeLayer(int layerId)
     {
-        auto it = m_layerIndices.find(name);
-        if (it == m_layerIndices.end())
-        {
-            Log::warn("Layer '" + name + "' not found");
-            return false;
-        }
-
-        size_t index = it->second;
-
-        // Remove the layer
-        m_layers.erase(m_layers.begin() + index);
-        m_layerIndices.erase(it);
-
-        // Update indices of remaining layers
-        for (auto& [layerName, layerIndex] : m_layerIndices)
-        {
-            if (layerIndex > index)
-            {
-                layerIndex--;
-            }
-        }
-
-        return true;
-    }
-
-    bool NoiseGenerator::setLayerEnabled(const std::string& name, bool enabled)
-    {
-        auto it = m_layerIndices.find(name);
-        if (it == m_layerIndices.end())
-        {
-            Log::warn("Layer '" + name + "' not found");
-            return false;
-        }
-
-        m_layers[it->second].enabled = enabled;
-        return true;
-    }
-
-    bool NoiseGenerator::isLayerEnabled(const std::string& name) const
-    {
-        auto it = m_layerIndices.find(name);
-        if (it == m_layerIndices.end())
+        auto it = m_layers.find(layerId);
+        if (it == m_layers.end())
         {
             return false;
         }
 
-        return m_layers[it->second].enabled;
-    }
+        // Remove from name map first
+        m_layerNameToId.erase(it->second->getLayerName());
 
-    bool NoiseGenerator::setLayerNoiseType(const std::string& name, NoiseType type)
-    {
-        auto it = m_layerIndices.find(name);
-        if (it == m_layerIndices.end())
-        {
-            Log::warn("Layer '" + name + "' not found");
-            return false;
-        }
+        // Remove from layers map
+        m_layers.erase(it);
 
-        m_layers[it->second].noiseType = type;
-        return true;
-    }
-
-    bool NoiseGenerator::setLayerFractalType(const std::string& name, FractalType type)
-    {
-        auto it = m_layerIndices.find(name);
-        if (it == m_layerIndices.end())
-        {
-            Log::warn("Layer '" + name + "' not found");
-            return false;
-        }
-
-        m_layers[it->second].fractalType = type;
-        return true;
-    }
-
-    bool NoiseGenerator::setLayerFrequency(const std::string& name, float frequency)
-    {
-        auto it = m_layerIndices.find(name);
-        if (it == m_layerIndices.end())
-        {
-            Log::warn("Layer '" + name + "' not found");
-            return false;
-        }
-
-        m_layers[it->second].frequency = frequency;
-        return true;
-    }
-
-    bool NoiseGenerator::setLayerAmplitude(const std::string& name, float amplitude)
-    {
-        auto it = m_layerIndices.find(name);
-        if (it == m_layerIndices.end())
-        {
-            Log::warn("Layer '" + name + "' not found");
-            return false;
-        }
-
-        m_layers[it->second].amplitude = amplitude;
-        return true;
-    }
-
-    bool NoiseGenerator::setLayerOctaves(const std::string& name, int octaves)
-    {
-        auto it = m_layerIndices.find(name);
-        if (it == m_layerIndices.end())
-        {
-            Log::warn("Layer '" + name + "' not found");
-            return false;
-        }
-
-        m_layers[it->second].octaves = std::max(1, std::min(10, octaves));
-        return true;
-    }
-
-    bool NoiseGenerator::setLayerPersistence(const std::string& name, float persistence)
-    {
-        auto it = m_layerIndices.find(name);
-        if (it == m_layerIndices.end())
-        {
-            Log::warn("Layer '" + name + "' not found");
-            return false;
-        }
-
-        m_layers[it->second].persistence = std::max(0.0f, std::min(1.0f, persistence));
-        return true;
-    }
-
-    bool NoiseGenerator::setLayerLacunarity(const std::string& name, float lacunarity)
-    {
-        auto it = m_layerIndices.find(name);
-        if (it == m_layerIndices.end())
-        {
-            Log::warn("Layer '" + name + "' not found");
-            return false;
-        }
-
-        m_layers[it->second].lacunarity = std::max(1.0f, std::min(4.0f, lacunarity));
-        return true;
-    }
-
-    bool NoiseGenerator::setLayerOffset(const std::string& name, const glm::vec3& offset)
-    {
-        auto it = m_layerIndices.find(name);
-        if (it == m_layerIndices.end())
-        {
-            Log::warn("Layer '" + name + "' not found");
-            return false;
-        }
-
-        m_layers[it->second].offset = offset;
-        return true;
-    }
-
-    bool NoiseGenerator::setLayerScale(const std::string& name, const glm::vec3& scale)
-    {
-        auto it = m_layerIndices.find(name);
-        if (it == m_layerIndices.end())
-        {
-            Log::warn("Layer '" + name + "' not found");
-            return false;
-        }
-
-        m_layers[it->second].scale = scale;
-        return true;
-    }
-
-    bool NoiseGenerator::setLayerWeight(const std::string& name, float weight)
-    {
-        auto it = m_layerIndices.find(name);
-        if (it == m_layerIndices.end())
-        {
-            Log::warn("Layer '" + name + "' not found");
-            return false;
-        }
-
-        m_layers[it->second].weight = std::max(0.0f, std::min(1.0f, weight));
-        return true;
-    }
-
-    bool NoiseGenerator::getLayerWeight(const std::string& name, float& weight) const
-    {
-        auto it = m_layerIndices.find(name);
-        if (it == m_layerIndices.end())
-        {
-            return false;
-        }
-
-        weight = m_layers[it->second].weight;
-        return true;
-    }
-
-    bool NoiseGenerator::setLayerCombineOperation(const std::string& name, CombineOperation operation)
-    {
-        auto it = m_layerIndices.find(name);
-        if (it == m_layerIndices.end())
-        {
-            Log::warn("Layer '" + name + "' not found");
-            return false;
-        }
-
-        m_layers[it->second].combineOp = operation;
-        return true;
-    }
-
-    bool NoiseGenerator::getLayerCombineOperation(const std::string& name, CombineOperation& operation) const
-    {
-        auto it = m_layerIndices.find(name);
-        if (it == m_layerIndices.end())
-        {
-            return false;
-        }
-
-        operation = m_layers[it->second].combineOp;
         return true;
     }
 
@@ -567,9 +197,9 @@ namespace PixelCraft::Voxel
         std::vector<std::string> names;
         names.reserve(m_layers.size());
 
-        for (const auto& layer : m_layers)
+        for (auto [_, layer] : m_layers)
         {
-            names.push_back(layer.name);
+            names.push_back(layer->getLayerName());
         }
 
         return names;
@@ -594,59 +224,50 @@ namespace PixelCraft::Voxel
     {
         // Clear existing layers
         m_layers.clear();
-        m_layerIndices.clear();
-
-        // Set base properties
-        m_noiseType = NoiseType::Perlin;
-        m_fractalType = FractalType::FBM;
-        m_octaves = 4;
-        m_persistence = 0.5f;
-        m_lacunarity = 2.0f;
-        m_frequency = 0.01f;
-        m_amplitude = 1.0f;
+        m_layerNameToId.clear();
 
         // Create base terrain layer
-        createLayer("base");
-        setLayerNoiseType("base", NoiseType::Perlin);
-        setLayerFractalType("base", FractalType::FBM);
-        setLayerOctaves("base", 4);
-        setLayerPersistence("base", 0.5f);
-        setLayerLacunarity("base", 2.0f);
-        setLayerFrequency("base", 0.01f);
-        setLayerAmplitude("base", 1.0f);
-        setLayerWeight("base", 1.0f);
+        std::shared_ptr<NoiseLayer> base = createLayer("base");
+        base->setLayerNoiseType(NoiseLayer::NoiseType::Perlin);
+        base->setLayerFractalType(NoiseLayer::FractalType::FBM);
+        base->setLayerOctaves(4);
+        base->setLayerPersistence(0.5f);
+        base->setLayerLacunarity(2.0f);
+        base->setLayerFrequency(0.01f);
+        base->setLayerAmplitude(1.0f);
+        base->setLayerWeight(1.0f);
 
         // Create detail layer
-        createLayer("detail");
-        setLayerNoiseType("detail", NoiseType::Perlin);
-        setLayerFractalType("detail", FractalType::FBM);
-        setLayerOctaves("detail", 6);
-        setLayerPersistence("detail", 0.4f);
-        setLayerLacunarity("detail", 2.5f);
-        setLayerFrequency("detail", 0.04f);
-        setLayerAmplitude("detail", 0.2f);
-        setLayerCombineOperation("detail", CombineOperation::Add);
-        setLayerWeight("detail", 0.5f);
+        std::shared_ptr<NoiseLayer> detail = createLayer("detail");
+        detail->setLayerNoiseType(NoiseLayer::NoiseType::Perlin);
+        detail->setLayerFractalType(NoiseLayer::FractalType::FBM);
+        detail->setLayerOctaves(6);
+        detail->setLayerPersistence(0.4f);
+        detail->setLayerLacunarity(2.5f);
+        detail->setLayerFrequency(0.04f);
+        detail->setLayerAmplitude(0.2f);
+        detail->setLayerCombineOperation(NoiseLayer::CombineOperation::Add);
+        detail->setLayerWeight(0.5f);
 
         if (mountainous)
         {
             // Create ridge layer for mountains
-            createLayer("ridges");
-            setLayerNoiseType("ridges", NoiseType::Ridged);
-            setLayerFractalType("ridges", FractalType::FBM);
-            setLayerOctaves("ridges", 3);
-            setLayerPersistence("ridges", 0.7f);
-            setLayerLacunarity("ridges", 2.3f);
-            setLayerFrequency("ridges", 0.008f);
-            setLayerAmplitude("ridges", 0.8f);
-            setLayerCombineOperation("ridges", CombineOperation::Add);
-            setLayerWeight("ridges", 0.7f);
+            std::shared_ptr<NoiseLayer> ridges = createLayer("ridges");
+            ridges->setLayerNoiseType(NoiseLayer::NoiseType::Ridged);
+            ridges->setLayerFractalType(NoiseLayer::FractalType::FBM);
+            ridges->setLayerOctaves(3);
+            ridges->setLayerPersistence(0.7f);
+            ridges->setLayerLacunarity(2.3f);
+            ridges->setLayerFrequency(0.008f);
+            ridges->setLayerAmplitude(0.8f);
+            ridges->setLayerCombineOperation(NoiseLayer::CombineOperation::Add);
+            ridges->setLayerWeight(0.7f);
 
             // Add warping to make mountains more interesting
-            enableWarp(true);
-            setWarpType(WarpType::Fractal);
-            setWarpAmplitude(20.0f);
-            setWarpFrequency(0.005f);
+            ridges->setWarpEnabled(true);
+            ridges->setWarpType(NoiseLayer::WarpType::Fractal);
+            ridges->setWarpAmplitude(20.0f);
+            ridges->setWarpFrequency(0.005f);
         }
 
         return true;
@@ -656,42 +277,33 @@ namespace PixelCraft::Voxel
     {
         // Clear existing layers
         m_layers.clear();
-        m_layerIndices.clear();
-
-        // Set base properties
-        m_noiseType = NoiseType::Perlin;
-        m_fractalType = FractalType::FBM;
-        m_octaves = 3;
-        m_persistence = 0.4f;
-        m_lacunarity = 2.0f;
-        m_frequency = 0.05f;
-        m_amplitude = 1.0f;
+        m_layerNameToId.clear();
 
         // Create base cave layer
-        createLayer("base");
-        setLayerNoiseType("base", NoiseType::Perlin);
-        setLayerFractalType("base", FractalType::FBM);
-        setLayerOctaves("base", 3);
-        setLayerPersistence("base", 0.4f);
-        setLayerLacunarity("base", 2.0f);
-        setLayerFrequency("base", 0.05f);
-        setLayerAmplitude("base", 1.0f);
-        setLayerWeight("base", 1.0f);
+        std::shared_ptr<NoiseLayer> base = createLayer("base");
+        base->setLayerNoiseType(NoiseLayer::NoiseType::Perlin);
+        base->setLayerFractalType(NoiseLayer::FractalType::FBM);
+        base->setLayerOctaves(3);
+        base->setLayerPersistence(0.4f);
+        base->setLayerLacunarity(2.0f);
+        base->setLayerFrequency(0.05f);
+        base->setLayerAmplitude(1.0f);
+        base->setLayerWeight(1.0f);
 
         // Create cave shape layer
-        createLayer("tunnels");
-        setLayerNoiseType("tunnels", NoiseType::Worley);
-        setLayerFractalType("tunnels", FractalType::None);
-        setLayerFrequency("tunnels", 0.03f);
-        setLayerAmplitude("tunnels", 1.0f);
-        setLayerCombineOperation("tunnels", CombineOperation::Multiply);
-        setLayerWeight("tunnels", 0.8f);
+        std::shared_ptr<NoiseLayer> tunnels = createLayer("tunnels");
+        tunnels->setLayerNoiseType(NoiseLayer::NoiseType::Worley);
+        tunnels->setLayerFractalType(NoiseLayer::FractalType::None);
+        tunnels->setLayerFrequency(0.03f);
+        tunnels->setLayerAmplitude(1.0f);
+        tunnels->setLayerCombineOperation(NoiseLayer::CombineOperation::Multiply);
+        tunnels->setLayerWeight(0.8f);
 
         // Add warping for more natural cave systems
-        enableWarp(true);
-        setWarpType(WarpType::Basic);
-        setWarpAmplitude(5.0f);
-        setWarpFrequency(0.02f);
+        tunnels->setWarpEnabled(true);
+        tunnels->setWarpType(NoiseLayer::WarpType::Basic);
+        tunnels->setWarpAmplitude(5.0f);
+        tunnels->setWarpFrequency(0.02f);
 
         return true;
     }
@@ -700,48 +312,39 @@ namespace PixelCraft::Voxel
     {
         // Clear existing layers
         m_layers.clear();
-        m_layerIndices.clear();
-
-        // Set base properties
-        m_noiseType = NoiseType::Perlin;
-        m_fractalType = FractalType::FBM;
-        m_octaves = 2;
-        m_persistence = 0.5f;
-        m_lacunarity = 2.0f;
-        m_frequency = 0.1f;
-        m_amplitude = 1.0f;
+        m_layerNameToId.clear();
 
         // Create base layer for overall distribution
-        createLayer("distribution");
-        setLayerNoiseType("distribution", NoiseType::Perlin);
-        setLayerFractalType("distribution", FractalType::FBM);
-        setLayerOctaves("distribution", 2);
-        setLayerPersistence("distribution", 0.5f);
-        setLayerLacunarity("distribution", 2.0f);
-        setLayerFrequency("distribution", 0.1f);
-        setLayerAmplitude("distribution", 1.0f);
-        setLayerWeight("distribution", 1.0f);
+        std::shared_ptr<NoiseLayer> distribution = createLayer("distribution");
+        distribution->setLayerNoiseType(NoiseLayer::NoiseType::Perlin);
+        distribution->setLayerFractalType(NoiseLayer::FractalType::FBM);
+        distribution->setLayerOctaves(2);
+        distribution->setLayerPersistence(0.5f);
+        distribution->setLayerLacunarity(2.0f);
+        distribution->setLayerFrequency(0.1f);
+        distribution->setLayerAmplitude(1.0f);
+        distribution->setLayerWeight(1.0f);
 
         // Create vein layer for ore veins
-        createLayer("veins");
-        setLayerNoiseType("veins", NoiseType::Worley);
-        setLayerFractalType("veins", FractalType::None);
-        setLayerFrequency("veins", 0.2f);
-        setLayerAmplitude("veins", 1.0f);
-        setLayerCombineOperation("veins", CombineOperation::Multiply);
-        setLayerWeight("veins", 0.6f);
+        std::shared_ptr<NoiseLayer> veins = createLayer("veins");
+        veins->setLayerNoiseType(NoiseLayer::NoiseType::Worley);
+        veins->setLayerFractalType(NoiseLayer::FractalType::None);
+        veins->setLayerFrequency(0.2f);
+        veins->setLayerAmplitude(1.0f);
+        veins->setLayerCombineOperation(NoiseLayer::CombineOperation::Multiply);
+        veins->setLayerWeight(0.6f);
 
         // Create detail layer for smaller deposits
-        createLayer("deposits");
-        setLayerNoiseType("deposits", NoiseType::Value);
-        setLayerFractalType("deposits", FractalType::FBM);
-        setLayerOctaves("deposits", 3);
-        setLayerPersistence("deposits", 0.3f);
-        setLayerLacunarity("deposits", 2.5f);
-        setLayerFrequency("deposits", 0.3f);
-        setLayerAmplitude("deposits", 0.5f);
-        setLayerCombineOperation("deposits", CombineOperation::Add);
-        setLayerWeight("deposits", 0.4f);
+        std::shared_ptr<NoiseLayer> deposits = createLayer("deposits");
+        deposits->setLayerNoiseType(NoiseLayer::NoiseType::Value);
+        deposits->setLayerFractalType(NoiseLayer::FractalType::FBM);
+        deposits->setLayerOctaves(3);
+        deposits->setLayerPersistence(0.3f);
+        deposits->setLayerLacunarity(2.5f);
+        deposits->setLayerFrequency(0.3f);
+        deposits->setLayerAmplitude(0.5f);
+        deposits->setLayerCombineOperation(NoiseLayer::CombineOperation::Add);
+        deposits->setLayerWeight(0.4f);
 
         return true;
     }
@@ -750,53 +353,44 @@ namespace PixelCraft::Voxel
     {
         // Clear existing layers
         m_layers.clear();
-        m_layerIndices.clear();
-
-        // Set base properties
-        m_noiseType = NoiseType::Perlin;
-        m_fractalType = FractalType::FBM;
-        m_octaves = 3;
-        m_persistence = 0.5f;
-        m_lacunarity = 2.0f;
-        m_frequency = 0.01f;
-        m_amplitude = 1.0f;
+        m_layerNameToId.clear();
 
         // Create temperature layer
-        createLayer("temperature");
-        setLayerNoiseType("temperature", NoiseType::Perlin);
-        setLayerFractalType("temperature", FractalType::FBM);
-        setLayerOctaves("temperature", 3);
-        setLayerPersistence("temperature", 0.5f);
-        setLayerLacunarity("temperature", 2.0f);
-        setLayerFrequency("temperature", 0.01f);
-        setLayerAmplitude("temperature", 1.0f);
-        setLayerWeight("temperature", 1.0f);
+        std::shared_ptr<NoiseLayer> temperature = createLayer("temperature");
+        temperature->setLayerNoiseType(NoiseLayer::NoiseType::Perlin);
+        temperature->setLayerFractalType(NoiseLayer::FractalType::FBM);
+        temperature->setLayerOctaves(3);
+        temperature->setLayerPersistence(0.5f);
+        temperature->setLayerLacunarity(2.0f);
+        temperature->setLayerFrequency(0.01f);
+        temperature->setLayerAmplitude(1.0f);
+        temperature->setLayerWeight(1.0f);
 
         // Create humidity layer
-        createLayer("humidity");
-        setLayerNoiseType("humidity", NoiseType::Perlin);
-        setLayerFractalType("humidity", FractalType::FBM);
-        setLayerOctaves("humidity", 3);
-        setLayerPersistence("humidity", 0.5f);
-        setLayerLacunarity("humidity", 2.0f);
-        setLayerFrequency("humidity", 0.01f);
-        setLayerAmplitude("humidity", 1.0f);
-        setLayerOffset("humidity", glm::vec3(123.0f, 456.0f, 789.0f)); // Offset to make it different from temperature
-        setLayerCombineOperation("humidity", CombineOperation::Blend);
-        setLayerWeight("humidity", 1.0f);
+        std::shared_ptr<NoiseLayer> humidity = createLayer("humidity");
+        humidity->setLayerNoiseType(NoiseLayer::NoiseType::Perlin);
+        humidity->setLayerFractalType(NoiseLayer::FractalType::FBM);
+        humidity->setLayerOctaves(3);
+        humidity->setLayerPersistence(0.5f);
+        humidity->setLayerLacunarity(2.0f);
+        humidity->setLayerFrequency(0.01f);
+        humidity->setLayerAmplitude(1.0f);
+        humidity->setLayerOffset(glm::vec3(123.0f, 456.0f, 789.0f)); // Offset to make it different from temperature
+        humidity->setLayerCombineOperation(NoiseLayer::CombineOperation::Blend);
+        humidity->setLayerWeight(1.0f);
 
         // Create altitude variation layer
-        createLayer("altitude");
-        setLayerNoiseType("altitude", NoiseType::Perlin);
-        setLayerFractalType("altitude", FractalType::FBM);
-        setLayerOctaves("altitude", 4);
-        setLayerPersistence("altitude", 0.6f);
-        setLayerLacunarity("altitude", 2.2f);
-        setLayerFrequency("altitude", 0.02f);
-        setLayerAmplitude("altitude", 0.7f);
-        setLayerOffset("altitude", glm::vec3(987.0f, 654.0f, 321.0f));
-        setLayerCombineOperation("altitude", CombineOperation::Multiply);
-        setLayerWeight("altitude", 0.5f);
+        std::shared_ptr<NoiseLayer> altitude = createLayer("altitude");
+        altitude->setLayerNoiseType(NoiseLayer::NoiseType::Perlin);
+        altitude->setLayerFractalType(NoiseLayer::FractalType::FBM);
+        altitude->setLayerOctaves(4);
+        altitude->setLayerPersistence(0.6f);
+        altitude->setLayerLacunarity(2.2f);
+        altitude->setLayerFrequency(0.02f);
+        altitude->setLayerAmplitude(0.7f);
+        altitude->setLayerOffset(glm::vec3(987.0f, 654.0f, 321.0f));
+        altitude->setLayerCombineOperation(NoiseLayer::CombineOperation::Multiply);
+        altitude->setLayerWeight(0.5f);
 
         return true;
     }
@@ -805,203 +399,136 @@ namespace PixelCraft::Voxel
     {
         // Clear existing layers
         m_layers.clear();
-        m_layerIndices.clear();
-
-        // Set base properties
-        m_noiseType = NoiseType::Value;
-        m_fractalType = FractalType::FBM;
-        m_octaves = 5;
-        m_persistence = 0.5f;
-        m_lacunarity = 2.0f;
-        m_frequency = 0.2f;
-        m_amplitude = 1.0f;
+        m_layerNameToId.clear();
 
         // Create base detail layer
-        createLayer("base");
-        setLayerNoiseType("base", NoiseType::Value);
-        setLayerFractalType("base", FractalType::FBM);
-        setLayerOctaves("base", 5);
-        setLayerPersistence("base", 0.5f);
-        setLayerLacunarity("base", 2.0f);
-        setLayerFrequency("base", 0.2f);
-        setLayerAmplitude("base", 1.0f);
-        setLayerWeight("base", 1.0f);
+        std::shared_ptr<NoiseLayer> base = createLayer("base");
+        base->setLayerNoiseType(NoiseLayer::NoiseType::Value);
+        base->setLayerFractalType(NoiseLayer::FractalType::FBM);
+        base->setLayerOctaves(5);
+        base->setLayerPersistence(0.5f);
+        base->setLayerLacunarity(2.0f);
+        base->setLayerFrequency(0.2f);
+        base->setLayerAmplitude(1.0f);
+        base->setLayerWeight(1.0f);
 
         // Create fine detail layer
-        createLayer("fine");
-        setLayerNoiseType("fine", NoiseType::Perlin);
-        setLayerFractalType("fine", FractalType::FBM);
-        setLayerOctaves("fine", 7);
-        setLayerPersistence("fine", 0.6f);
-        setLayerLacunarity("fine", 2.5f);
-        setLayerFrequency("fine", 0.5f);
-        setLayerAmplitude("fine", 0.3f);
-        setLayerCombineOperation("fine", CombineOperation::Add);
-        setLayerWeight("fine", 0.4f);
+        std::shared_ptr<NoiseLayer> fine = createLayer("fine");
+        fine->setLayerNoiseType(NoiseLayer::NoiseType::Perlin);
+        fine->setLayerFractalType(NoiseLayer::FractalType::FBM);
+        fine->setLayerOctaves(7);
+        fine->setLayerPersistence(0.6f);
+        fine->setLayerLacunarity(2.5f);
+        fine->setLayerFrequency(0.5f);
+        fine->setLayerAmplitude(0.3f);
+        fine->setLayerCombineOperation(NoiseLayer::CombineOperation::Add);
+        fine->setLayerWeight(0.4f);
 
         // Create spots layer
-        createLayer("spots");
-        setLayerNoiseType("spots", NoiseType::Worley);
-        setLayerFractalType("spots", FractalType::None);
-        setLayerFrequency("spots", 0.4f);
-        setLayerAmplitude("spots", 0.5f);
-        setLayerCombineOperation("spots", CombineOperation::Multiply);
-        setLayerWeight("spots", 0.3f);
+        std::shared_ptr<NoiseLayer> spots = createLayer("spots");
+        spots->setLayerNoiseType(NoiseLayer::NoiseType::Worley);
+        spots->setLayerFractalType(NoiseLayer::FractalType::None);
+        spots->setLayerFrequency(0.4f);
+        spots->setLayerAmplitude(0.5f);
+        spots->setLayerCombineOperation(NoiseLayer::CombineOperation::Multiply);
+        spots->setLayerWeight(0.3f);
 
         return true;
     }
 
-    void NoiseGenerator::serialize(ECS::Serializer& serializer) const
+    Utility::Serialization::SerializationResult NoiseGenerator::serialize(Utility::Serialization::Serializer& serializer) const
     {
-        // Serialize base properties
-        serializer.write(m_seed);
-        serializer.write(static_cast<int>(m_noiseType));
-        serializer.write(static_cast<int>(m_fractalType));
-        serializer.write(static_cast<int>(m_interpolation));
-        serializer.write(m_octaves);
-        serializer.write(m_lacunarity);
-        serializer.write(m_persistence);
-        serializer.write(m_frequency);
-        serializer.write(m_amplitude);
-        serializer.writeVec3(m_scale);
-        serializer.writeVec3(m_offset);
-        serializer.write(m_warpEnabled);
-        serializer.write(static_cast<int>(m_warpType));
-        serializer.write(m_warpAmplitude);
-        serializer.write(m_warpFrequency);
+        auto result = serializer.beginObject(getTypeName());
+        if (!result) return result;
+
+        // Serialize seed
+        result = serializer.writeField("seed", m_seed);
+        if (!result) return result;
 
         // Serialize layers
-        serializer.beginArray("layers", m_layers.size());
-        for (size_t i = 0; i < m_layers.size(); i++)
-        {
-            const auto& layer = m_layers[i];
+        result = serializer.beginArray("layers", m_layers.size());
+        if (!result) return result;
 
-            serializer.writeString(layer.name);
-            serializer.write(layer.enabled);
-            serializer.write(static_cast<int>(layer.noiseType));
-            serializer.write(static_cast<int>(layer.fractalType));
-            serializer.write(static_cast<int>(layer.interpolation));
-            serializer.write(static_cast<int>(layer.combineOp));
-            serializer.write(layer.frequency);
-            serializer.write(layer.amplitude);
-            serializer.write(layer.octaves);
-            serializer.write(layer.persistence);
-            serializer.write(layer.lacunarity);
-            serializer.writeVec3(layer.offset);
-            serializer.writeVec3(layer.scale);
-            serializer.write(layer.weight);
-            serializer.write(static_cast<int>(layer.warpType));
-            serializer.write(layer.warpAmplitude);
-            serializer.write(layer.warpFrequency);
-            serializer.write(layer.warpEnabled);
+        for (auto& [_, layer] : m_layers)
+        {
+            result = layer->serialize(serializer);
+            if (!result) return result;
         }
 
-        serializer.endArray();
+        result = serializer.endArray();
+        if (!result) return result;
+
+        return serializer.endObject();
     }
 
-    void NoiseGenerator::deserialize(ECS::Deserializer& deserializer)
+    Utility::Serialization::SerializationResult NoiseGenerator::deserialize(Utility::Serialization::Deserializer& deserializer)
     {
         // Clear existing data
         m_layers.clear();
-        m_layerIndices.clear();
+        m_layerNameToId.clear();
 
-        // Deserialize base properties
-        deserializer.read(m_seed);
+        auto result = deserializer.beginObject(getTypeName());
+        if (!result) return result;
 
-        int tempNoiseType;
-        deserializer.read(tempNoiseType);
-        m_noiseType = static_cast<NoiseType>(tempNoiseType);
-
-        int tempFractalType;
-        deserializer.read(tempFractalType);
-        m_fractalType = static_cast<FractalType>(tempFractalType);
-
-        int tempInterpolation;
-        deserializer.read(tempInterpolation);
-        m_interpolation = static_cast<InterpolationType>(tempInterpolation);
-
-        deserializer.read(m_octaves);
-        deserializer.read(m_lacunarity);
-        deserializer.read(m_persistence);
-        deserializer.read(m_frequency);
-        deserializer.read(m_amplitude);
-        deserializer.readVec3(m_scale);
-        deserializer.readVec3(m_offset);
-        deserializer.read(m_warpEnabled);
-
-        int tempWarpType;
-        deserializer.read(tempWarpType);
-        m_warpType = static_cast<WarpType>(tempWarpType);
-
-        deserializer.read(m_warpAmplitude);
-        deserializer.read(m_warpFrequency);
+        // Deserialize seed
+        result = deserializer.readField("seed", m_seed);
+        if (!result) return result;
 
         // Deserialize layers
-        size_t layersSize;
-        deserializer.beginArray("layers", layersSize);
+        size_t arraySize;
+        result = deserializer.beginArray("layers", arraySize);
+        if (!result) return result;
 
-        for (int i = 0; i < layersSize; i++)
+        for (size_t i = 0; i < arraySize; i++)
         {
-            NoiseLayer layer;
+            std::shared_ptr<NoiseLayer> layer;
 
-            deserializer.readString(layer.name);
-            deserializer.read(layer.enabled);
-
-            int noiseType;
-            deserializer.read(noiseType);
-            layer.noiseType = static_cast<NoiseType>(noiseType);
-
-            int fractalType;
-            deserializer.read(fractalType);
-            layer.fractalType = static_cast<FractalType>(fractalType);
-
-            int interpolationType;
-            deserializer.read(interpolationType);
-            layer.interpolation = static_cast<InterpolationType>(interpolationType);
-
-            int combineOperation;
-            deserializer.read(combineOperation);
-            layer.combineOp = static_cast<CombineOperation>(combineOperation);
-
-            deserializer.read(layer.frequency);
-            deserializer.read(layer.amplitude);
-            deserializer.read(layer.amplitude);
-            deserializer.read(layer.octaves);
-            deserializer.read(layer.persistence);
-            deserializer.read(layer.lacunarity);
-            deserializer.readVec3(layer.offset);
-            deserializer.readVec3(layer.scale);
-            deserializer.read(layer.weight);
-
-            int tempWarpType;
-            deserializer.read(tempWarpType);
-            layer.warpType = static_cast<WarpType>(tempWarpType);
-
-            deserializer.read(layer.warpAmplitude);
-            deserializer.read(layer.warpFrequency);
-            deserializer.read(layer.warpEnabled);
-
-            m_layers.push_back(layer);
-            m_layerIndices[layer.name] = i;
+            result = layer->deserialize(deserializer);
+            if (!result) return result;
         }
 
-        deserializer.endArray();
-        validateParameters();
+        result = deserializer.endArray();
+        if (!result) return result;
+
+        return deserializer.endObject();
+    }
+
+    void NoiseGenerator::defineSchema(Utility::Serialization::Schema& schema)
+    {
+        schema.addField("seed", Utility::Serialization::ValueType::UInt32, true);
+        schema.addArrayField("layers", Utility::Serialization::ValueType::Object, true);
+    }
+
+    std::string NoiseGenerator::getTypeName()
+    {
+        return "NoiseGenerator";
+    }
+
+    int NoiseGenerator::getNextLayerId() const
+    {
+        int maxId = 0;
+
+        for (const auto& [id, _] : m_layers)
+        {
+            maxId = std::max(maxId, id);
+        }
+
+        return maxId + 1;
     }
 
     // Private helper methods
 
-    float NoiseGenerator::generateSingle(NoiseType type, float x, float y, float z) const
+    float NoiseGenerator::generateSingle(NoiseLayer::NoiseType type, float x, float y, float z, NoiseLayer::InterpolationType interpType) const
     {
         switch (type)
         {
-            case NoiseType::Perlin:
+            case NoiseLayer::NoiseType::Perlin:
                 return Utility::Math::perlinNoise(x, y, z);
 
-            case NoiseType::Simplex:
+            case NoiseLayer::NoiseType::Simplex:
                 return Utility::Math::simplexNoise(x, y, z);
 
-            case NoiseType::Worley:
+            case NoiseLayer::NoiseType::Worley:
             {
                 // Simple Worley (cellular) noise implementation
                 constexpr int primes[3] = {15731, 789221, 1376312589};
@@ -1052,7 +579,7 @@ namespace PixelCraft::Voxel
                 return minDist * 2.0f - 1.0f;
             }
 
-            case NoiseType::Value:
+            case NoiseLayer::NoiseType::Value:
             {
                 // Value noise implementation
                 int x0 = static_cast<int>(std::floor(x));
@@ -1079,21 +606,21 @@ namespace PixelCraft::Voxel
                 // Interpolate
                 float tx, ty, tz;
 
-                switch (m_interpolation)
+                switch (interpType)
                 {
-                    case InterpolationType::Linear:
+                    case NoiseLayer::InterpolationType::Linear:
                         tx = sx;
                         ty = sy;
                         tz = sz;
                         break;
 
-                    case InterpolationType::Cubic:
+                    case NoiseLayer::InterpolationType::Cubic:
                         tx = sx * sx * (3 - 2 * sx);
                         ty = sy * sy * (3 - 2 * sy);
                         tz = sz * sz * (3 - 2 * sz);
                         break;
 
-                    case InterpolationType::Quintic:
+                    case NoiseLayer::InterpolationType::Quintic:
                         tx = sx * sx * sx * (sx * (sx * 6 - 15) + 10);
                         ty = sy * sy * sy * (sy * (sy * 6 - 15) + 10);
                         tz = sz * sz * sz * (sz * (sz * 6 - 15) + 10);
@@ -1106,24 +633,24 @@ namespace PixelCraft::Voxel
                 }
 
                 return interpolate(
-                    m_interpolation,
+                    interpType,
                     interpolate(
-                        m_interpolation,
-                        interpolate(m_interpolation, n000, n100, tx),
-                        interpolate(m_interpolation, n010, n110, tx),
+                        interpType,
+                        interpolate(interpType, n000, n100, tx),
+                        interpolate(interpType, n010, n110, tx),
                         ty
                     ),
                     interpolate(
-                        m_interpolation,
-                        interpolate(m_interpolation, n001, n101, tx),
-                        interpolate(m_interpolation, n011, n111, tx),
+                        interpType,
+                        interpolate(interpType, n001, n101, tx),
+                        interpolate(interpType, n011, n111, tx),
                         ty
                     ),
                     tz
                 );
             }
 
-            case NoiseType::Cubic:
+            case NoiseLayer::NoiseType::Cubic:
             {
                 // Cubic noise (similar to value noise but with cubic interpolation)
                 int x0 = static_cast<int>(std::floor(x));
@@ -1150,24 +677,24 @@ namespace PixelCraft::Voxel
 
                 // Interpolate
                 return interpolate(
-                    m_interpolation,
+                    interpType,
                     interpolate(
-                        m_interpolation,
-                        interpolate(m_interpolation, n000, n100, tx),
-                        interpolate(m_interpolation, n010, n110, tx),
+                        interpType,
+                        interpolate(interpType, n000, n100, tx),
+                        interpolate(interpType, n010, n110, tx),
                         ty
                     ),
                     interpolate(
-                        m_interpolation,
-                        interpolate(m_interpolation, n001, n101, tx),
-                        interpolate(m_interpolation, n011, n111, tx),
+                        interpType,
+                        interpolate(interpType, n001, n101, tx),
+                        interpolate(interpType, n011, n111, tx),
                         ty
                     ),
                     tz
                 );
             }
 
-            case NoiseType::WhiteNoise:
+            case NoiseLayer::NoiseType::WhiteNoise:
             {
                 // Simple white noise implementation
                 uint32_t seed = m_seed;
@@ -1185,21 +712,21 @@ namespace PixelCraft::Voxel
                 return (static_cast<float>(h % 2000000000) / 1000000000.0f) - 1.0f;
             }
 
-            case NoiseType::Ridged:
+            case NoiseLayer::NoiseType::Ridged:
             {
                 // Ridged multi-fractal noise based on Perlin
                 float noise = std::abs(Utility::Math::perlinNoise(x, y, z));
                 return 2.0f * (0.5f - noise);
             }
             
-            case NoiseType::Billow:
+            case NoiseLayer::NoiseType::Billow:
             {
                 // Billow noise based on Perlin
                 float noise = std::abs(Utility::Math::perlinNoise(x, y, z));
                 return 2.0f * noise - 1.0f;
             }
 
-            case NoiseType::Voronoi:
+            case NoiseLayer::NoiseType::Voronoi:
             {
                 // Voronoi noise implementation (similar to Worley but different distance metric)
                 constexpr int primes[3] = {15731, 789221, 1376312589};
@@ -1210,7 +737,7 @@ namespace PixelCraft::Voxel
                 int cellZ = static_cast<int>(std::floor(z));
 
                 float minDist = 1000.0f;
-                glm::vec3 closestPoint;
+                glm::vec3 closestPoint(0, 0, 0);
 
                 // Search neighboring cells
                 for (int i = -1; i <= 1; i++)
@@ -1258,7 +785,7 @@ namespace PixelCraft::Voxel
                 return (static_cast<float>(pointSeed % 2000000000) / 1000000000.0f) - 1.0f;
             }
 
-            case NoiseType::Domain:
+            case NoiseLayer::NoiseType::Domain:
             {
                 // Domain warping noise based on Perlin
                 float warpX = Utility::Math::perlinNoise(x + 123.4f, y + 567.8f, z + 901.2f);
@@ -1277,7 +804,7 @@ namespace PixelCraft::Voxel
         }
     }
 
-    float NoiseGenerator::generateFractal(NoiseType noiseType, FractalType fractalType, float x, float y, float z,
+    float NoiseGenerator::generateFractal(NoiseLayer::NoiseType noiseType, NoiseLayer::FractalType fractalType, float x, float y, float z,
                                           int octaves, float persistence, float lacunarity) const
     {
         float result = 0.0f;
@@ -1287,7 +814,7 @@ namespace PixelCraft::Voxel
 
         switch (fractalType)
         {
-            case FractalType::FBM:
+            case NoiseLayer::FractalType::FBM:
             {
                 // Fractal Brownian Motion
                 for (int i = 0; i < octaves; i++)
@@ -1302,7 +829,7 @@ namespace PixelCraft::Voxel
                 return result / maxValue;
             }
 
-            case FractalType::Rigid:
+            case NoiseLayer::FractalType::Rigid:
             {
                 // Rigid multi-fractal
                 for (int i = 0; i < octaves; i++)
@@ -1319,7 +846,7 @@ namespace PixelCraft::Voxel
                 return result / maxValue;
             }
 
-            case FractalType::Billow:
+            case NoiseLayer::FractalType::Billow:
             {
                 // Billowy noise
                 for (int i = 0; i < octaves; i++)
@@ -1335,7 +862,7 @@ namespace PixelCraft::Voxel
                 return result / maxValue;
             }
 
-            case FractalType::MultiFractal:
+            case NoiseLayer::FractalType::MultiFractal:
             {
                 // Multi-fractal
                 result = 1.0f;
@@ -1348,7 +875,7 @@ namespace PixelCraft::Voxel
                 return result * 2.0f - 1.0f;
             }
 
-            case FractalType::HybridMulti:
+            case NoiseLayer::FractalType::HybridMulti:
             {
                 // Hybrid multi-fractal
                 result = generateSingle(noiseType, x, y, z) + 0.5f;
@@ -1369,7 +896,7 @@ namespace PixelCraft::Voxel
                 return result * 2.0f - 1.0f;
             }
 
-            case FractalType::DeCarpentier:
+            case NoiseLayer::FractalType::DeCarpentier:
             {
                 // De Carpentier voxel terrain formula
                 float offset = 1.0f;
@@ -1398,17 +925,17 @@ namespace PixelCraft::Voxel
         }
     }
 
-    float NoiseGenerator::computeWarp(WarpType type, float x, float y, float z, float amplitude, float frequency) const
+    float NoiseGenerator::computeWarp(NoiseLayer::WarpType type, float x, float y, float z, float amplitude, float frequency) const
     {
         switch (type)
         {
-            case WarpType::Basic:
+            case NoiseLayer::WarpType::Basic:
             {
                 // Basic domain warping using Perlin noise
                 return Utility::Math::perlinNoise(x * frequency, y * frequency, z * frequency) * amplitude;
             }
 
-            case WarpType::Derivative:
+            case NoiseLayer::WarpType::Derivative:
             {
                 // Derivative-based warping
                 float epsilon = 0.01f;
@@ -1419,7 +946,7 @@ namespace PixelCraft::Voxel
                 return (dx + dy + dz) * amplitude / 3.0f;
             }
 
-            case WarpType::Fractal:
+            case NoiseLayer::WarpType::Fractal:
             {
                 // Fractal warping
                 float result = 0.0f;
@@ -1441,34 +968,33 @@ namespace PixelCraft::Voxel
         }
     }
 
-    float NoiseGenerator::interpolate(InterpolationType type, float a, float b, float t) const
+    float NoiseGenerator::interpolate(NoiseLayer::InterpolationType type, float a, float b, float t) const
     {
         switch (type)
         {
-            case InterpolationType::Linear:
+            case NoiseLayer::InterpolationType::Linear:
                 return a + t * (b - a);
 
-            case InterpolationType::Cubic:
+            case NoiseLayer::InterpolationType::Cubic:
             {
                 float t2 = t * t;
-                float t3 = t2 * t;
                 return a + t2 * (3.0f - 2.0f * t) * (b - a);
             }
 
-            case InterpolationType::Quintic:
+            case NoiseLayer::InterpolationType::Quintic:
             {
                 float t2 = t * t;
                 float t3 = t2 * t;
                 return a + t3 * (t * (t * 6.0f - 15.0f) + 10.0f) * (b - a);
             }
 
-            case InterpolationType::Hermite:
+            case NoiseLayer::InterpolationType::Hermite:
             {
                 float t2 = t * t;
                 float t3 = t2 * t;
                 float h1 = 2.0f * t3 - 3.0f * t2 + 1.0f;
                 float h2 = -2.0f * t3 + 3.0f * t2;
-                return a * h2 + b * h2;
+                return a * h1 + b * h2;
             }
 
             default:
@@ -1476,39 +1002,39 @@ namespace PixelCraft::Voxel
         }
     }
 
-    float NoiseGenerator::combineValues(float a, float b, CombineOperation op, float weight) const
+    float NoiseGenerator::combineValues(float a, float b, NoiseLayer::CombineOperation op, float weight) const
     {
         switch (op)
         {
-            case CombineOperation::Add:
+            case NoiseLayer::CombineOperation::Add:
                 return a + b * weight;
 
-            case CombineOperation::Subtract:
+            case NoiseLayer::CombineOperation::Subtract:
                 return a - b * weight;
 
-            case CombineOperation::Multiply:
+            case NoiseLayer::CombineOperation::Multiply:
                 return a * (1.0f + b * weight);
 
-            case CombineOperation::Divide:
+            case NoiseLayer::CombineOperation::Divide:
                 if (std::abs(b) < 0.0001f)
                 {
                     return a;
                 }
                 return a / (1.0f + std::abs(b) * weight);
 
-            case CombineOperation::Min:
+            case NoiseLayer::CombineOperation::Min:
                 return std::min(a, b);
 
-            case CombineOperation::Max:
+            case NoiseLayer::CombineOperation::Max:
                 return std::max(a, b);
 
-            case CombineOperation::Power:
+            case NoiseLayer::CombineOperation::Power:
                 return std::pow(std::abs(a), 1.0f + b * weight) * (a < 0 ? -1.0f : 1.0f);
 
-            case CombineOperation::Average:
+            case NoiseLayer::CombineOperation::Average:
                 return (a + b * weight) / (1.0f + weight);
 
-            case CombineOperation::Blend:
+            case NoiseLayer::CombineOperation::Blend:
                 float t = (b + 1.0f) * 0.5f * weight; // Map b from [-1,1] to [0,1]
                 t = std::max(0.0f, std::min(1.0f, t));
                 return a * (1.0f - t) + b * t;
@@ -1528,27 +1054,19 @@ namespace PixelCraft::Voxel
 
     void NoiseGenerator::validateParameters()
     {
-        // Ensure parameters are within valid ranges
-        m_octaves = std::max(1, std::min(10, m_octaves));
-        m_persistence = std::max(0.0f, std::min(1.0f, m_persistence));
-        m_lacunarity = std::max(1.0f, std::min(4.0f, m_lacunarity));
-
-        // Ensure scale is non-zero
-        if (m_scale.x < 0.0001f) m_scale.x = 0.0001f;
-        if (m_scale.y < 0.0001f) m_scale.y = 0.0001f;
-        if (m_scale.z < 0.0001f) m_scale.z = 0.0001f;
-
         // Validate all layers
-        for (auto& layer : m_layers)
+        for (auto& [id, layer] : m_layers)
         {
-            layer.octaves = std::max(1, std::min(10, layer.octaves));
-            layer.persistence = std::max(0.0f, std::min(1.0f, layer.persistence));
-            layer.lacunarity = std::max(1.0f, std::min(4.0f, layer.lacunarity));
-            layer.weight = std::max(0.0f, std::min(1.0f, layer.weight));
+            layer->setLayerOctaves(std::max(1, std::min(10, layer->getLayerOctaves())));
+            layer->setLayerPersistence(std::max(0.0f, std::min(1.0f, layer->getLayerPersistence())));
+            layer->setLayerLacunarity(std::max(1.0f, std::min(4.0f, layer->getLayerLacunarity())));
+            layer->setLayerWeight(std::max(0.0f, std::min(1.0f, layer->getLayerWeight())));
 
-            if (layer.scale.x < 0.0001f) layer.scale.x = 0.0001f;
-            if (layer.scale.y < 0.0001f) layer.scale.y = 0.0001f;
-            if (layer.scale.z < 0.0001f) layer.scale.z = 0.0001f;
+            // Ensure scale is non-zero
+            glm::vec3 layerScale = layer->getLayerScale();
+            if (layer->getLayerScale().x < 0.0001f) layer->setLayerScale(glm::vec3(0.0001f, layerScale.y, layerScale.z));
+            if (layer->getLayerScale().y < 0.0001f) layer->setLayerScale(glm::vec3(layerScale.x, 0.0001f, layerScale.z));
+            if (layer->getLayerScale().z < 0.0001f) layer->setLayerScale(glm::vec3(layerScale.x, layerScale.y, 0.0001f));
         }
     }
 

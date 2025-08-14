@@ -5,9 +5,9 @@
 #include "ECS/World.h"
 #include "ECS/Entity.h"
 #include "ECS/Registry.h"
+#include "Utility/Serialization/Serializer.h"
+#include "Utility/Serialization/Deserializer.h"
 #include "Core/Logger.h"
-
-namespace Log = PixelCraft::Core;
 
 namespace PixelCraft::ECS
 {
@@ -32,6 +32,7 @@ namespace PixelCraft::ECS
     {
         // Default implementation does nothing
         // Derived systems should override this to perform per-frame updates
+        (void)deltaTime;
     }
 
     void System::render()
@@ -54,16 +55,24 @@ namespace PixelCraft::ECS
         m_world = world;
     }
 
-    void System::preSerialize(World& world, Serializer& serializer)
+    Utility::Serialization::SerializationResult System::serialize(World& world, Utility::Serialization::Serializer& serializer)
     {
         // Default implementation does nothing
         // Derived systems should override this to prepare for serialization
+        (void)world;
+        (void)serializer;
+
+        return Utility::Serialization::SerializationResult();
     }
 
-    void System::postDeserialize(World& world, Deserializer& deserializer)
+    Utility::Serialization::SerializationResult System::deserialize(World& world, Utility::Serialization::Deserializer& deserializer)
     {
         // Default implementation does nothing
         // Derived systems should override this to process after deserialization
+        (void)world;
+        (void)deserializer;
+
+        return Utility::Serialization::SerializationResult();
     }
 
     bool System::shouldSerialize() const
@@ -95,7 +104,7 @@ namespace PixelCraft::ECS
         auto world = m_world.lock();
         if (!world)
         {
-            Log::error("System::getEntitiesWithComponents: World reference is invalid");
+            Core::error("System::getEntitiesWithComponents: World reference is invalid");
             return result;
         }
 
@@ -103,7 +112,7 @@ namespace PixelCraft::ECS
         auto registry = world->getRegistry();
         if (!registry)
         {
-            Log::error("System::getEntitiesWithComponents: Registry reference is invalid");
+            Core::error("System::getEntitiesWithComponents: Registry reference is invalid");
             return result;
         }
 
@@ -126,7 +135,7 @@ namespace PixelCraft::ECS
         auto world = m_world.lock();
         if (!world)
         {
-            Log::error("System::getEntity: World reference is invalid");
+            Core::error("System::getEntity: World reference is invalid");
             return Entity(); // Return an invalid entity
         }
 
@@ -150,7 +159,7 @@ namespace PixelCraft::ECS
         auto typeIt = s_systemTypeIndices.find(name);
         if (typeIt == s_systemTypeIndices.end())
         {
-            Log::error("SystemFactory::createSystem: System not registered: " + name);
+            Core::error("SystemFactory::createSystem: System not registered: " + name);
             return nullptr;
         }
 
@@ -162,14 +171,14 @@ namespace PixelCraft::ECS
         auto it = s_systemFactories.find(typeIndex);
         if (it == s_systemFactories.end())
         {
-            Log::error("SystemFactory::createSystem: System not registered for type index");
+            Core::error("SystemFactory::createSystem: System not registered for type index");
             return nullptr;
         }
 
         auto system = it->second();
         if (!system)
         {
-            Log::error("SystemFactory::createSystem: Factory function returned null");
+            Core::error("SystemFactory::createSystem: Factory function returned null");
             return nullptr;
         }
 

@@ -4,20 +4,15 @@
 #include "ECS/Scene.h"
 #include "ECS/World.h"
 #include "ECS/Entity.h"
-#include "ECS/Serializer.h"
-#include "ECS/FlatBufferSerializer.h"
-#include "ECS/Deserializer.h"
 #include "Core/Logger.h"
 #include "Utility/FileSystem.h"
 #include "Utility/StringUtils.h"
+#include "Utility/Serialization/SerializationUtility.h"
 
 // Components
 #include "ECS/Components/TransformComponent.h"
 #include "ECS/Components/CameraComponent.h"
-
-// Schemas
-#include <ECS/Schemas/scene_generated.h>
-#include <ECS/Schemas/entity_generated.h>
+#include "ECS/Components/MeshRendererComponent.h"
 
 #include <filesystem>
 #include <fstream>
@@ -25,7 +20,6 @@
 
 using fs = PixelCraft::Utility::FileSystem;
 using StringUtils = PixelCraft::Utility::StringUtils;
-namespace Log = PixelCraft::Core;
 
 namespace PixelCraft::ECS
 {
@@ -33,48 +27,54 @@ namespace PixelCraft::ECS
     Scene::Scene(const std::string& name)
         : m_name(name)
         , m_mainCamera(INVALID_ENTITY_ID)
-        , m_schemaVersion(1) // Start with version 1
     {
-        Log::info("Created scene: " + name);
+        Core::info("Created scene: " + name);
     }
 
     Scene::~Scene()
     {
-        // Save any unsaved data if we have a valid path
-        if (!m_path.empty())
-        {
-            saveModifiedChunks();
-        }
+        // Save any unsaved data
+        saveChunks();
 
-        Log::info("Destroyed scene: " + m_name);
+        Core::info("Destroyed scene: " + m_name);
     }
 
     bool Scene::load(const std::string& path)
     {
         m_path = path;
+        Core::info("Loading scene from: " + path);
 
-        Log::info("Loading scene from: " + path);
-
-        // Check if the file exists
         if (!fs::fileExists(path))
         {
-            Log::error("Scene file does not exist: " + path);
+            Core::error("Scene file does not exist: " + path);
             return false;
         }
 
-        // Clear any existing data
-        m_entitiesByName.clear();
-        m_entitiesByTag.clear();
-        m_rootEntities.clear();
-        m_chunks.clear();
-        m_dirtyChunks.clear();
+        Utility::Serialization::SerializationUtility::registerSchemaIfNeeded<Scene>();
 
-        // Load entities and chunks
-        bool entitiesLoaded = loadEntities(path);
-        bool chunksLoaded = loadChunks(path);
+        Scene tempScene(fs::getFileNameWithoutExtension(path));
+        tempScene.setWorld(m_world);
 
-        // Return success if at least one of them succeeded
-        return entitiesLoaded || chunksLoaded;
+        auto result = Utility::Serialization::SerializationUtility::deserializeFromFile(tempScene, path);
+        if (!result)
+        {
+            Core::error("Failed to load scene: " + result.error);
+            return false;
+        }
+
+        // Copy data from temp scene
+        m_name = tempScene.m_name;
+        m_path = tempScene.m_path;
+        m_entitiesByName = tempScene.m_entitiesByName;
+        m_entitiesByTag = tempScene.m_entitiesByTag;
+        m_mainCamera = tempScene.m_mainCamera;
+        m_rootEntities = tempScene.m_rootEntities;
+        m_dirtyChunks = tempScene.m_dirtyChunks;
+
+        // Load chunks separately (they're stored in individual files)
+        loadChunks();
+
+        return true;
     }
 
     bool Scene::save(const std::string& path)
@@ -83,7 +83,7 @@ namespace PixelCraft::ECS
         {
             if (m_path.empty())
             {
-                Log::error("Cannot save scene: No path specified");
+                Core::error("Cannot save scene: No path specified");
                 return false;
             }
         }
@@ -92,51 +92,43 @@ namespace PixelCraft::ECS
             m_path = path;
         }
 
-        Log::info("Saving scene to: " + m_path);
+        Core::info("Saving scene to: " + m_path);
 
-        // Make sure the directory exists
         if (!ensureSceneDirectoryExists())
         {
-            Log::error("Failed to create scene directory for: " + m_path);
+            Core::error("Failed to create scene directory for: " + m_path);
             return false;
         }
 
-        // Save entities and chunks
-        bool entitiesSaved = saveEntities(m_path);
-        bool chunksSaved = saveChunks(m_path);
+        Utility::Serialization::SerializationUtility::registerSchemaIfNeeded<Scene>();
 
-        // Save modified chunks individually
-        saveModifiedChunks();
+        auto result = Utility::Serialization::SerializationUtility::serializeToFile(*this, m_path);
+        if (!result)
+        {
+            Core::error("Failed to save scene: " + result.error);
+            return false;
+        }
 
-        // Return success if at least one of them succeeded
-        return entitiesSaved || chunksSaved;
+        // Save modified chunks individually (these are still stored separately)
+        saveChunks();
+
+        return true;
     }
 
     EntityID Scene::instantiate(const std::string& prefabPath)
     {
-        // Check if we have a valid world
         auto world = m_world.lock();
         if (!world)
         {
-            Log::error("Cannot instantiate prefab: No world reference");
+            Core::error("Cannot instantiate prefab: No world reference");
             return INVALID_ENTITY_ID;
         }
 
-        Log::info("Instantiating prefab: " + prefabPath);
+        Core::info("Instantiating prefab: " + prefabPath);
 
-        // Check if the prefab file exists
         if (!fs::fileExists(prefabPath))
         {
-            Log::error("Prefab file does not exist: " + prefabPath);
-            return INVALID_ENTITY_ID;
-        }
-
-        // Load the prefab file
-        std::vector<uint8_t> prefabData;
-        auto result = fs::readFileBinary(prefabPath, prefabData);
-        if (result != Utility::FileResult::Success)
-        {
-            Log::error("Failed to read prefab file: " + prefabPath);
+            Core::error("Prefab file does not exist: " + prefabPath);
             return INVALID_ENTITY_ID;
         }
 
@@ -144,21 +136,23 @@ namespace PixelCraft::ECS
         EntityID entityId = world->createEntity(fs::getFileNameWithoutExtension(prefabPath));
         if (entityId == INVALID_ENTITY_ID)
         {
-            Log::error("Failed to create entity for prefab: " + prefabPath);
+            Core::error("Failed to create entity for prefab: " + prefabPath);
             return INVALID_ENTITY_ID;
         }
 
-        // Deserialize the prefab data into the entity
-        std::istringstream dataStream(std::string(prefabData.begin(), prefabData.end()));
-        Deserializer deserializer(dataStream);
-        deserializer.setRegistry(world->getRegistry());
-
         Entity entity(entityId, world->getRegistry());
-        entity.deserialize(deserializer);
+
+        // Use serialization to load the prefab
+        auto result = Utility::Serialization::SerializationUtility::deserializeFromFile(entity, prefabPath);
+        if (!result)
+        {
+            Core::error("Failed to deserialize prefab: " + result.error);
+            world->destroyEntity(entityId);
+            return INVALID_ENTITY_ID;
+        }
 
         // Add the entity to the scene
         addEntity(entityId);
-
         return entityId;
     }
 
@@ -192,450 +186,17 @@ namespace PixelCraft::ECS
             if (entity.isValid())
             {
                 m_mainCamera = cameraEntity;
-                Log::info("Set main camera to entity: " + entity.getName());
+                Core::info("Set main camera to entity: " + entity.getName());
             }
             else
             {
-                Log::warn("Cannot set main camera: Invalid entity ID");
+                Core::warn("Cannot set main camera: Invalid entity ID");
             }
         }
         else
         {
-            Log::warn("Cannot set main camera: No world reference");
+            Core::warn("Cannot set main camera: No world reference");
         }
-    }
-
-    std::vector<uint8_t> Scene::serializeToFlatBuffer()
-    {
-        // Use FlatBufferSerializer for efficient zero-copy serialization
-        FlatBufferSerializer serializer;
-        auto& builder = serializer.createBuilder();
-
-        Log::info(StringUtils::format("Serializing scene '{}' to FlatBuffer", m_name));
-
-        // Convert root entity vector
-        std::vector<uint32_t> rootEntitiesVec(m_rootEntities.begin(), m_rootEntities.end());
-        auto rootEntitiesVector = builder.CreateVector(rootEntitiesVec);
-
-        // Create entity name map entries
-        std::vector<flatbuffers::Offset<EntityNameMapEntry>> entityNameEntries;
-        for (const auto& [name, entityId] : m_entitiesByName)
-        {
-            auto nameOffset = builder.CreateString(name);
-            entityNameEntries.push_back(CreateEntityNameMapEntry(builder, nameOffset, entityId));
-        }
-        auto entityNameMapVector = builder.CreateVector(entityNameEntries);
-
-        // Create entity tag map entries
-        std::vector<flatbuffers::Offset<EntityTagMapEntry>> entityTagEntries;
-        for (const auto& [tag, entities] : m_entitiesByTag)
-        {
-            auto tagOffset = builder.CreateString(tag);
-            std::vector<uint32_t> entityIds(entities.begin(), entities.end());
-            auto entitiesVector = builder.CreateVector(entityIds);
-            entityTagEntries.push_back(CreateEntityTagMapEntry(builder, tagOffset, entitiesVector));
-        }
-        auto entityTagMapVector = builder.CreateVector(entityTagEntries);
-
-        // Create dirty chunk coordinates
-        std::vector<flatbuffers::Offset<flatbuffers::Vector<int32_t>>> dirtyChunksVectors;
-        for (const auto& coord : m_dirtyChunks)
-        {
-            std::vector<int32_t> coordVec = {coord.x, coord.y, coord.z};
-            dirtyChunksVectors.push_back(builder.CreateVector(coordVec));
-        }
-        auto dirtyChunksVector = builder.CreateVector(dirtyChunksVectors);
-
-        // Create name and path strings
-        auto nameOffset = builder.CreateString(m_name);
-        auto pathOffset = builder.CreateString(m_path);
-
-        // Create the scene FlatBuffer
-        auto sceneOffset = CreateSceneData(
-            builder,
-            nameOffset,
-            pathOffset,
-            m_schemaVersion,
-            m_mainCamera,
-            rootEntitiesVector,
-            entityNameMapVector,
-            entityTagMapVector,
-            dirtyChunksVector
-        );
-
-        // Finish the buffer with the "SCNE" identifier
-        builder.Finish(sceneOffset, "SCNE");
-
-        // Get the serialized buffer
-        return serializer.finishBuffer("SCNE");
-    }
-
-    bool Scene::deserializeFromFlatBuffer(const uint8_t* data, size_t size)
-    {
-        // Validate input parameters
-        if (!data || size == 0)
-        {
-            Log::error("Invalid FlatBuffer data provided for deserialization");
-            return false;
-        }
-
-        // Check for a valid world
-        auto world = m_world.lock();
-        if (!world)
-        {
-            Log::error("Cannot deserialize scene: No world reference");
-            return false;
-        }
-
-        // Use custom verification for the buffer
-        flatbuffers::Verifier verifier(data, size);
-        if (!flatbuffers::BufferHasIdentifier(data, "SCNE"))
-        {
-            Log::error("Invalid scene flatbuffer identifier");
-            return false;
-        }
-
-        if (!verifier.VerifyBuffer<SceneData>(nullptr))
-        {
-            Log::error("Invalid scene flatbuffer format or corrupted data");
-            return false;
-        }
-
-        Log::info("Deserializing scene from FlatBuffer");
-
-        // Get the root scene object from the buffer
-        auto sceneData = GetSceneData(data);
-
-        // Extract basic scene information
-        m_name = sceneData->name()->str();
-        m_path = sceneData->path()->str();
-        m_schemaVersion = sceneData->schema_version();
-        m_mainCamera = sceneData->main_camera();
-
-        // Clear existing data
-        m_rootEntities.clear();
-        m_entitiesByName.clear();
-        m_entitiesByTag.clear();
-        m_dirtyChunks.clear();
-
-        // Create entity lookup map for any previously existing entities
-        std::unordered_map<EntityID, Entity> existingEntities;
-
-        // Get the registry for component operations
-        auto registry = world->getRegistry();
-
-        // Load entity data
-        if (sceneData->root_entities())
-        {
-            auto rootEntities = sceneData->root_entities();
-            for (uint32_t i = 0; i < rootEntities->size(); i++)
-            {
-                EntityID entityId = rootEntities->Get(i);
-
-                // Try to find this entity in the scene storage
-                // In a real implementation, we would have a separate array with entity data in the FlatBuffer
-                std::string entityPath = getSceneDirectory() + "/entities/" + std::to_string(entityId) + ".entity";
-
-                if (fs::fileExists(entityPath))
-                {
-                    // Load entity from file
-                    std::vector<uint8_t> entityData;
-                    auto result = fs::readFileBinary(entityPath, entityData);
-
-                    if (result == Utility::FileResult::Success)
-                    {
-                        // Verify this is entity data
-                        if (entityData.size() > 8 && memcmp(entityData.data() + 4, "ENTY", 4) == 0)
-                        {
-                            // Create a new entity with the same ID if possible
-                            EntityID newId = world->createEntity();
-                            Entity newEntity(newId, registry);
-
-                            // Deserialize the entity data
-                            if (newEntity.isValid())
-                            {
-                                // Use the entity's FlatBuffer deserialization
-                                const uint8_t* entityBuffer = entityData.data();
-                                auto entityFlatBuffer = GetEntityData(entityBuffer);
-
-                                // Set entity name
-                                if (entityFlatBuffer->name())
-                                {
-                                    newEntity.setName(entityFlatBuffer->name()->str());
-                                }
-
-                                // Create and add components
-                                if (entityFlatBuffer->components())
-                                {
-                                    auto components = entityFlatBuffer->components();
-                                    for (uint32_t j = 0; j < components->size(); j++)
-                                    {
-                                        auto componentEntry = components->Get(j);
-
-                                        // Get component type and data
-                                        ComponentType type = componentEntry->type();
-                                        const void* componentData = componentEntry->data();
-
-                                        // Create and deserialize component based on type
-                                        switch (type)
-                                        {
-                                            case ComponentType_Transform:
-                                            {
-                                                // Create TransformComponent
-                                                auto& transform = newEntity.addComponent<TransformComponent>();
-
-                                                // Use FlatBufferSerializer to deserialize
-                                                FlatBufferSerializer compSerializer;
-                                                compSerializer.deserializeTransformComponent(componentData, transform);
-                                                break;
-                                            }
-                                            case ComponentType_Camera:
-                                            {
-                                                // Create CameraComponent
-                                                auto& camera = newEntity.addComponent<CameraComponent>();
-
-                                                // Use FlatBufferSerializer to deserialize
-                                                FlatBufferSerializer compSerializer;
-                                                compSerializer.deserializeComponent(componentData, camera);
-
-                                                if (camera.isMain())
-                                                {
-                                                    setMainCamera(newId);
-                                                }
-                                                break;
-                                            }
-                                            // Add cases for other component types as needed
-                                        }
-                                    }
-                                }
-
-                                // Add entity tags
-                                if (entityFlatBuffer->tags())
-                                {
-                                    auto tags = entityFlatBuffer->tags();
-                                    for (uint32_t j = 0; j < tags->size(); j++)
-                                    {
-                                        addTag(newId, tags->Get(j)->str());
-                                    }
-                                }
-
-                                // Add to root entities
-                                m_rootEntities.push_back(newId);
-
-                                // Store the entity
-                                existingEntities[entityId] = newEntity;
-
-                                // Register the entity name
-                                registerEntityName(newId, newEntity.getName());
-                            }
-                        }
-                    }
-                }
-                else
-                {
-                    // Entity data not found, create a new placeholder entity
-                    EntityID newId = world->createEntity("Entity_" + std::to_string(entityId));
-                    Entity newEntity(newId, registry);
-
-                    if (newEntity.isValid())
-                    {
-                        // Add to root entities
-                        m_rootEntities.push_back(newId);
-
-                        // Store the entity
-                        existingEntities[entityId] = newEntity;
-
-                        // register the entity name
-                        registerEntityName(newId, newEntity.getName());
-                    }
-                }
-            }
-        }
-
-        // Deserialize entity name map
-        if (sceneData->entity_name_map())
-        {
-            auto nameMap = sceneData->entity_name_map();
-            for (uint32_t i = 0; i < nameMap->size(); i++)
-            {
-                auto entry = nameMap->Get(i);
-                EntityID oldId = entry->entity_id();
-
-                // Find the corresponding new entity ID
-                auto it = existingEntities.find(oldId);
-                if (it != existingEntities.end())
-                {
-                    m_entitiesByName[entry->name()->str()] = it->second.getID();
-                }
-            }
-        }
-
-        // Deserialize entity tag map
-        if (sceneData->entity_tag_map())
-        {
-            auto tagMap = sceneData->entity_tag_map();
-            for (uint32_t i = 0; i < tagMap->size(); i++)
-            {
-                auto entry = tagMap->Get(i);
-                std::string tag = entry->tag()->str();
-
-                auto& entities = m_entitiesByTag[tag];
-                entities.clear();
-
-                auto tagEntities = entry->entities();
-                for (uint32_t j = 0; j < tagEntities->size(); j++)
-                {
-                    EntityID oldId = tagEntities->Get(j);
-
-                    // find the corresponding new entity ID
-                    auto it = existingEntities.find(oldId);
-                    if (it != existingEntities.end())
-                    {
-                        entities.push_back(it->second.getID());
-                    }
-                }
-            }
-        }
-
-        // Update main camera reference if needed
-        if (m_mainCamera != INVALID_ENTITY_ID)
-        {
-            auto it = existingEntities.find(m_mainCamera);
-            if (it != existingEntities.end())
-            {
-                m_mainCamera = it->second.getID();
-            }
-            else
-            {
-                m_mainCamera = INVALID_ENTITY_ID;
-            }
-        }
-
-        // Process parent-child relationships for transforms
-        for (auto& [oldId, entity] : existingEntities)
-        {
-            if (entity.hasComponent<TransformComponent>())
-            {
-                auto& transform = entity.getComponent<TransformComponent>();
-
-                // Get the parent ID
-                EntityID oldParentId = transform.getParent();
-                if (oldParentId != INVALID_ENTITY_ID)
-                {
-                    // Find the new parent ID
-                    auto parentIt = existingEntities.find(oldParentId);
-                    if (parentIt != existingEntities.end())
-                    {
-                        // Set the new parent
-                        transform.setParent(parentIt->second.getID());
-                    }
-                }
-            }
-        }
-
-        // Deserialize dirty chunks
-        if (sceneData->dirty_chunks())
-        {
-            auto dirtyChunks = sceneData->dirty_chunks();
-            for (uint32_t i = 0; i < dirtyChunks->size(); i++)
-            {
-                auto coordVec = dirtyChunks->Get(i);
-                if (coordVec->size() >= 3)
-                {
-                    Voxel::ChunkCoord coord(coordVec->Get(0), coordVec->Get(1), coordVec->Get(2));
-                    m_dirtyChunks.insert(coord);
-                }
-            }
-        }
-
-        Log::info(StringUtils::format("Successfully deserialized scene '{}' from FlatBuffer", m_name));
-        return true;
-    }
-
-    std::vector<uint8_t> Scene::serializeEntityToFlatBuffer(EntityID entity)
-    {
-        auto world = m_world.lock();
-        if (!world)
-        {
-            Log::error("Cannot serialize entity to FlatBuffer: No world reference");
-            return {};
-        }
-
-        Entity e(entity, world->getRegistry());
-        if (!e.isValid())
-        {
-            Log::error("Cannot serialize invalid entity to FlatBuffer");
-            return {};
-        }
-
-        // Use FlatBufferSerializer for zero-copy serialization
-        FlatBufferSerializer serializer;
-        auto& builder = serializer.createBuilder();
-
-        // Create name string
-        auto nameOffset = builder.CreateString(e.getName());
-
-        // Create UUID string
-        auto uuidOffset = builder.CreateString(e.getUUID().toString());
-
-        // Collect entity tags
-        std::vector<std::string> tags;
-        for (const auto& tagPair : m_entitiesByTag)
-        {
-            const auto& entities = tagPair.second;
-            if (std::find(entities.begin(), entities.end(), entity) != entities.end())
-            {
-                tags.push_back(tagPair.first);
-            }
-        }
-
-        // Create tags vector
-        auto tagsOffset = builder.CreateVectorOfStrings(tags);
-
-        // Collect and serialize components
-        std::vector<flatbuffers::Offset<ComponentEntry>> componentEntries;
-
-        // Check for TransformComponent
-        if (e.hasComponent<TransformComponent>())
-        {
-            auto& transform = e.getComponent<TransformComponent>();
-            auto transformOffset = serializer.serializeTransformComponent(transform);
-            componentEntries.push_back(CreateComponentEntry(builder, ComponentType_Transform, transformOffset));
-        }
-
-        // Check for CameraComponent
-        if (e.hasComponent<CameraComponent>())
-        {
-            auto& camera = e.getComponent<CameraComponent>();
-            auto cameraOffset = serializer.serializeComponent(camera);
-            componentEntries.push_back(CreateComponentEntry(builder, ComponentType_Camera, cameraOffset));
-        }
-
-        // Add other component types here as needed
-        // Example:
-        // if (e.hasComponent<MeshRendererComponent>()) {
-        //     auto& meshRenderer = e.getComponent<MeshRendererComponent>();
-        //     auto meshRendererOffset = serializer.serializeMeshRendererComponent(meshRenderer);
-        //     componentEntries.push_back(CreateComponentEntry(builder, ComponentType_MeshRenderer, meshRendererOffset));
-        // }
-
-        auto componentsOffset = builder.CreateVector(componentEntries);
-
-        // Create the entity FlatBuffer
-        auto entityOffset = CreateEntityData(
-            builder,
-            entity,                 // id
-            nameOffset,             // name
-            uuidOffset,             // uuid
-            componentsOffset,       // components
-            tagsOffset              // tags
-        );
-
-        // Finish the buffer with the "ENTY" identifier
-        builder.Finish(entityOffset, "ENTY");
-
-        // Return the serialized data
-        return serializer.finishBuffer("ENTY");
     }
 
     bool Scene::serializeChunk(const Voxel::ChunkCoord& coord)
@@ -643,39 +204,33 @@ namespace PixelCraft::ECS
         auto it = m_chunks.find(coord);
         if (it == m_chunks.end())
         {
-            Log::warn(StringUtils::format("Cannot serialize chunk: Chunk not found at coordinates ({}, {}, {})",
+            Core::warn(StringUtils::format("Cannot serialize chunk: Chunk not found at coordinates ({}, {}, {})",
                                           coord.x, coord.y, coord.z));
             return false;
         }
 
-        // Ensure the scene directory exists
         if (!ensureSceneDirectoryExists())
         {
-            Log::error("Failed to create scene directory for chunk serialization");
+            Core::error("Failed to create scene directory for chunk serialization");
             return false;
         }
 
         // Get the path for this chunk
         std::string chunkPath = getChunkPath(coord);
 
-        // Open the file
-        std::ofstream file(chunkPath, std::ios::binary);
-        if (!file.is_open())
+        // Use the modern serialization method directly
+        auto result = Utility::Serialization::SerializationUtility::serializeToFile(*(it->second), chunkPath);
+
+        if (!result)
         {
-            Log::error("Failed to open file for chunk serialization: " + chunkPath);
+            Core::error("Failed to serialize chunk: " + result.error);
             return false;
         }
-
-        // Create a serializer
-        Serializer serializer(file);
-
-        // Serialize the chunk
-        it->second->serialize(serializer);
 
         // Remove from dirty chunks if successful
         m_dirtyChunks.erase(coord);
 
-        Log::debug(StringUtils::format("Serialized chunk at ({}, {}, {}) to {}",
+        Core::debug(StringUtils::format("Serialized chunk at ({}, {}, {}) to {}",
                                        coord.x, coord.y, coord.z, chunkPath));
 
         return true;
@@ -683,21 +238,17 @@ namespace PixelCraft::ECS
 
     bool Scene::deserializeChunk(Voxel::ChunkCoord& coord)
     {
-        // Ensure we have a world reference
         auto world = m_world.lock();
         if (!world)
         {
-            Log::error("Cannot deserialize chunk: No world reference");
+            Core::error("Cannot deserialize chunk: No world reference");
             return false;
         }
 
-        // Get the path for this chunk
         std::string chunkPath = getChunkPath(coord);
-
-        // Check if the file exists
         if (!fs::fileExists(chunkPath))
         {
-            Log::warn("Chunk file does not exist: " + chunkPath);
+            Core::warn("Chunk file does not exist: " + chunkPath);
             return false;
         }
 
@@ -705,29 +256,23 @@ namespace PixelCraft::ECS
         auto chunk = getChunk(coord, true);
         if (!chunk)
         {
-            Log::error("Failed to create chunk for deserialization");
+            Core::error("Failed to create chunk for deserialization");
             return false;
         }
 
-        // Open the file
-        std::ifstream file(chunkPath, std::ios::binary);
-        if (!file.is_open())
+        // Use the modern serialization method directly
+        auto result = Utility::Serialization::SerializationUtility::deserializeFromFile(*chunk, chunkPath);
+
+        if (!result)
         {
-            Log::error("Failed to open file for chunk deserialization: " + chunkPath);
+            Core::error("Failed to deserialize chunk: " + result.error);
             return false;
         }
-
-        // Create a deserializer
-        Deserializer deserializer(file);
-        deserializer.setRegistry(world->getRegistry());
-
-        // Deserialize the chunk
-        chunk->deserialize(deserializer);
 
         // Remove from dirty chunks
         m_dirtyChunks.erase(coord);
 
-        Log::debug(StringUtils::format("Deserialized chunk at ({}, {}, {}) from {}",
+        Core::debug(StringUtils::format("Deserialized chunk at ({}, {}, {}) from {}",
                                        coord.x, coord.y, coord.z, chunkPath));
 
         return true;
@@ -750,30 +295,19 @@ namespace PixelCraft::ECS
         return m_dirtyChunks.find(coord) != m_dirtyChunks.end();
     }
 
-    void Scene::saveModifiedChunks()
-    {
-        // Copy dirty chunks to avoid iterator invalidation
-        auto dirtyChunks = m_dirtyChunks;
-
-        for (const auto& coord : dirtyChunks)
-        {
-            serializeChunk(coord);
-        }
-    }
-
     void Scene::addEntity(EntityID entity)
     {
         auto world = m_world.lock();
         if (!world)
         {
-            Log::error("Cannot add entity to scene: No world reference");
+            Core::error("Cannot add entity to scene: No world reference");
             return;
         }
 
         Entity e(entity, world->getRegistry());
         if (!e.isValid())
         {
-            Log::error("Cannot add invalid entity to scene");
+            Core::error("Cannot add invalid entity to scene");
             return;
         }
 
@@ -783,7 +317,7 @@ namespace PixelCraft::ECS
         // Add to root entities (unless it has a parent, which would be handled by the parent)
         m_rootEntities.push_back(entity);
 
-        Log::debug("Added entity " + e.getName() + " to scene");
+        Core::debug("Added entity " + e.getName() + " to scene");
     }
 
     bool Scene::removeEntity(EntityID entity)
@@ -791,14 +325,14 @@ namespace PixelCraft::ECS
         auto world = m_world.lock();
         if (!world)
         {
-            Log::error("Cannot remove entity from scene: No world reference");
+            Core::error("Cannot remove entity from scene: No world reference");
             return false;
         }
 
         Entity e(entity, world->getRegistry());
         if (!e.isValid())
         {
-            Log::error("Cannot remove invalid entity from scene");
+            Core::error("Cannot remove invalid entity from scene");
             return false;
         }
 
@@ -825,9 +359,35 @@ namespace PixelCraft::ECS
             entities.erase(std::remove(entities.begin(), entities.end(), entity), entities.end());
         }
 
-        Log::debug("Removed entity " + e.getName() + " from scene");
+        Core::debug("Removed entity " + e.getName() + " from scene");
 
         return true;
+    }
+
+    void Scene::registerEntityName(EntityID entity, const std::string& name)
+    {
+        if (name.empty())
+        {
+            return;
+        }
+
+        // Add to name map
+        m_entitiesByName[name] = entity;
+    }
+
+    void Scene::unregisterEntityName(EntityID entity, const std::string& name)
+    {
+        if (name.empty())
+        {
+            return;
+        }
+
+        // Remove from name map
+        auto it = m_entitiesByName.find(name);
+        if (it != m_entitiesByName.end() && it->second == entity)
+        {
+            m_entitiesByName.erase(it);
+        }
     }
 
     std::shared_ptr<Voxel::Chunk> Scene::getChunk(const Voxel::ChunkCoord& coord, bool createIfMissing)
@@ -890,9 +450,179 @@ namespace PixelCraft::ECS
         return std::find(entities.begin(), entities.end(), entity) != entities.end();
     }
 
+    Utility::Serialization::SerializationResult Scene::serialize(Utility::Serialization::Serializer& serializer) const
+    {
+        auto result = serializer.beginObject(getTypeName());
+        if (!result) return result;
+
+        // Write basic scene properties
+        result = serializer.writeField("name", m_name);
+        if (!result) return result;
+
+        result = serializer.writeField("path", m_path);
+        if (!result) return result;
+
+        result = serializer.writeField("mainCamera", static_cast<uint32_t>(m_mainCamera));
+        if (!result) return result;
+
+        // Write entity name map
+        result = serializer.beginArray("entitiesByName", m_entitiesByName.size());
+        if (!result) return result;
+
+        for (const auto& [name, entity] : m_entitiesByName)
+        {
+            result = serializer.writeField("entityName", name);
+            if (!result) return result;
+
+            result = serializer.writeField("entityId", static_cast<uint32_t>(entity));
+            if (!result) return result;
+        }
+
+        result = serializer.endArray();
+        if (!result) return result;
+
+        // Write entity tag map
+        result = serializer.beginArray("entitiesByTag", m_entitiesByTag.size());
+        if (!result) return result;
+
+        for (const auto& [tag, entities] : m_entitiesByTag)
+        {
+            result = serializer.writeField("entityTag", tag);
+            if (!result) return result;
+
+            result = serializer.beginArray("entities", entities.size());
+            if (!result) return result;
+
+            for (auto entity : entities)
+            {
+                result = serializer.writeField("entityId", static_cast<uint32_t>(entity));
+                if (!result) return result;
+            }
+
+            result = serializer.endArray();
+            if (!result) return result;
+        }
+
+        result = serializer.endArray();
+        if (!result) return result;
+
+        // Write dirty chunks
+        result = serializer.beginArray("dirtyChunks", m_dirtyChunks.size());
+        if (!result) return result;
+
+        for (const auto& chunkCoord : m_dirtyChunks)
+        {
+            result = chunkCoord.serialize(serializer);
+            if (!result) return result;
+        }
+
+        return serializer.endObject();
+    }
+
+    Utility::Serialization::SerializationResult Scene::deserialize(Utility::Serialization::Deserializer& deserializer)
+    {
+        m_entitiesByName.clear();
+        m_entitiesByTag.clear();
+        m_dirtyChunks.clear();
+
+        auto result = deserializer.beginObject(getTypeName());
+        if (!result) return result;
+
+        // Write basic scene properties
+        result = deserializer.readField("name", m_name);
+        if (!result) return result;
+
+        result = deserializer.readField("path", m_path);
+        if (!result) return result;
+
+        uint32_t mainCamera;
+        result = deserializer.readField("mainCamera", mainCamera);
+        if (!result) return result;
+        m_mainCamera = static_cast<EntityID>(mainCamera);
+
+        size_t arraySize;
+
+        // Write entity name map
+        result = deserializer.beginArray("entitiesByName", arraySize);
+        if (!result) return result;
+
+        for (size_t i = 0; i < arraySize; i++)
+        {
+            std::string name;
+            result = deserializer.readField("entityName", name);
+            if (!result) return result;
+
+            uint32_t entity;
+            result = deserializer.readField("entityId", entity);
+            if (!result) return result;
+
+            m_entitiesByName[name] = static_cast<EntityID>(entity);
+        }
+
+        result = deserializer.endArray();
+        if (!result) return result;
+
+        // Write entity tag map
+        result = deserializer.beginArray("entitiesByTag", arraySize);
+        if (!result) return result;
+
+        for (size_t i = 0; i < arraySize; i++)
+        {
+            std::string tag;
+            result = deserializer.readField("entityTag", tag);
+            if (!result) return result;
+
+            size_t entitiesArraySize;
+            result = deserializer.beginArray("entities", entitiesArraySize);
+            if (!result) return result;
+
+            std::vector<EntityID> entities;
+            for (size_t j = 0; j < entitiesArraySize; j++)
+            {
+                uint32_t entity;
+                result = deserializer.readField("entityId", entity);
+                if (!result) return result;
+
+                entities.push_back(static_cast<EntityID>(entity));
+            }
+
+            result = deserializer.endArray();
+            if (!result) return result;
+
+            m_entitiesByTag.insert(std::make_pair(tag, entities));
+        }
+
+        result = deserializer.endArray();
+        if (!result) return result;
+
+        // Write dirty chunks
+        result = deserializer.beginArray("dirtyChunks", arraySize);
+        if (!result) return result;
+
+        for (size_t i = 0; i < arraySize; i++)
+        {
+            Voxel::ChunkCoord chunkCoord;
+            result = chunkCoord.deserialize(deserializer);
+            if (!result) return result;
+
+            m_dirtyChunks.insert(chunkCoord);
+        }
+
+        return deserializer.endObject();
+    }
+
+    void Scene::defineSchema(Utility::Serialization::Schema& schema)
+    {
+        schema.addField("name", Utility::Serialization::ValueType::String, true);
+        schema.addField("path", Utility::Serialization::ValueType::String, true);
+        schema.addField("mainCamera", Utility::Serialization::ValueType::UInt32, true);
+        schema.addField("entitiesByName", Utility::Serialization::ValueType::Object, true);
+        schema.addField("entitiesByTag", Utility::Serialization::ValueType::Object, true);
+        schema.addField("dirtyChunks", Utility::Serialization::ValueType::Object, true);
+    }
+
     bool Scene::loadEntities(const std::string& path)
     {
-        // Determine the entity file path
         std::string entityPath = path;
         if (fs::getPathExtension(path) != ".scene")
         {
@@ -903,59 +633,36 @@ namespace PixelCraft::ECS
             entityPath = fs::getFileNameWithoutExtension(path) + ".entities";
         }
 
-        // Check if the entity file exists
         if (!fs::fileExists(entityPath))
         {
-            Log::warn("Entity file does not exist: " + entityPath);
+            Core::warn("Entity file does not exist: " + entityPath);
             return false;
         }
 
-        // Ensure we have a world reference
         auto world = m_world.lock();
         if (!world)
         {
-            Log::error("Cannot load entities: No world reference");
+            Core::error("Cannot load entities: No world reference");
             return false;
         }
 
-        // Read the file
-        std::vector<uint8_t> data;
-        auto result = fs::readFileBinary(entityPath, data);
-        if (result != Utility::FileResult::Success)
+        // Create the container and deserialize
+        EntityContainer container(this, world);
+        auto result = Utility::Serialization::SerializationUtility::deserializeFromFile(container, entityPath);
+
+        if (!result)
         {
-            Log::error("Failed to read entity file: " + entityPath);
+            Core::error("Failed to load entities: " + result.error);
             return false;
         }
 
-        // Deserialize the entity data
-        std::string dataStr(data.begin(), data.end());
-        std::istringstream stream(dataStr);
-        Deserializer deserializer(stream);
-        deserializer.setRegistry(world->getRegistry());
-
-        // Deserialize root entities
-        size_t entityCount = 0;
-        if (deserializer.beginArray("rootEntities", entityCount))
-        {
-            m_rootEntities.resize(entityCount);
-            for (size_t i = 0; i < entityCount; i++)
-            {
-                m_rootEntities[i] = deserializeEntity(deserializer);
-            }
-            deserializer.endArray();
-        }
-
-        // Deserialize camera reference
-        deserializer.read(m_mainCamera);
-
-        Log::info(StringUtils::format("Loaded {} entities from {}", entityCount, entityPath));
+        Core::info(StringUtils::format("Loaded {} entities from {}", m_rootEntities.size(), entityPath));
 
         return true;
     }
 
     bool Scene::saveEntities(const std::string& path)
     {
-        // Determine the entity file path
         std::string entityPath = path;
         if (fs::getPathExtension(path) != ".scene")
         {
@@ -966,43 +673,29 @@ namespace PixelCraft::ECS
             entityPath = fs::getFileNameWithoutExtension(path) + ".entities";
         }
 
-        // Ensure we have a world reference
         auto world = m_world.lock();
         if (!world)
         {
-            Log::error("Cannot save entities: No world reference");
+            Core::error("Cannot save entities: No world reference");
             return false;
         }
 
-        // Open the file
-        std::ofstream file(entityPath, std::ios::binary);
-        if (!file.is_open())
+        // Create the container and serialize
+        EntityContainer container(this, world);
+        auto result = Utility::Serialization::SerializationUtility::serializeToFile(container, entityPath);
+
+        if (!result)
         {
-            Log::error("Failed to open file for entity serialization: " + entityPath);
+            Core::error("Failed to save entities: " + result.error);
             return false;
         }
 
-        // Create a serializer
-        Serializer serializer(file);
-        serializer.setRegistry(world->getRegistry());
-
-        // Serialize root entities
-        serializer.beginArray("rootEntities", m_rootEntities.size());
-        for (const auto& entityId : m_rootEntities)
-        {
-            serializeEntity(entityId, serializer);
-        }
-        serializer.endArray();
-
-        // Serialize camera reference
-        serializer.write(m_mainCamera);
-
-        Log::info(StringUtils::format("Saved {} entities to {}", m_rootEntities.size(), entityPath));
+        Core::info(StringUtils::format("Saved {} entities to {}", m_rootEntities.size(), entityPath));
 
         return true;
     }
 
-    bool Scene::loadChunks(const std::string& path)
+    bool Scene::loadChunks()
     {
         // Determine the chunks directory
         std::string chunkDir = getSceneDirectory() + "/chunks";
@@ -1010,7 +703,7 @@ namespace PixelCraft::ECS
         // Check if the chunks directory exists
         if (!fs::directoryExists(chunkDir))
         {
-            Log::warn("Chunks directory does not exist: " + chunkDir);
+            Core::warn("Chunks directory does not exist: " + chunkDir);
             return false;
         }
 
@@ -1023,23 +716,31 @@ namespace PixelCraft::ECS
             // Parse coordinates from filename
             std::string filename = fs::getFileNameWithoutExtension(fileInfo.name);
             int x, y, z;
-            if (sscanf(filename.c_str(), "chunk_%d_%d_%d", &x, &y, &z) == 3)
+            if (sscanf_s(filename.c_str(), "chunk_%d_%d_%d", &x, &y, &z) == 3)
             {
                 Voxel::ChunkCoord coord(x, y, z);
                 deserializeChunk(coord);
             }
         }
 
-        Log::info(StringUtils::format("Loaded {} chunks from {}", chunkFiles.size(), chunkDir));
+        Core::info(StringUtils::format("Loaded {} chunks from {}", chunkFiles.size(), chunkDir));
 
         return !chunkFiles.empty();
     }
 
-    bool Scene::saveChunks(const std::string& path)
+    bool Scene::saveChunks()
     {
-        // Just save all modified chunks
-        saveModifiedChunks();
-        return true;
+        // Copy dirty chunks to avoid iterator invalidation
+        auto dirtyChunks = m_dirtyChunks;
+
+        bool success = true;
+        for (const auto& coord : dirtyChunks)
+        {
+            success = serializeChunk(coord);
+            if (!success) return success;
+        }
+
+        return success;
     }
 
     std::string Scene::getChunkPath(const Voxel::ChunkCoord& coord) const
@@ -1054,139 +755,6 @@ namespace PixelCraft::ECS
         return getSceneDirectory() + "/chunks/" + chunkFilename;
     }
 
-    void Scene::serializeEntity(EntityID entity, Serializer& serializer)
-    {
-        auto world = m_world.lock();
-        if (!world)
-        {
-            return;
-        }
-
-        Entity e(entity, world->getRegistry());
-        if (!e.isValid())
-        {
-            return;
-        }
-
-        // Begin entity object
-        serializer.beginObject("Entity");
-
-        // Write entity ID
-        serializer.write(entity);
-
-        // Write entity name
-        serializer.writeString(e.getName());
-
-        // Write UUID
-        std::string uuidStr = e.getUUID().toString();
-        serializer.writeString(uuidStr);
-
-        // Write components (handled by entity)
-        e.serialize(serializer);
-
-        // Write tags
-        std::vector<std::string> tags;
-        for (const auto& tagPair : m_entitiesByTag)
-        {
-            const auto& entities = tagPair.second;
-            if (std::find(entities.begin(), entities.end(), entity) != entities.end())
-            {
-                tags.push_back(tagPair.first);
-            }
-        }
-
-        serializer.beginArray("tags", tags.size());
-        for (const auto& tag : tags)
-        {
-            serializer.writeString(tag);
-        }
-        serializer.endArray();
-
-        // End entity object
-        serializer.endObject();
-    }
-
-    EntityID Scene::deserializeEntity(Deserializer& deserializer)
-    {
-        auto world = m_world.lock();
-        if (!world)
-        {
-            return INVALID_ENTITY_ID;
-        }
-
-        // Begin entity object
-        if (!deserializer.beginObject("Entity"))
-        {
-            return INVALID_ENTITY_ID;
-        }
-
-        // Read entity ID
-        EntityID entityId;
-        deserializer.read(entityId);
-
-        // Read entity name
-        std::string name;
-        deserializer.readString(name);
-
-        // Read UUID
-        std::string uuidStr;
-        deserializer.readString(uuidStr);
-
-        // Create the entity with the correct UUID
-        entityId = world->createEntity(name);
-        Entity entity(entityId, world->getRegistry());
-
-        // Deserialize components
-        entity.deserialize(deserializer);
-
-        // Read tags
-        size_t tagCount = 0;
-        if (deserializer.beginArray("tags", tagCount))
-        {
-            for (size_t i = 0; i < tagCount; i++)
-            {
-                std::string tag;
-                deserializer.readString(tag);
-                addTag(entityId, tag);
-            }
-            deserializer.endArray();
-        }
-
-        // Register the entity name
-        registerEntityName(entityId, name);
-
-        // End entity object
-        deserializer.endObject();
-
-        return entityId;
-    }
-
-    void Scene::registerEntityName(EntityID entity, const std::string& name)
-    {
-        if (name.empty())
-        {
-            return;
-        }
-
-        // Add to name map
-        m_entitiesByName[name] = entity;
-    }
-
-    void Scene::unregisterEntityName(EntityID entity, const std::string& name)
-    {
-        if (name.empty())
-        {
-            return;
-        }
-
-        // Remove from name map
-        auto it = m_entitiesByName.find(name);
-        if (it != m_entitiesByName.end() && it->second == entity)
-        {
-            m_entitiesByName.erase(it);
-        }
-    }
-
     void Scene::updateChunkMesh(const Voxel::ChunkCoord& coord)
     {
         // Mark the chunk as dirty
@@ -1194,7 +762,7 @@ namespace PixelCraft::ECS
 
         // This would trigger mesh regeneration in a real implementation
         // For now, just log it
-        Log::debug(StringUtils::format("Chunk mesh update triggered for ({}, {}, {})",
+        Core::debug(StringUtils::format("Chunk mesh update triggered for ({}, {}, {})",
                                        coord.x, coord.y, coord.z));
     }
 
@@ -1221,7 +789,7 @@ namespace PixelCraft::ECS
         {
             if (!fs::createDirectory(sceneDir))
             {
-                Log::error("Failed to create scene directory: " + sceneDir);
+                Core::error("Failed to create scene directory: " + sceneDir);
                 return false;
             }
         }
@@ -1232,12 +800,86 @@ namespace PixelCraft::ECS
         {
             if (!fs::createDirectory(chunkDir))
             {
-                Log::error("Failed to create chunks directory: " + chunkDir);
+                Core::error("Failed to create chunks directory: " + chunkDir);
                 return false;
             }
         }
 
         return true;
+    }
+
+    Utility::Serialization::SerializationResult EntityContainer::serialize(Utility::Serialization::Serializer& serializer)
+    {
+        auto result = serializer.beginObject("RootEntities");
+        if (!result) return result;
+
+        // Write root entities array
+        result = serializer.beginArray("rootEntities", m_scene->getRootEntities().size());
+        if (!result) return result;
+
+        for (auto entityId : m_scene->getRootEntities())
+        {
+            Entity entity(entityId, m_world->getRegistry());
+            if (entity.isValid())
+            {
+                result = serializer.writeField("entity_" + std::to_string(entityId), entity);
+                if (!result) return result;
+            }
+        }
+
+        result = serializer.endArray();
+        if (!result) return result;
+
+        // Write main camera
+        result = serializer.writeField("mainCamera", static_cast<uint32_t>(m_scene->getMainCamera()));
+        if (!result) return result;
+
+        return serializer.endObject();
+    }
+
+    Utility::Serialization::SerializationResult EntityContainer::deserialize(Utility::Serialization::Deserializer& deserializer)
+    {
+        // Clear any existing data
+        m_scene->clearRootEntities();
+
+        auto result = deserializer.beginObject("RootEntities");
+        if (!result) return result;
+
+        // Read root entities
+        size_t arraySize;
+        result = deserializer.beginArray("entities", arraySize);
+        if (!result) return result;
+
+        for (size_t i = 0; i < arraySize; i++)
+        {
+            EntityID newId = m_world->createEntity();
+            Entity entity(newId, m_world->getRegistry());
+
+            // Deserialize the entity
+            result = entity.deserialize(deserializer);
+            if (!result) return result;
+
+            // Add to root entities
+            m_scene->insertRootEntities(newId);
+
+            // Register entity name
+            m_scene->registerEntityName(newId, entity.getName());
+        }
+
+        // Read main camera ID
+        uint32_t mainCamera;
+        result = deserializer.readField("mainCamera", mainCamera);
+        if (!result) return result;
+
+        m_scene->setMainCamera(mainCamera);
+
+        return deserializer.endObject();
+    }
+
+    void EntityContainer::defineSchema(Utility::Serialization::Schema& schema)
+    {
+        schema.addArrayField("entities", Utility::Serialization::ValueType::Object);
+        schema.addField("camera", Utility::Serialization::ValueType::Object);
     }
 
 } // namespace PixelCraft::ECS

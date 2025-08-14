@@ -2,6 +2,8 @@
 // PaletteManager.cpp
 // -------------------------------------------------------------------------
 #include "Rendering/PaletteManager.h"
+#include "Core/Application.h"
+#include "Core/TimeManager.h"
 #include "Core/Logger.h"
 #include "Utility/FileSystem.h"
 
@@ -10,8 +12,6 @@
 #include <fstream>
 #include <sstream>
 #include <limits>
-
-namespace Log = PixelCraft::Core;
 
 namespace PixelCraft::Rendering
 {
@@ -35,7 +35,7 @@ namespace PixelCraft::Rendering
 
     bool PaletteManager::initialize()
     {
-        Log::info("Initializing PaletteManager");
+        Core::info("Initializing PaletteManager");
 
         // Create default grayscale palette
         std::vector<glm::vec4> grayscalePalette;
@@ -78,9 +78,37 @@ namespace PixelCraft::Rendering
         return true;
     }
 
+    void PaletteManager::update(float deltaTime)
+    {
+        // Update palette blending if in progress
+        if (!m_targetPalette.empty())
+        {
+            updatePaletteBlend(deltaTime);
+        }
+
+        // Update time of day variants if any exist
+        if (!m_timeVariants.empty())
+        {
+            // Get current time of day from TimeManager
+            auto timeManager = Core::Application::getInstance()->getSubsystem<Core::TimeManager>();
+            if (!timeManager)
+            {
+                return;
+            }
+
+            float timeOfDay = timeManager->getTimeOfDay();
+            updateTimeOfDay(timeOfDay);
+        }
+    }
+
+    void PaletteManager::render()
+    {
+        // Nothing to render for the palette manager
+    }
+
     void PaletteManager::shutdown()
     {
-        Log::info("Shutting down PaletteManager");
+        Core::info("Shutting down PaletteManager");
 
         m_palettes.clear();
         m_paletteTextures.clear();
@@ -91,17 +119,17 @@ namespace PixelCraft::Rendering
 
     bool PaletteManager::loadPalette(const std::string& name, const std::string& filepath)
     {
-        Log::info("Loading palette '" + name + "' from " + filepath);
+        Core::info("Loading palette '" + name + "' from " + filepath);
 
         if (m_palettes.find(name) != m_palettes.end())
         {
-            Log::warn("Palette '" + name + "' already exists and will be overwritten");
+            Core::warn("Palette '" + name + "' already exists and will be overwritten");
         }
 
         std::ifstream file(filepath, std::ios::binary);
         if (!file.is_open())
         {
-            Log::error("Failed to open palette file: " + filepath);
+            Core::error("Failed to open palette file: " + filepath);
             return false;
         }
 
@@ -207,13 +235,13 @@ namespace PixelCraft::Rendering
         }
         else
         {
-            Log::error("Unsupported palette file format: " + extension);
+            Core::error("Unsupported palette file format: " + extension);
             return false;
         }
 
         if (colors.empty())
         {
-            Log::error("No colors found in palette file: " + filepath);
+            Core::error("No colors found in palette file: " + filepath);
             return false;
         }
 
@@ -229,7 +257,7 @@ namespace PixelCraft::Rendering
             m_activePalette = name;
         }
 
-        Log::info("Loaded palette '" + name + "' with " + std::to_string(colors.size()) + " colors");
+        Core::info("Loaded palette '" + name + "' with " + std::to_string(colors.size()) + " colors");
         return true;
     }
 
@@ -237,13 +265,13 @@ namespace PixelCraft::Rendering
     {
         if (colors.empty())
         {
-            Log::error("Cannot create empty palette: " + name);
+            Core::error("Cannot create empty palette: " + name);
             return false;
         }
 
         if (m_palettes.find(name) != m_palettes.end())
         {
-            Log::warn("Palette '" + name + "' already exists and will be overwritten");
+            Core::warn("Palette '" + name + "' already exists and will be overwritten");
         }
 
         m_palettes[name] = colors;
@@ -257,7 +285,7 @@ namespace PixelCraft::Rendering
             m_activePalette = name;
         }
 
-        Log::info("Created palette '" + name + "' with " + std::to_string(colors.size()) + " colors");
+        Core::info("Created palette '" + name + "' with " + std::to_string(colors.size()) + " colors");
         return true;
     }
 
@@ -265,14 +293,14 @@ namespace PixelCraft::Rendering
     {
         if (!hasPalette(name))
         {
-            Log::error("Cannot save non-existent palette: " + name);
+            Core::error("Cannot save non-existent palette: " + name);
             return false;
         }
 
         std::ofstream file(filepath, std::ios::binary);
         if (!file.is_open())
         {
-            Log::error("Failed to open file for writing: " + filepath);
+            Core::error("Failed to open file for writing: " + filepath);
             return false;
         }
 
@@ -328,11 +356,11 @@ namespace PixelCraft::Rendering
         }
         else
         {
-            Log::error("Unsupported palette file format: " + extension);
+            Core::error("Unsupported palette file format: " + extension);
             return false;
         }
 
-        Log::info("Saved palette '" + name + "' to " + filepath);
+        Core::info("Saved palette '" + name + "' to " + filepath);
         return true;
     }
 
@@ -340,7 +368,7 @@ namespace PixelCraft::Rendering
     {
         if (!hasPalette(name))
         {
-            Log::error("Cannot delete non-existent palette: " + name);
+            Core::error("Cannot delete non-existent palette: " + name);
             return false;
         }
 
@@ -403,7 +431,7 @@ namespace PixelCraft::Rendering
             }
         }
 
-        Log::info("Deleted palette: " + name);
+        Core::info("Deleted palette: " + name);
         return true;
     }
 
@@ -418,7 +446,7 @@ namespace PixelCraft::Rendering
 
         if (!hasPalette(name))
         {
-            Log::error("Palette not found: " + name);
+            Core::error("Palette not found: " + name);
             return emptyPalette;
         }
 
@@ -429,7 +457,7 @@ namespace PixelCraft::Rendering
     {
         if (!hasPalette(name))
         {
-            Log::error("Palette not found: " + name);
+            Core::error("Palette not found: " + name);
             return nullptr;
         }
 
@@ -459,7 +487,7 @@ namespace PixelCraft::Rendering
     {
         if (!hasPalette(name))
         {
-            Log::error("Cannot set non-existent palette as active: " + name);
+            Core::error("Cannot set non-existent palette as active: " + name);
             return;
         }
 
@@ -468,7 +496,7 @@ namespace PixelCraft::Rendering
         m_blendProgress = 0.0f;
         m_blendDuration = 0.0f;
 
-        Log::info("Active palette set to: " + name);
+        Core::info("Active palette set to: " + name);
     }
 
     const std::string& PaletteManager::getActivePalette() const
@@ -524,7 +552,7 @@ namespace PixelCraft::Rendering
     {
         if (colorCount <= 0)
         {
-            Log::error("Cannot generate palette with zero or negative color count");
+            Core::error("Cannot generate palette with zero or negative color count");
             return false;
         }
 
@@ -540,7 +568,7 @@ namespace PixelCraft::Rendering
 
             // Convert HSV to RGB
             float c = value * saturation;
-            float x = c * (1 - std::abs(std::fmod(hue / 60.0f, 2) - 1));
+            float x = c * (1 - std::abs(static_cast<float>(std::fmod(hue / 60.0f, 2.0f)) - 1.0f));
             float m = value - c;
 
             float r, g, b;
@@ -591,19 +619,15 @@ namespace PixelCraft::Rendering
 
     bool PaletteManager::extractPaletteFromImage(const std::string& name, const std::string& imagePath, int maxColors)
     {
-        // Load the image data
-        // Note: In a real implementation, this would use the engine's resource system
-        // For demonstration purposes, we'll use a placeholder implementation
-
-        Log::info("Extracting palette from image: " + imagePath);
-
-        // Placeholder for image loading (would use the engine's Resource system)
-        auto imageResource = std::make_shared<Core::Resource>();
-        /*if (!imageResource->load(imagePath))
+        // Load the image using Texture resource
+        auto imageResource = Core::makeShared<Texture>(imagePath);
+        if (!imageResource->load())
         {
-            Log::error("Failed to load image for palette extraction: " + imagePath);
+            Core::error("Failed to load image for palette extraction: " + imagePath);
             return false;
-        }*/
+        }
+
+        Core::info("Extracting palette from image: " + imagePath);
 
         // Placeholder implementation for color quantization
         // In a real implementation, this would use median cut, k-means clustering,
@@ -635,7 +659,7 @@ namespace PixelCraft::Rendering
     {
         if (!hasPalette(name))
         {
-            Log::error("Cannot add color to non-existent palette: " + name);
+            Core::error("Cannot add color to non-existent palette: " + name);
             return false;
         }
 
@@ -651,7 +675,7 @@ namespace PixelCraft::Rendering
     {
         if (!hasPalette(name))
         {
-            Log::error("Cannot remove color from non-existent palette: " + name);
+            Core::error("Cannot remove color from non-existent palette: " + name);
             return false;
         }
 
@@ -659,7 +683,7 @@ namespace PixelCraft::Rendering
 
         if (index < 0 || index >= static_cast<int>(colors.size()))
         {
-            Log::error("Color index out of range: " + std::to_string(index));
+            Core::error("Color index out of range: " + std::to_string(index));
             return false;
         }
 
@@ -675,7 +699,7 @@ namespace PixelCraft::Rendering
     {
         if (!hasPalette(name))
         {
-            Log::error("Cannot update color in non-existent palette: " + name);
+            Core::error("Cannot update color in non-existent palette: " + name);
             return false;
         }
 
@@ -683,7 +707,7 @@ namespace PixelCraft::Rendering
 
         if (index < 0 || index >= static_cast<int>(colors.size()))
         {
-            Log::error("Color index out of range: " + std::to_string(index));
+            Core::error("Color index out of range: " + std::to_string(index));
             return false;
         }
 
@@ -718,7 +742,7 @@ namespace PixelCraft::Rendering
 
         if (!hasPalette(palette))
         {
-            Log::error("Palette not found: " + palette);
+            Core::error("Palette not found: " + palette);
             return -1;
         }
 
@@ -750,13 +774,13 @@ namespace PixelCraft::Rendering
     {
         if (!hasPalette(basePalette))
         {
-            Log::error("Base palette not found: " + basePalette);
+            Core::error("Base palette not found: " + basePalette);
             return;
         }
 
         if (!hasPalette(variantPalette))
         {
-            Log::error("Variant palette not found: " + variantPalette);
+            Core::error("Variant palette not found: " + variantPalette);
             return;
         }
 
@@ -766,7 +790,7 @@ namespace PixelCraft::Rendering
         // Add the variant
         m_timeVariants[basePalette][clampedTime] = variantPalette;
 
-        Log::info("Added time variant for palette '" + basePalette + "' at time " +
+        Core::info("Added time variant for palette '" + basePalette + "' at time " +
                   std::to_string(clampedTime) + " using palette '" + variantPalette + "'");
     }
 
@@ -934,7 +958,7 @@ namespace PixelCraft::Rendering
     {
         if (!hasPalette(targetPalette))
         {
-            Log::error("Target palette not found: " + targetPalette);
+            Core::error("Target palette not found: " + targetPalette);
             return;
         }
 
@@ -955,7 +979,7 @@ namespace PixelCraft::Rendering
         m_blendDuration = std::max(0.1f, duration);
         m_blendProgress = 0.0f;
 
-        Log::info("Starting palette blend from '" + m_activePalette + "' to '" + m_targetPalette +
+        Core::info("Starting palette blend from '" + m_activePalette + "' to '" + m_targetPalette +
                   "' over " + std::to_string(m_blendDuration) + " seconds");
     }
 
@@ -1022,7 +1046,7 @@ namespace PixelCraft::Rendering
     {
         if (!shader)
         {
-            Log::error("Cannot bind palette textures to null shader");
+            Core::error("Cannot bind palette textures to null shader");
             return;
         }
 
@@ -1055,20 +1079,16 @@ namespace PixelCraft::Rendering
     {
         if (!hasPalette(name))
         {
-            Log::error("Cannot update texture for non-existent palette: " + name);
+            Core::error("Cannot update texture for non-existent palette: " + name);
             return;
         }
 
         const auto& colors = m_palettes[name];
         if (colors.empty())
         {
-            Log::error("Cannot create texture for empty palette: " + name);
+            Core::error("Cannot create texture for empty palette: " + name);
             return;
         }
-
-        // Create a 1D texture from the palette colors
-        auto texture = std::make_shared<Texture>();
-        texture->initialize(static_cast<int>(colors.size()), 1, TextureFormat::RGBA8); // RGBA format
 
         // Create color data for the texture
         std::vector<unsigned char> textureData;
@@ -1082,8 +1102,11 @@ namespace PixelCraft::Rendering
             textureData.push_back(static_cast<unsigned char>(color.a * 255.0f));
         }
 
-        // Update the texture with the color data
-        texture->setData(textureData.data());
+        // Create a 1D texture from the palette colors with data directly
+        auto texture = Core::makeShared<Texture>("Palette_" + name);
+        texture->initialize(static_cast<int>(colors.size()), 1, TextureFormat::RGBA8, textureData.data());
+
+        // Set texture parameters
         texture->setFilterMode(TextureFilterMode::Nearest);
         texture->setWrapMode(TextureWrapMode::ClampToEdge);
 
@@ -1128,7 +1151,7 @@ namespace PixelCraft::Rendering
                     {
                         int i = y * 8 + x;
                         int quadrant = (y / 4) * 2 + (x / 4);
-                        int subIndex = (y % 4) * 4 + (x % 4);
+                        //int subIndex = (y % 4) * 4 + (x % 4);
 
                         // Use 4x4 pattern values and shift based on quadrant
                         float value = (0.0f / 16.0f + 8.0f / 16.0f + 2.0f / 16.0f + 10.0f / 16.0f +
@@ -1202,10 +1225,6 @@ namespace PixelCraft::Rendering
 
     void PaletteManager::createDitheringTexture(const std::vector<float>& pattern, int width, int height)
     {
-        // Convert the float pattern to a texture
-        auto texture = std::make_shared<Texture>();
-        texture->initialize(width, height, TextureFormat::R8); // R format
-
         // Convert float values [0,1] to byte values [0,255]
         std::vector<unsigned char> textureData;
         textureData.reserve(pattern.size());
@@ -1215,8 +1234,11 @@ namespace PixelCraft::Rendering
             textureData.push_back(static_cast<unsigned char>(value * 255.0f));
         }
 
-        // Update the texture with the pattern data
-        texture->setData(textureData.data());
+        // Convert the float pattern to a texture with data directly
+        auto texture = Core::makeShared<Texture>("DitheringPattern");
+        texture->initialize(width, height, TextureFormat::R8, textureData.data());
+
+        // Set texture parameters
         texture->setFilterMode(TextureFilterMode::Nearest);
         texture->setWrapMode(TextureWrapMode::Repeat);
 

@@ -81,13 +81,19 @@ namespace PixelCraft::ECS
          * @brief Get the component type ID
          * @return The unique type identifier for this component
          */
-        virtual ComponentTypeID getTypeID() const = 0;
+        ComponentTypeID getTypeID() const
+        {
+            return m_typeId;
+        }
 
         /**
          * @brief Get the component type name
          * @return The string representation of the component type
          */
-        virtual std::string getTypeName() const = 0;
+        std::string getComponentTypeName() const
+        {
+            return m_typeName;
+        }
 
         /**
          * @brief Set the entity that owns this component
@@ -169,7 +175,7 @@ namespace PixelCraft::ECS
             schema.addField("version", Utility::Serialization::ValueType::UInt32);
         }
 
-        static std::string getStaticTypeName()
+        static std::string getTypeName()
         {
             return "Component";
         }
@@ -177,28 +183,9 @@ namespace PixelCraft::ECS
     protected:
         EntityID m_owner;       ///< ID of the entity that owns this component
         uint32_t m_version;     ///< The component version for backward compatibility
+        ComponentTypeID m_typeId; ///< The component type ID
+        std::string m_typeName; ///< The component type name
         bool m_enabled;         ///< Flag indicating if this component is enabled
     };
-
-    /**
-     * @brief Macro for component type definition
-     *
-     * Use this macro in derived component classes to implement
-     * the required type identification and schema methods.
-     *
-     * @param TypeName The name of the component class
-     * @param TypeID The unique ID for this component type
-     */
-#define DEFINE_COMPONENT_TYPE(TypeName, TypeID) \
-    static ComponentTypeID getStaticTypeID() { return TypeID; } \
-    static std::string getTypeName() { return #TypeName; } \
-    static void defineSchema(Utility::Serialization::Schema& schema); \
-    static bool s_registered; \
-    static bool registerComponent() { \
-        ComponentRegistry::getInstance().registerComponent<TypeName>(#TypeName); \
-        auto& schemaRegistry = Utility::Serialization::SchemaRegistry::getInstance(); \
-        schemaRegistry.registerType<TypeName>(#TypeName, {1, 0, 0}); \
-        return true; \
-    }
 
 } // namespace PixelCraft::ECS

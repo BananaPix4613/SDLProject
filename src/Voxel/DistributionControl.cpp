@@ -2,17 +2,14 @@
 // DistributionControl.cpp
 // -------------------------------------------------------------------------
 #include "Voxel/DistributionControl.h"
-#include "Core/Logger.h"
+#include "Utility/Serialization/SerializationUtility.h"
 #include "Utility/Random.h"
 #include "Utility/Math.h"
-#include "ECS/Serializer.h"
-#include "ECS/Deserializer.h"
+#include "Core/Logger.h"
 
 #include <algorithm>
 #include <random>
 #include <cmath>
-
-namespace Log = PixelCraft::Core;
 
 namespace PixelCraft::Voxel
 {
@@ -349,14 +346,14 @@ namespace PixelCraft::Voxel
     {
         if (name.empty() || !distributionFunc)
         {
-            Log::error("Distribution name or function cannot be empty");
+            Core::error("Distribution name or function cannot be empty");
             return false;
         }
 
         // Check if already registered
         if (m_customDistributions.find(name) != m_customDistributions.end())
         {
-            Log::warn("Custom distribution '" + name + "' already registered");
+            Core::warn("Custom distribution '" + name + "' already registered");
             return false;
         }
 
@@ -375,7 +372,7 @@ namespace PixelCraft::Voxel
         auto it = m_customDistributions.find(name);
         if (it == m_customDistributions.end())
         {
-            Log::error("Custom distribution '" + name + "' not found");
+            Core::error("Custom distribution '" + name + "' not found");
             return false;
         }
 
@@ -388,98 +385,187 @@ namespace PixelCraft::Voxel
         return m_activeCustomDistribution;
     }
 
-    void DistributionControl::serialize(ECS::Serializer& serializer) const
+    Utility::Serialization::SerializationResult DistributionControl::serialize(Utility::Serialization::Serializer& serializer) const
     {
+        // Begin serializing the parameters
+        auto result = serializer.beginObject(getTypeName());
+        if (!result) return result;
+
         // Serialize basic properties
-        serializer.write(static_cast<int>(m_pattern));
-        serializer.write(m_globalDensity);
-        serializer.write(m_influenceRadius);
-        serializer.write(m_clusterSize);
-        serializer.write(m_clusterSpacing);
-        serializer.write(m_clusterFalloff);
-        serializer.write(m_seed);
-        serializer.writeString(m_activeCustomDistribution);
+        result = serializer.writeField("pattern", static_cast<int>(m_pattern));
+        if (!result) return result;
+
+        result = serializer.writeField("globalDensity", m_globalDensity);
+        if (!result) return result;
+
+        result = serializer.writeField("influenceRadius", m_influenceRadius);
+        if (!result) return result;
+
+        result = serializer.writeField("clusterSize", m_clusterSize);
+        if (!result) return result;
+
+        result = serializer.writeField("clusterSpacing", m_clusterSpacing);
+        if (!result) return result;
+
+        result = serializer.writeField("clusterFalloff", m_clusterFalloff);
+        if (!result) return result;
+
+        result = serializer.writeField("seed", m_seed);
+        if (!result) return result;
+
+        result = serializer.writeField("activeCustomDistribution", m_activeCustomDistribution);
+        if (!result) return result;
 
         // Serialize feature densities
-        serializer.beginArray("featureDensitites", m_featureDensities.size());
+        result = serializer.beginArray("featureDensities", m_featureDensities.size());
+        if (!result) return result;
+
         for (const auto& [type, density] : m_featureDensities)
         {
-            serializer.write(density);
+            result = serializer.writeField("type", type);
+            if (!result) return result;
+
+            result = serializer.writeField("density", density);
+            if (!result) return result;
         }
-        serializer.endArray();
+
+        result = serializer.endArray();
+        if (!result) return result;
 
         // Serialize density regions
-        serializer.beginArray("densityRegions", m_densityRegions.size());
+        result = serializer.beginArray("densityRegions", m_densityRegions.size());
+        if (!result) return result;
+
         for (size_t i = 0; i < m_densityRegions.size(); i++)
         {
             const auto& region = m_densityRegions[i];
 
-            serializer.write(region.id);
-            serializer.writeVec3(region.position);
-            serializer.write(region.radius);
-            serializer.write(region.multiplier);
-            serializer.writeString(region.featureType);
+            result = serializer.writeField("id", region.id);
+            if (!result) return result;
+
+            result = serializer.writeField("position", region.position);
+            if (!result) return result;
+
+            result = serializer.writeField("radius", region.radius);
+            if (!result) return result;
+
+            result = serializer.writeField("multiplier", region.multiplier);
+            if (!result) return result;
+
+            result = serializer.writeField("featureType", region.featureType);
+            if (!result) return result;
         }
-        serializer.endArray();
+
+        result = serializer.endArray();
+        if (!result) return result;
 
         // Serialize clusters
-        serializer.beginArray("clusters", m_clusters.size());
+        result = serializer.beginArray("clusters", m_clusters.size());
+        if (!result) return result;
+
         for (size_t i = 0; i < m_clusters.size(); i++)
         {
             const auto& cluster = m_clusters[i];
 
-            serializer.write(cluster.id);
-            serializer.writeVec3(cluster.position);
-            serializer.write(cluster.strength);
-            serializer.writeString(cluster.featureType);
+            result = serializer.writeField("id", cluster.id);
+            if (!result) return result;
+
+            result = serializer.writeField("position", cluster.position);
+            if (!result) return result;
+
+            result = serializer.writeField("strength", cluster.strength);
+            if (!result) return result;
+
+            result = serializer.writeField("featureType", cluster.featureType);
+            if (!result) return result;
         }
-        serializer.endArray();
+        
+        result = serializer.endArray();
+        if (!result) return result;
 
         // Serialize gradients
-        serializer.beginArray("gradients", m_gradients.size());
+        result = serializer.beginArray("gradients", m_gradients.size());
+        if (!result) return result;
+
         for (size_t i = 0; i < m_gradients.size(); i++)
         {
             const auto& gradient = m_gradients[i];
 
-            serializer.write(gradient.id);
-            serializer.writeVec3(gradient.startPosition);
-            serializer.writeVec3(gradient.endPosition);
-            serializer.write(gradient.startDensity);
-            serializer.write(gradient.endDensity);
-            serializer.writeString(gradient.featureType);
+            result = serializer.writeField("id", gradient.id);
+            if (!result) return result;
+
+            result = serializer.writeField("startPosition", gradient.startPosition);
+            if (!result) return result;
+
+            result = serializer.writeField("endPosition", gradient.endPosition);
+            if (!result) return result;
+
+            result = serializer.writeField("startDensity", gradient.startDensity);
+            if (!result) return result;
+
+            result = serializer.writeField("endDensity", gradient.endDensity);
+            if (!result) return result;
+
+            result = serializer.writeField("featureType", gradient.featureType);
+            if (!result) return result;
         }
-        serializer.endArray();
+        
+        result = serializer.endArray();
+        if (!result) return result;
 
         // Serialize noise distributions
-        serializer.beginArray("noiseDistributions", m_noiseDistributions.size());
+        result = serializer.beginArray("noiseDistributions", m_noiseDistributions.size());
+        if (!result) return result;
+
         for (const auto& [type, dist] : m_noiseDistributions)
         {
-            serializer.writeString(type);
-            serializer.writeString(dist.noiseLayerId);
-            serializer.write(dist.threshold);
+            result = serializer.writeField("type", type);
+            if (!result) return result;
+
+            result = serializer.writeField("noiseLayerId", dist.noiseLayerId);
+            if (!result) return result;
+
+            result = serializer.writeField("threshold", dist.threshold);
+            if (!result) return result;
         }
-        serializer.endArray();
+        
+        result = serializer.endArray();
+        if (!result) return result;
 
         // Serialize density thresholds
-        serializer.beginArray("densityThresholds", m_densityThresholds.size());
+        result = serializer.beginArray("densityThresholds", m_densityThresholds.size());
+        if (!result) return result;
+
         for (const auto& [type, threshold] : m_densityThresholds)
         {
-            serializer.writeString(type);
-            serializer.write(threshold);
+            result = serializer.writeField("type", type);
+            if (!result) return result;
+
+            result = serializer.writeField("threshold", threshold);
+            if (!result) return result;
         }
-        serializer.endArray();
+        
+        result = serializer.endArray();
+        if (!result) return result;
 
         // Custom distribution functions cannot be serialized
         // Just serialize the names for reference
-        serializer.beginArray("customDistributionNames", m_customDistributions.size());
+        result = serializer.beginArray("customDistributionNames", m_customDistributions.size());
+        if (!result) return result;
+
         for (const auto& [name, _] : m_customDistributions)
         {
-            serializer.writeString(name);
+            result = serializer.writeField("name", name);
+            if (!result) return result;
         }
-        serializer.endArray();
+        
+        result = serializer.endArray();
+        if (!result) return result;
+
+        return serializer.endObject();
     }
 
-    void DistributionControl::deserialize(ECS::Deserializer& deserializer)
+    Utility::Serialization::SerializationResult DistributionControl::deserialize(Utility::Serialization::Deserializer& deserializer)
     {
         // Clear existing data
         m_densityRegions.clear();
@@ -490,122 +576,225 @@ namespace PixelCraft::Voxel
         m_featureDensities.clear();
         m_activeCustomDistribution.clear();
 
-        // Deserialize basic properties
+        // Begin serializing the parameters
+        auto result = deserializer.beginObject(getTypeName());
+        if (!result) return result;
+
+        // Serialize basic properties
         int pattern;
-        deserializer.read(pattern);
+        result = deserializer.readField("pattern", pattern);
+        if (!result) return result;
         m_pattern = static_cast<PatternType>(pattern);
 
-        deserializer.read(m_globalDensity);
-        deserializer.read(m_influenceRadius);
-        deserializer.read(m_clusterSize);
-        deserializer.read(m_clusterSpacing);
-        deserializer.read(m_clusterFalloff);
-        deserializer.read(m_seed);
-        deserializer.readString(m_activeCustomDistribution);
+        result = deserializer.readField("globalDensity", m_globalDensity);
+        if (!result) return result;
+
+        result = deserializer.readField("influenceRadius", m_influenceRadius);
+        if (!result) return result;
+
+        result = deserializer.readField("clusterSize", m_clusterSize);
+        if (!result) return result;
+
+        result = deserializer.readField("clusterSpacing", m_clusterSpacing);
+        if (!result) return result;
+
+        result = deserializer.readField("clusterFalloff", m_clusterFalloff);
+        if (!result) return result;
+
+        result = deserializer.readField("seed", m_seed);
+        if (!result) return result;
+
+        result = deserializer.readField("activeCustomDistribution", m_activeCustomDistribution);
+        if (!result) return result;
 
         size_t arraySize;
 
-        // Deserialize feature densities
-        deserializer.beginArray("featureDensitites", arraySize);
-        for (int i = 0; i < arraySize; i++)
+        // Serialize feature densities
+        result = deserializer.beginArray("featureDensities", arraySize);
+        if (!result) return result;
+
+        for (size_t i = 0; i < arraySize; i++)
         {
             std::string type;
-            deserializer.readString(type);
+            result = deserializer.readField("type", type);
+            if (!result) return result;
 
             float density;
-            deserializer.read(density);
+            result = deserializer.readField("density", density);
+            if (!result) return result;
 
             m_featureDensities[type] = density;
         }
-        deserializer.endArray();
 
-        // Deserialize density regions
-        deserializer.beginArray("densityRegions", arraySize);
-        for (size_t i = 0; i < m_densityRegions.size(); i++)
+        result = deserializer.endArray();
+        if (!result) return result;
+
+        // Serialize density regions
+        result = deserializer.beginArray("densityRegions", arraySize);
+        if (!result) return result;
+
+        for (size_t i = 0; i < arraySize; i++)
         {
             DensityRegion region;
 
-            deserializer.read(region.id);
-            deserializer.readVec3(region.position);
-            deserializer.read(region.radius);
-            deserializer.read(region.multiplier);
-            deserializer.readString(region.featureType);
+            result = deserializer.readField("id", region.id);
+            if (!result) return result;
+
+            result = deserializer.readField("position", region.position);
+            if (!result) return result;
+
+            result = deserializer.readField("radius", region.radius);
+            if (!result) return result;
+
+            result = deserializer.readField("multiplier", region.multiplier);
+            if (!result) return result;
+
+            result = deserializer.readField("featureType", region.featureType);
+            if (!result) return result;
 
             m_densityRegions.push_back(region);
             m_nextRegionId = std::max(m_nextRegionId, region.id + 1);
         }
-        deserializer.endArray();
 
-        // Deserialize clusters
-        deserializer.beginArray("clusters", arraySize);
-        for (int i = 0; i < arraySize; i++)
+        result = deserializer.endArray();
+        if (!result) return result;
+
+        // Serialize clusters
+        result = deserializer.beginArray("clusters", arraySize);
+        if (!result) return result;
+
+        for (size_t i = 0; i < arraySize; i++)
         {
             Cluster cluster;
 
-            deserializer.read(cluster.id);
-            deserializer.readVec3(cluster.position);
-            deserializer.read(cluster.strength);
-            deserializer.readString(cluster.featureType);
+            result = deserializer.readField("id", cluster.id);
+            if (!result) return result;
+
+            result = deserializer.readField("position", cluster.position);
+            if (!result) return result;
+
+            result = deserializer.readField("strength", cluster.strength);
+            if (!result) return result;
+
+            result = deserializer.readField("featureType", cluster.featureType);
+            if (!result) return result;
 
             m_clusters.push_back(cluster);
         }
-        deserializer.endArray();
 
-        // Deserialize gradients
-        deserializer.beginArray("gradients", arraySize);
-        for (int i = 0; i < arraySize; i++)
+        result = deserializer.endArray();
+        if (!result) return result;
+
+        // Serialize gradients
+        result = deserializer.beginArray("gradients", arraySize);
+        if (!result) return result;
+
+        for (size_t i = 0; i < arraySize; i++)
         {
             Gradient gradient;
 
-            deserializer.read(gradient.id);
-            deserializer.readVec3(gradient.startPosition);
-            deserializer.readVec3(gradient.endPosition);
-            deserializer.read(gradient.startDensity);
-            deserializer.read(gradient.endDensity);
-            deserializer.readString(gradient.featureType);
+            result = deserializer.readField("id", gradient.id);
+            if (!result) return result;
+
+            result = deserializer.readField("startPosition", gradient.startPosition);
+            if (!result) return result;
+
+            result = deserializer.readField("endPosition", gradient.endPosition);
+            if (!result) return result;
+
+            result = deserializer.readField("startDensity", gradient.startDensity);
+            if (!result) return result;
+
+            result = deserializer.readField("endDensity", gradient.endDensity);
+            if (!result) return result;
+
+            result = deserializer.readField("featureType", gradient.featureType);
+            if (!result) return result;
 
             m_gradients.push_back(gradient);
             m_nextGradientId = std::max(m_nextGradientId, gradient.id + 1);
         }
-        deserializer.endArray();
 
-        // Deserialize noise distributions
-        deserializer.beginArray("noiseDistributions", arraySize);
-        for (int i = 0; i < arraySize; i++)
+        result = deserializer.endArray();
+        if (!result) return result;
+
+        // Serialize noise distributions
+        result = deserializer.beginArray("noiseDistributions", arraySize);
+        if (!result) return result;
+
+        for (size_t i = 0; i < arraySize; i++)
         {
             std::string type;
-            deserializer.readString(type);
+            result = deserializer.readField("type", type);
+            if (!result) return result;
 
             NoiseDistribution dist;
-            deserializer.readString(dist.noiseLayerId);
-            deserializer.read(dist.threshold);
+            result = deserializer.readField("noiseLayerId", dist.noiseLayerId);
+            if (!result) return result;
+
+            result = deserializer.readField("threshold", dist.threshold);
+            if (!result) return result;
 
             m_noiseDistributions[type] = dist;
         }
-        deserializer.endArray();
 
-        // Deserialize density thresholds
-        deserializer.beginArray("densityThresholds", arraySize);
-        for (int i = 0; i < arraySize; i++)
+        result = deserializer.endArray();
+        if (!result) return result;
+
+        // Serialize density thresholds
+        result = deserializer.beginArray("densityThresholds", arraySize);
+        if (!result) return result;
+
+        for (size_t i = 0; i < arraySize; i++)
         {
             std::string type;
-            deserializer.readString(type);
+            result = deserializer.readField("type", type);
+            if (!result) return result;
 
             float threshold;
-            deserializer.read(threshold);
+            result = deserializer.readField("threshold", threshold);
+            if (!result) return result;
 
             m_densityThresholds[type] = threshold;
         }
-        deserializer.endArray();
+
+        result = deserializer.endArray();
+        if (!result) return result;
 
         // Custom distribution functions need to be registered at runtime
         // because they cannot be serialized
+
+        return deserializer.endObject();
+    }
+
+    void DistributionControl::defineSchema(Utility::Serialization::Schema& schema)
+    {
+        schema.addField("pattern", Utility::Serialization::ValueType::Int64, true);
+        schema.addField("globalDensity", Utility::Serialization::ValueType::Float, true);
+        schema.addField("influenceRadius", Utility::Serialization::ValueType::Float, true);
+        schema.addField("clusterSize", Utility::Serialization::ValueType::Float, true);
+        schema.addField("clusterSpacing", Utility::Serialization::ValueType::Float, true);
+        schema.addField("clusterFalloff", Utility::Serialization::ValueType::Float, true);
+        schema.addField("seed", Utility::Serialization::ValueType::UInt32, true);
+        schema.addArrayField("featureDensities", Utility::Serialization::ValueType::Float, true);
+        schema.addArrayField("densityRegions", Utility::Serialization::ValueType::Object, true);
+        schema.addArrayField("clusters", Utility::Serialization::ValueType::Object, true);
+        schema.addArrayField("gradients", Utility::Serialization::ValueType::Object, true);
+        schema.addArrayField("noiseDistributions", Utility::Serialization::ValueType::Object, true);
+        schema.addArrayField("densityThresholds", Utility::Serialization::ValueType::Float, true);
+        schema.addArrayField("customDistributionNames", Utility::Serialization::ValueType::String, true);
+    }
+
+    std::string DistributionControl::getTypeName()
+    {
+        return "DistributionControl";
     }
 
     // Private helper methods
 
     float DistributionControl::calculateBaseDensity(const glm::vec3& position, const std::string& featureType) const
     {
+        (void)position;  // Currently unused
         float density = m_globalDensity;
 
         // Apply feature-specific density if available
@@ -708,7 +897,7 @@ namespace PixelCraft::Voxel
             // Calculate how far along the gradient we are [0-1]
             float gradientT = glm::clamp(projectionDist / gradientLength, 0.0f, 1.0f);
 
-            // Interpolate between start and end densisies
+            // Interpolate between start and end densities
             float gradientDensity = glm::mix(gradient.startDensity, gradient.endDensity, gradientT);
 
             // Blend with current density (stronger wins)
@@ -915,7 +1104,7 @@ namespace PixelCraft::Voxel
         glm::vec3 chunkWorldPos = chunkCoord.toWorldPosition(16); // Assuming 16x16x16 chunks
 
         // Minimum distance between points (based on count)
-        float minDist = 16.0f / std::cbrt(count) * 0.9f;
+        float minDist = 16.0f / static_cast<float>(std::cbrt(count)) * 0.9f;
 
         // Maximum attempts before giving up on a point
         const int maxAttempts = 30;

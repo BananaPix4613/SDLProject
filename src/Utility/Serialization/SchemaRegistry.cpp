@@ -1,10 +1,8 @@
 // -------------------------------------------------------------------------
-// Utility/Serialization/SchemaRegistry.cpp
+// SchemaRegistry.cpp
 // -------------------------------------------------------------------------
 #include "Utility/Serialization/SchemaRegistry.h"
 #include "Core/Logger.h"
-
-namespace Log = PixelCraft::Core;
 
 namespace PixelCraft::Utility::Serialization
 {
@@ -19,7 +17,7 @@ namespace PixelCraft::Utility::Serialization
     {
         if (!schema)
         {
-            Log::error("Attempted to register null schema");
+            Core::error("Attempted to register null schema");
             return;
         }
 
@@ -29,11 +27,11 @@ namespace PixelCraft::Utility::Serialization
 
         if (m_schemas.find(typeName) != m_schemas.end())
         {
-            Log::warn("Schema already registered for type: " + typeName + ". Replacing.");
+            Core::warn("Schema already registered for type: " + typeName + ". Replacing.");
         }
 
         m_schemas[typeName] = schema;
-        Log::debug("Registered schema for type: " + typeName);
+        Core::debug("Registered schema for type: " + typeName);
     }
 
     std::shared_ptr<Schema> SchemaRegistry::getSchema(const std::string& typeName) const

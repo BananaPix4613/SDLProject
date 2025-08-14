@@ -309,7 +309,7 @@ namespace PixelCraft::Utility
 
     bool Frustum::testAABB(const AABB& bounds) const
     {
-        if (bounds.isValid())
+        if (!bounds.isValid())
         {
             return false;
         }
@@ -379,6 +379,7 @@ namespace PixelCraft::Utility
 
     void Frustum::debugDraw(const glm::vec3& color) const
     {
+        (void)color;  // Currently unused
         // Note: This implementation depends on the DebugDraw utility
         // A reference implementation is provided but actual usage would require
         // the DebugDraw system to be integrated

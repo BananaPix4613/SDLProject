@@ -3,13 +3,9 @@
 // -------------------------------------------------------------------------
 #include "ECS/Components/CameraComponent.h"
 #include "Core/Application.h"
-#include "ECS/Serializer.h"
-#include "ECS/Deserializer.h"
 #include "Rendering/RenderSystem.h"
-#include "Rendering/Camera/OrthographicCamera.h"
-#include "Rendering/Camera/PerspectiveCamera.h"
-
-namespace Log = PixelCraft::Core;
+#include "Rendering/Cameras/OrthographicCamera.h"
+#include "Rendering/Cameras/PerspectiveCamera.h"
 
 namespace PixelCraft::ECS
 {
@@ -30,7 +26,7 @@ namespace PixelCraft::ECS
         if (m_isMain)
         {
             // If this was the main camera, clear it in the render system
-            std::shared_ptr<Rendering::RenderSystem> renderSystem = Core::Application::getInstance().getSubsystem<Rendering::RenderSystem>();
+            std::shared_ptr<Rendering::RenderSystem> renderSystem = Core::Application::getInstance()->getSubsystem<Rendering::RenderSystem>();
             if (renderSystem)
             {
                 renderSystem->setMainCamera(nullptr);
@@ -41,6 +37,8 @@ namespace PixelCraft::ECS
     void CameraComponent::initialize()
     {
         Component::initialize();
+        m_typeId = 2;
+        m_typeName = "CameraComponent";
 
         // Create the appropriate camera type
         createCamera();
@@ -91,7 +89,7 @@ namespace PixelCraft::ECS
 
         if (m_cameraType == CameraType::Perspective && m_camera)
         {
-            auto* perspectiveCamera = static_cast<Camera::PerspectiveCamera*>(m_camera.get());
+            auto* perspectiveCamera = static_cast<Rendering::Cameras::PerspectiveCamera*>(m_camera.get());
             perspectiveCamera->setFOV(m_fov);
         }
     }
@@ -107,7 +105,7 @@ namespace PixelCraft::ECS
 
         if (m_cameraType == CameraType::Orthographic && m_camera)
         {
-            auto* orthoCamera = static_cast<Camera::OrthographicCamera*>(m_camera.get());
+            auto* orthoCamera = static_cast<Rendering::Cameras::OrthographicCamera*>(m_camera.get());
             orthoCamera->setSize(m_orthoSize);
         }
     }
@@ -195,7 +193,7 @@ namespace PixelCraft::ECS
         return identity;
     }
 
-    Camera::Camera& CameraComponent::getCamera()
+    Rendering::Cameras::Camera& CameraComponent::getCamera()
     {
         if (!m_camera)
         {
@@ -204,7 +202,7 @@ namespace PixelCraft::ECS
         return *m_camera;
     }
 
-    const Camera::Camera& CameraComponent::getCamera() const
+    const Rendering::Cameras::Camera& CameraComponent::getCamera() const
     {
         if (!m_camera)
         {
@@ -230,59 +228,11 @@ namespace PixelCraft::ECS
         return m_isMain;
     }
 
-    void CameraComponent::serialize(Serializer& serializer)
-    {
-        // Serialize base component properties
-        Component::serialize(serializer);
-
-        // Serialize camera properties
-        serializer.beginObject("camera");
-        serializer.write(static_cast<int>(m_cameraType));
-        serializer.write(m_fov);
-        serializer.write(m_orthoSize);
-        serializer.write(m_nearPlane);
-        serializer.write(m_farPlane);
-        serializer.write(m_aspectRatio);
-        serializer.write(m_isMain);
-        serializer.endObject();
-    }
-
-    void CameraComponent::deserialize(Deserializer& deserializer)
-    {
-        // Deserialize base component properties
-        Component::deserialize(deserializer);
-
-        // Deserialize camera properties
-        if (deserializer.beginObject("camera"))
-        {
-            int cameraType;
-            deserializer.read(cameraType);
-            m_cameraType = static_cast<CameraType>(cameraType);
-
-            deserializer.read(m_fov);
-            deserializer.read(m_orthoSize);
-            deserializer.read(m_nearPlane);
-            deserializer.read(m_farPlane);
-            deserializer.read(m_aspectRatio);
-            deserializer.read(m_isMain);
-            deserializer.endObject();
-        }
-
-        // Recreate the camera with the deserialized settings
-        createCamera();
-
-        // Update main camera reference if needed
-        if (m_isMain)
-        {
-            updateMainCameraReference();
-        }
-    }
-
     void CameraComponent::createCamera()
     {
         if (m_cameraType == CameraType::Perspective)
         {
-            auto perspectiveCamera = std::make_shared<Camera::PerspectiveCamera>();
+            auto perspectiveCamera = std::make_shared<Rendering::Cameras::PerspectiveCamera>();
             perspectiveCamera->setFOV(m_fov);
             perspectiveCamera->setAspectRatio(m_aspectRatio);
             perspectiveCamera->setNearPlane(m_nearPlane);
@@ -291,7 +241,7 @@ namespace PixelCraft::ECS
         }
         else
         { // Orthographic
-            auto orthoCamera = std::make_shared<Camera::OrthographicCamera>();
+            auto orthoCamera = std::make_shared<Rendering::Cameras::OrthographicCamera>();
             orthoCamera->setSize(m_orthoSize);
             orthoCamera->setAspectRatio(m_aspectRatio);
             orthoCamera->setNearPlane(m_nearPlane);
@@ -302,7 +252,7 @@ namespace PixelCraft::ECS
 
     void CameraComponent::updateMainCameraReference()
     {
-        auto renderSystem = Core::Application::getInstance().getSubsystem<Rendering::RenderSystem>();
+        auto renderSystem = Core::Application::getInstance()->getSubsystem<Rendering::RenderSystem>();
         if (renderSystem)
         {
             if (m_isMain)
@@ -317,50 +267,16 @@ namespace PixelCraft::ECS
         }
     }
 
-    std::unique_ptr<FlatBuffers::Schema> CameraComponent::createSchema()
-    {
-        // This implementation creates the FlatBuffers schema
-        // for efficient serialization of the CameraComponent
-        class CameraSchema : public FlatBuffers::Schema
-        {
-        public:
-            std::string getDefinition() const override
-            {
-                return R"(
-namespace PixelCraft.ECS;
-
-table CameraComponentData {
-  camera_type:uint8 = 0;  // 0 = Perspective, 1 = Orthographic
-  fov:float = 60.0;
-  ortho_size:float = 5.0;
-  near_plane:float = 0.1;
-  far_plane:float = 1000.0;
-  aspect_ratio:float = 1.777778;  // 16:9 default
-  is_main:bool = false;
-}
-
-root_type CameraComponentData;
-            )";
-            }
-
-            std::string getIdentifier() const override
-            {
-                return "CAMR"; // PixelCraft Camera FlatBuffer
-            }
-
-            uint32_t getVersion() const override
-            {
-                return 1; // Initial schema version
-            }
-        };
-
-        return std::make_unique<CameraSchema>();
-    }
-
     namespace
     {
         // Register the CameraComponent with the component registry
-        const bool registered = ComponentRegistry::registerComponentType<CameraComponent>("CameraComponent");
+        bool registerCameraComponent()
+        {
+            ComponentRegistry::registerComponent<CameraComponent>("CameraComponent");
+            return true;
+        }
+
+        const bool registered = registerCameraComponent();
     }
 
 } // namespace PixelCraft::ECS

@@ -1,0 +1,610 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+  </PropertyGroup>
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="MinSizeRel|x64">
+      <Configuration>MinSizeRel</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="RelWithDebInfo|x64">
+      <Configuration>RelWithDebInfo</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{0A37EB5E-1FAB-3FA4-A8F8-E1957A89E654}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion>
+    <Platform>x64</Platform>
+    <ProjectName>PixelCraftEngine</ProjectName>
+    <VCProjectUpgraderObjectName>NoUpgrade</VCProjectUpgraderObjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\dev\SDLProject\Debug\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">PixelCraftEngine.dir\Debug\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">PixelCraftEngine_d</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\dev\SDLProject\Release\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">PixelCraftEngine.dir\Release\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">PixelCraftEngine</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">C:\dev\SDLProject\MinSizeRel\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">PixelCraftEngine.dir\MinSizeRel\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">PixelCraftEngine</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">false</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">C:\dev\SDLProject\RelWithDebInfo\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">PixelCraftEngine.dir\RelWithDebInfo\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">PixelCraftEngine</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">true</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">true</GenerateManifest>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\include;C:\dev\SDLProject\deps;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /external:I "C:/Program Files/vcpkg/installed/x64-windows/include"</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <ConformanceMode>true</ConformanceMode>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <Optimization>Disabled</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;PIXELCRAFT_DEBUG=1;PIXELCRAFT_ENABLE_LOGGING=1;PIXELCRAFT_ENABLE_ASSERTS=1;GLM_FORCE_RADIANS;GLM_FORCE_DEPTH_ZERO_TO_ONE;GLM_ENABLE_EXPERIMENTAL;WIN32_LEAN_AND_MEAN;NOMINMAX;_CRT_SECURE_NO_WARNINGS;PIXELCRAFT_ENABLE_UNIT_TESTS=1;UNICODE;_UNICODE;GLFW_DLL;CMAKE_INTDIR="Debug"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_DEBUG;_WINDOWS;PIXELCRAFT_DEBUG=1;PIXELCRAFT_ENABLE_LOGGING=1;PIXELCRAFT_ENABLE_ASSERTS=1;GLM_FORCE_RADIANS;GLM_FORCE_DEPTH_ZERO_TO_ONE;GLM_ENABLE_EXPERIMENTAL;WIN32_LEAN_AND_MEAN;NOMINMAX;_CRT_SECURE_NO_WARNINGS;PIXELCRAFT_ENABLE_UNIT_TESTS=1;UNICODE;_UNICODE;GLFW_DLL;CMAKE_INTDIR=\"Debug\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\include;C:\dev\SDLProject\deps;C:\Program Files\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\include;C:\dev\SDLProject\deps;C:\Program Files\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <PostBuildEvent>
+      <Message>Copying assets directory to output directory</Message>
+      <Command>setlocal
+C:\Strawberry\c\bin\cmake.exe -E copy_directory C:/dev/SDLProject/assets C:/dev/SDLProject/Debug/assets
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+    </PostBuildEvent>
+    <Link>
+      <AdditionalDependencies>opengl32.lib;C:\Program Files\vcpkg\installed\x64-windows\debug\lib\glfw3dll.lib;C:\Program Files\vcpkg\installed\x64-windows\debug\lib\glm.lib;C:\Program Files\vcpkg\installed\x64-windows\debug\lib\glad.lib;C:\Program Files\vcpkg\installed\x64-windows\lib\libcrypto.lib;C:\Program Files\vcpkg\installed\x64-windows\lib\libssl.lib;C:\Program Files\vcpkg\installed\x64-windows\debug\lib\yaml-cppd.lib;winmm.lib;gdi32.lib;user32.lib;kernel32.lib;shell32.lib;C:\Program Files\vcpkg\installed\x64-windows\lib\libcrypto.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>C:/dev/SDLProject/Debug/PixelCraftEngine_d.lib</ImportLibrary>
+      <ProgramDataBaseFile>C:/dev/SDLProject/Debug/PixelCraftEngine_d.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\include;C:\dev\SDLProject\deps;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /external:I "C:/Program Files/vcpkg/installed/x64-windows/include"</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <ConformanceMode>true</ConformanceMode>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <Optimization>MaxSpeed</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;PIXELCRAFT_RELEASE=1;PIXELCRAFT_ENABLE_LOGGING=0;PIXELCRAFT_ENABLE_ASSERTS=0;GLM_FORCE_RADIANS;GLM_FORCE_DEPTH_ZERO_TO_ONE;GLM_ENABLE_EXPERIMENTAL;WIN32_LEAN_AND_MEAN;NOMINMAX;_CRT_SECURE_NO_WARNINGS;PIXELCRAFT_ENABLE_UNIT_TESTS=1;UNICODE;_UNICODE;GLFW_DLL;CMAKE_INTDIR="Release"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <DebugInformationFormat>
+      </DebugInformationFormat>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;PIXELCRAFT_RELEASE=1;PIXELCRAFT_ENABLE_LOGGING=0;PIXELCRAFT_ENABLE_ASSERTS=0;GLM_FORCE_RADIANS;GLM_FORCE_DEPTH_ZERO_TO_ONE;GLM_ENABLE_EXPERIMENTAL;WIN32_LEAN_AND_MEAN;NOMINMAX;_CRT_SECURE_NO_WARNINGS;PIXELCRAFT_ENABLE_UNIT_TESTS=1;UNICODE;_UNICODE;GLFW_DLL;CMAKE_INTDIR=\"Release\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\include;C:\dev\SDLProject\deps;C:\Program Files\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\include;C:\dev\SDLProject\deps;C:\Program Files\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <PostBuildEvent>
+      <Message>Copying assets directory to output directory</Message>
+      <Command>setlocal
+C:\Strawberry\c\bin\cmake.exe -E copy_directory C:/dev/SDLProject/assets C:/dev/SDLProject/Release/assets
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+    </PostBuildEvent>
+    <Link>
+      <AdditionalDependencies>opengl32.lib;C:\Program Files\vcpkg\installed\x64-windows\lib\glfw3dll.lib;C:\Program Files\vcpkg\installed\x64-windows\lib\glm.lib;C:\Program Files\vcpkg\installed\x64-windows\lib\glad.lib;C:\Program Files\vcpkg\installed\x64-windows\lib\libcrypto.lib;C:\Program Files\vcpkg\installed\x64-windows\lib\libssl.lib;C:\Program Files\vcpkg\installed\x64-windows\lib\yaml-cpp.lib;winmm.lib;gdi32.lib;user32.lib;kernel32.lib;shell32.lib;C:\Program Files\vcpkg\installed\x64-windows\lib\libcrypto.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>C:/dev/SDLProject/Release/PixelCraftEngine.lib</ImportLibrary>
+      <ProgramDataBaseFile>C:/dev/SDLProject/Release/PixelCraftEngine.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\include;C:\dev\SDLProject\deps;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /external:I "C:/Program Files/vcpkg/installed/x64-windows/include"</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <ConformanceMode>true</ConformanceMode>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <Optimization>MinSpace</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;GLM_FORCE_RADIANS;GLM_FORCE_DEPTH_ZERO_TO_ONE;GLM_ENABLE_EXPERIMENTAL;WIN32_LEAN_AND_MEAN;NOMINMAX;_CRT_SECURE_NO_WARNINGS;PIXELCRAFT_ENABLE_UNIT_TESTS=1;UNICODE;_UNICODE;GLFW_DLL;CMAKE_INTDIR="MinSizeRel"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <DebugInformationFormat>
+      </DebugInformationFormat>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;GLM_FORCE_RADIANS;GLM_FORCE_DEPTH_ZERO_TO_ONE;GLM_ENABLE_EXPERIMENTAL;WIN32_LEAN_AND_MEAN;NOMINMAX;_CRT_SECURE_NO_WARNINGS;PIXELCRAFT_ENABLE_UNIT_TESTS=1;UNICODE;_UNICODE;GLFW_DLL;CMAKE_INTDIR=\"MinSizeRel\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\include;C:\dev\SDLProject\deps;C:\Program Files\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\include;C:\dev\SDLProject\deps;C:\Program Files\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <PostBuildEvent>
+      <Message>Copying assets directory to output directory</Message>
+      <Command>setlocal
+C:\Strawberry\c\bin\cmake.exe -E copy_directory C:/dev/SDLProject/assets C:/dev/SDLProject/MinSizeRel/assets
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+    </PostBuildEvent>
+    <Link>
+      <AdditionalDependencies>opengl32.lib;C:\Program Files\vcpkg\installed\x64-windows\debug\lib\glfw3dll.lib;C:\Program Files\vcpkg\installed\x64-windows\debug\lib\glm.lib;C:\Program Files\vcpkg\installed\x64-windows\debug\lib\glad.lib;C:\Program Files\vcpkg\installed\x64-windows\lib\libcrypto.lib;C:\Program Files\vcpkg\installed\x64-windows\lib\libssl.lib;C:\Program Files\vcpkg\installed\x64-windows\debug\lib\yaml-cppd.lib;winmm.lib;gdi32.lib;user32.lib;kernel32.lib;shell32.lib;C:\Program Files\vcpkg\installed\x64-windows\lib\libcrypto.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>C:/dev/SDLProject/MinSizeRel/PixelCraftEngine.lib</ImportLibrary>
+      <ProgramDataBaseFile>C:/dev/SDLProject/MinSizeRel/PixelCraftEngine.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\include;C:\dev\SDLProject\deps;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /external:I "C:/Program Files/vcpkg/installed/x64-windows/include"</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <ConformanceMode>true</ConformanceMode>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <Optimization>MaxSpeed</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;GLM_FORCE_RADIANS;GLM_FORCE_DEPTH_ZERO_TO_ONE;GLM_ENABLE_EXPERIMENTAL;WIN32_LEAN_AND_MEAN;NOMINMAX;_CRT_SECURE_NO_WARNINGS;PIXELCRAFT_ENABLE_UNIT_TESTS=1;UNICODE;_UNICODE;GLFW_DLL;CMAKE_INTDIR="RelWithDebInfo"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;GLM_FORCE_RADIANS;GLM_FORCE_DEPTH_ZERO_TO_ONE;GLM_ENABLE_EXPERIMENTAL;WIN32_LEAN_AND_MEAN;NOMINMAX;_CRT_SECURE_NO_WARNINGS;PIXELCRAFT_ENABLE_UNIT_TESTS=1;UNICODE;_UNICODE;GLFW_DLL;CMAKE_INTDIR=\"RelWithDebInfo\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\include;C:\dev\SDLProject\deps;C:\Program Files\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\include;C:\dev\SDLProject\deps;C:\Program Files\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <PostBuildEvent>
+      <Message>Copying assets directory to output directory</Message>
+      <Command>setlocal
+C:\Strawberry\c\bin\cmake.exe -E copy_directory C:/dev/SDLProject/assets C:/dev/SDLProject/RelWithDebInfo/assets
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+    </PostBuildEvent>
+    <Link>
+      <AdditionalDependencies>opengl32.lib;C:\Program Files\vcpkg\installed\x64-windows\debug\lib\glfw3dll.lib;C:\Program Files\vcpkg\installed\x64-windows\debug\lib\glm.lib;C:\Program Files\vcpkg\installed\x64-windows\debug\lib\glad.lib;C:\Program Files\vcpkg\installed\x64-windows\lib\libcrypto.lib;C:\Program Files\vcpkg\installed\x64-windows\lib\libssl.lib;C:\Program Files\vcpkg\installed\x64-windows\debug\lib\yaml-cppd.lib;winmm.lib;gdi32.lib;user32.lib;kernel32.lib;shell32.lib;C:\Program Files\vcpkg\installed\x64-windows\lib\libcrypto.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>C:/dev/SDLProject/RelWithDebInfo/PixelCraftEngine.lib</ImportLibrary>
+      <ProgramDataBaseFile>C:/dev/SDLProject/RelWithDebInfo/PixelCraftEngine.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\dev\SDLProject\CMakeLists.txt">
+      <UseUtf8Encoding>Always</UseUtf8Encoding>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Building Custom Rule C:/dev/SDLProject/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">setlocal
+C:\Strawberry\c\bin\cmake.exe -SC:/dev/SDLProject -BC:/dev/SDLProject --check-stamp-file C:/dev/SDLProject/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Program Files\vcpkg\installed\x64-windows\share\glad\gladConfig.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glad\gladConfigVersion.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glad\gladTargets-debug.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glad\gladTargets-release.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glad\gladTargets.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glew\CopyImportedTargetProperties.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glew\glew-config.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glew\glew-targets-debug.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glew\glew-targets-release.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glew\glew-targets.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glfw3\glfw3Config.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glfw3\glfw3ConfigVersion.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glfw3\glfw3Targets-debug.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glfw3\glfw3Targets-release.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glfw3\glfw3Targets.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glm\glmConfig-debug.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glm\glmConfig-release.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glm\glmConfig.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glm\glmConfigVersion.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonConfig.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonConfigVersion.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonTargets.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\openssl\OpenSSLConfig.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\openssl\OpenSSLConfigVersion.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-config-version.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-config.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets-debug.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets-release.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCXXInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCommonLanguageInclude.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeFindDependencyMacro.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeGenericSystem.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeInitializeConfigs.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeLanguageInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeRCInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeSystemSpecificInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeSystemSpecificInitialize.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CheckCSourceCompiles.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CheckIncludeFile.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CheckLibraryExists.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC-C.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC-CXX.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindDoxygen.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindOpenGL.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindOpenSSL.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindPackageHandleStandardArgs.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindPackageMessage.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindThreads.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Internal\CheckSourceCompiles.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC-C.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC-CXX.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\WindowsPaths.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\SelectLibraryConfigurations.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeCCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeCXXCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeRCCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeSystem.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\dev\SDLProject\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Building Custom Rule C:/dev/SDLProject/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">setlocal
+C:\Strawberry\c\bin\cmake.exe -SC:/dev/SDLProject -BC:/dev/SDLProject --check-stamp-file C:/dev/SDLProject/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\Program Files\vcpkg\installed\x64-windows\share\glad\gladConfig.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glad\gladConfigVersion.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glad\gladTargets-debug.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glad\gladTargets-release.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glad\gladTargets.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glew\CopyImportedTargetProperties.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glew\glew-config.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glew\glew-targets-debug.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glew\glew-targets-release.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glew\glew-targets.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glfw3\glfw3Config.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glfw3\glfw3ConfigVersion.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glfw3\glfw3Targets-debug.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glfw3\glfw3Targets-release.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glfw3\glfw3Targets.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glm\glmConfig-debug.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glm\glmConfig-release.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glm\glmConfig.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glm\glmConfigVersion.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonConfig.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonConfigVersion.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonTargets.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\openssl\OpenSSLConfig.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\openssl\OpenSSLConfigVersion.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-config-version.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-config.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets-debug.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets-release.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCXXInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCommonLanguageInclude.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeFindDependencyMacro.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeGenericSystem.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeInitializeConfigs.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeLanguageInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeRCInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeSystemSpecificInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeSystemSpecificInitialize.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CheckCSourceCompiles.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CheckIncludeFile.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CheckLibraryExists.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC-C.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC-CXX.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindDoxygen.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindOpenGL.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindOpenSSL.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindPackageHandleStandardArgs.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindPackageMessage.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindThreads.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Internal\CheckSourceCompiles.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC-C.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC-CXX.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\WindowsPaths.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\SelectLibraryConfigurations.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeCCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeCXXCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeRCCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeSystem.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\dev\SDLProject\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">Building Custom Rule C:/dev/SDLProject/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">setlocal
+C:\Strawberry\c\bin\cmake.exe -SC:/dev/SDLProject -BC:/dev/SDLProject --check-stamp-file C:/dev/SDLProject/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">C:\Program Files\vcpkg\installed\x64-windows\share\glad\gladConfig.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glad\gladConfigVersion.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glad\gladTargets-debug.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glad\gladTargets-release.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glad\gladTargets.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glew\CopyImportedTargetProperties.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glew\glew-config.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glew\glew-targets-debug.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glew\glew-targets-release.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glew\glew-targets.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glfw3\glfw3Config.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glfw3\glfw3ConfigVersion.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glfw3\glfw3Targets-debug.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glfw3\glfw3Targets-release.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glfw3\glfw3Targets.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glm\glmConfig-debug.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glm\glmConfig-release.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glm\glmConfig.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glm\glmConfigVersion.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonConfig.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonConfigVersion.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonTargets.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\openssl\OpenSSLConfig.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\openssl\OpenSSLConfigVersion.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-config-version.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-config.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets-debug.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets-release.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCXXInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCommonLanguageInclude.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeFindDependencyMacro.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeGenericSystem.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeInitializeConfigs.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeLanguageInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeRCInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeSystemSpecificInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeSystemSpecificInitialize.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CheckCSourceCompiles.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CheckIncludeFile.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CheckLibraryExists.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC-C.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC-CXX.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindDoxygen.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindOpenGL.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindOpenSSL.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindPackageHandleStandardArgs.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindPackageMessage.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindThreads.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Internal\CheckSourceCompiles.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC-C.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC-CXX.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\WindowsPaths.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\SelectLibraryConfigurations.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeCCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeCXXCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeRCCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeSystem.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">C:\dev\SDLProject\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">Building Custom Rule C:/dev/SDLProject/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">setlocal
+C:\Strawberry\c\bin\cmake.exe -SC:/dev/SDLProject -BC:/dev/SDLProject --check-stamp-file C:/dev/SDLProject/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">C:\Program Files\vcpkg\installed\x64-windows\share\glad\gladConfig.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glad\gladConfigVersion.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glad\gladTargets-debug.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glad\gladTargets-release.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glad\gladTargets.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glew\CopyImportedTargetProperties.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glew\glew-config.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glew\glew-targets-debug.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glew\glew-targets-release.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glew\glew-targets.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glfw3\glfw3Config.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glfw3\glfw3ConfigVersion.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glfw3\glfw3Targets-debug.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glfw3\glfw3Targets-release.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glfw3\glfw3Targets.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glm\glmConfig-debug.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glm\glmConfig-release.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glm\glmConfig.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\glm\glmConfigVersion.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonConfig.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonConfigVersion.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonTargets.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\openssl\OpenSSLConfig.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\openssl\OpenSSLConfigVersion.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-config-version.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-config.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets-debug.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets-release.cmake;C:\Program Files\vcpkg\installed\x64-windows\share\yaml-cpp\yaml-cpp-targets.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCXXInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCommonLanguageInclude.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeFindDependencyMacro.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeGenericSystem.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeInitializeConfigs.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeLanguageInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeRCInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeSystemSpecificInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeSystemSpecificInitialize.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CheckCSourceCompiles.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CheckIncludeFile.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CheckLibraryExists.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC-C.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC-CXX.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindDoxygen.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindOpenGL.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindOpenSSL.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindPackageHandleStandardArgs.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindPackageMessage.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindThreads.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Internal\CheckSourceCompiles.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC-C.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC-CXX.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\WindowsPaths.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\SelectLibraryConfigurations.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeCCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeCXXCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeRCCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeSystem.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">C:\dev\SDLProject\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="C:\dev\SDLProject\include\Core\Application.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Core\ConfigManager.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Core\EventSystem.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Core\Events\Event.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Core\Logger.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Core\MemoryManager.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Core\MemoryPool.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Core\Resource.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Core\ResourceManager.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Core\Subsystem.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Core\ThreadSafeQueue.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Core\TimeManager.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Core\Window.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Debug\MaterialTestSuite.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Debug\RenderingDebugger.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Debug\ShaderTestSuite.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Debug\TextureTestSuite.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Debug\UnitTestFramework.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\ECS\Component.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\ECS\ComponentPool.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\ECS\ComponentRegistry.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\ECS\ComponentTypes.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\ECS\Components\CameraComponent.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\ECS\Components\MeshRendererComponent.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\ECS\Components\TransformComponent.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\ECS\Entity.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\ECS\EntityMetadata.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\ECS\Error.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\ECS\Registry.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\ECS\Scene.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\ECS\System.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\ECS\UUID.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\ECS\View.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\ECS\World.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\Cameras\Camera.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\Cameras\CameraAnimator.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\Cameras\FPSCameraController.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\Cameras\OrthographicCamera.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\Cameras\PerspectiveCamera.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\ClusteredLightCuller.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\ForwardPlusShaderManager.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\Light.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\LightManager.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\Material.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\Mesh.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\PaletteManager.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\RenderContext.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\RenderPipeline.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\RenderPipelineDebugger.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\RenderPipelineVerifier.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\RenderStage.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\RenderSystem.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\RenderTarget.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\Renderable.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\Shader.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\ShaderManager.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\Stages\ClusterUpdateStage.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\Stages\DepthPrepassStage.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\Stages\GeometryStage.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\Stages\PostProcessStage.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\Stages\ShadowStage.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\Stages\SkyboxStage.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\Stages\TransparencyStage.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\Stages\UIStage.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\Stages\VelocityStage.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Rendering\Texture.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\AABB.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\Color.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\DebugDraw.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\FileSystem.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\Frustum.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\GraphicsCapabilities.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\Math.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\Octree.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\Profiler.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\Quadtree.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\Random.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\Ray.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\Serialization\BinaryDeserializer.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\Serialization\BinarySerializer.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\Serialization\Deserializer.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\Serialization\ParameterValue.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\Serialization\Schema.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\Serialization\SchemaRegistry.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\Serialization\SerializationTypes.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\Serialization\SerializationUtility.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\Serialization\Serializer.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\SpatialPartitionFactory.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\SpatialPartitioning.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\SpatialQuery.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\StringUtils.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\ThreadSafeQueue.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Utility\Transform.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Voxel\Biome.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Voxel\BiomeManager.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Voxel\Chunk.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Voxel\ChunkCoord.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Voxel\ChunkManager.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Voxel\ChunkMesh.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Voxel\ChunkStorage.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Voxel\DistributionControl.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Voxel\FeaturePlacement.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Voxel\GenerationParameters.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Voxel\Grid.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Voxel\NoiseGenerator.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Voxel\NoiseLayer.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Voxel\ProceduralGenerationSystem.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Voxel\StreamingManager.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Voxel\Voxel.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\Voxel\VoxelRenderer.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\stb_image.h" />
+    <ClInclude Include="C:\dev\SDLProject\include\stb_image_write.h" />
+    <ClCompile Include="C:\dev\SDLProject\src\Core\Application.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Core\ConfigManager.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Core\EventSystem.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Core\Logger.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Core\MemoryManager.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Core\MemoryPool.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Core\Resource.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Core\ResourceManager.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Core\Subsystem.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Core\TimeManager.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Core\Window.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Debug\MaterialTestSuite.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Debug\RenderingDebugger.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Debug\ShaderTestSuite.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Debug\TextureTestSuite.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Debug\UnitTestFramework.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\Component.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\Components\CameraComponent.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\Components\MeshRendererComponent.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\Components\TransformComponent.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\Entity.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\EntityMetadata.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\Error.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\Registry.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\Scene.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\System.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\UUID.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\World.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Cameras\Camera.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Cameras\CameraAnimator.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Cameras\FPSCameraController.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Cameras\OrthographicCamera.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Cameras\PerspectiveCamera.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\ClusteredLightCuller.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\ForwardPlusShaderManager.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Light.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\LightManager.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Material.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Mesh.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\PaletteManager.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\RenderContext.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\RenderPipeline.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\RenderPipelineDebugger.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\RenderPipelineVerifier.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\RenderStage.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\RenderSystem.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\RenderTarget.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Shader.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\ShaderManager.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Stages\ClusterUpdateStage.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Stages\DepthPrepassStage.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Stages\GeometryStage.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Stages\PostProcessStage.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Stages\ShadowStage.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Stages\SkyboxStage.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Stages\TransparencyStage.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Stages\UIStage.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Stages\VelocityStage.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Texture.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Color.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\DebugDraw.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\FileSystem.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Frustum.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Frustum_SIMD.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\GraphicsCapabilities.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Math.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Octree.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Profiler.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Quadtree.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Random.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Ray.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Serialization\BinaryDeserializer.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Serialization\BinarySerializer.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Serialization\Deserializer.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Serialization\ParameterValue.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Serialization\Schema.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Serialization\SchemaRegistry.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Serialization\SerializationTypes.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Serialization\SerializationUtility.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Serialization\Serializer.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\SpatialPartitionFactory.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\SpatialPartitioning.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\SpatialQuery.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\StringUtils.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Transform.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\stb_image_impl.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\Biome.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\BiomeManager.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\Chunk.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\ChunkManager.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\ChunkMesh.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\ChunkStorage.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\DistributionControl.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\FeaturePlacement.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\GenerationParameters.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\Grid.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\NoiseGenerator.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\NoiseLayer.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\ProceduralGenerationSystem.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\StreamingManager.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\VoxelRenderer.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\main.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="C:\dev\SDLProject\ZERO_CHECK.vcxproj">
+      <Project>{4A9C05B1-DB99-3200-8517-1C860685B008}</Project>
+      <Name>ZERO_CHECK</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

@@ -3,61 +3,56 @@
 // -------------------------------------------------------------------------
 #pragma once
 
+#include "Core/Subsystem.h"
+#include "Rendering/RenderPipeline.h"
+#include "Rendering/ClusteredLightCuller.h"
+#include "Rendering/Cameras/Camera.h"
+#include "Rendering/Cameras/OrthographicCamera.h"
+#include "Utility/AABB.h"
+#include "Utility/SpatialPartitioning.h"
+#include "Utility/Quadtree.h"
+#include "glm/glm.hpp"
+
 #include <memory>
 #include <vector>
 #include <string>
 #include <unordered_map>
-#include <glm/glm.hpp>
 
-#include "Core/Subsystem.h"
-#include "Rendering/RenderPipeline.h"
-#include "Rendering/Shader.h"
-#include "Rendering/Texture.h"
-#include "Rendering/Material.h"
-#include "Rendering/Mesh.h"
-#include "Utility/AABB.h"
-
+// In namespace PixelCraft
 namespace PixelCraft::Rendering
 {
 
     // Forward declarations
     class LightManager;
     class PaletteManager;
-    class RenderContext;
-    class Camera;
+    class ShaderManager;
+    class Shader;
+    class Texture;
+    class Material;
+    class Mesh;
+    struct Renderable;
 
     /**
      * @brief Represents an object that can be rendered
      */
     struct RenderableObject
     {
-        std::shared_ptr<Mesh> mesh;               ///< The mesh to render
-        std::shared_ptr<Material> material;       ///< The material to use for rendering
-        glm::mat4 transform;                      ///< The transformation matrix
-        Utility::AABB bounds;                     ///< Bounds for culling
-        uint32_t layer;                           ///< Render layer
-        bool castShadows;                         ///< Whether the object casts shadows
-        bool receiveShadows;                      ///< Whether the object receives shadows
+        std::shared_ptr<Mesh> mesh;            ///< The mesh to render
+        std::shared_ptr<Material> material;    ///< The material to use for rendering
+        glm::mat4 transform = glm::mat4(1.0f); ///< The transformation matrix
+        Utility::AABB bounds;                  ///< Bounds for culling
+        uint32_t layer = 1;                    ///< Render layer
+        bool castShadows = true;               ///< Whether the object casts shadows
+        bool receiveShadows = true;            ///< Whether the object receives shadows
     };
 
     /**
-     * @brief Rendering layers for categorizing objects
-     */
-    enum class RenderLayer
-    {
-        Default = 1,       ///< Default rendering layer
-        Transparent = 2,   ///< Transparent objects
-        UI = 4,            ///< User interface elements
-        Overlay = 8,       ///< Overlay elements
-        Debug = 16,        ///< Debug visualization
-        // Add more as needed
-    };
-
-    /**
-     * @brief Core rendering subsystem with pipeline management
+     * @brief Core rendering subsystem with forward+ pipeline management
      *
-     * The RenderSystem is responsible for managing rendering pipelines,
-     * handling rendering resources, and coordinating all rendering operations.
+     * The RenderSystem manages the forward+ rendering pipeline, spatial partitioning,
+     * and render queues. It's specialized for isometric 3D games with clustered lighting.
+     * All actual rendering is delegated to the pipeline stages while this system handles
+     * high-level coordination and resource management.
      */
     class RenderSystem : public Core::Subsystem
     {
@@ -70,7 +65,7 @@ namespace PixelCraft::Rendering
         /**
          * @brief Destructor
          */
-        ~RenderSystem() override;
+        virtual ~RenderSystem();
 
         /**
          * @brief Initialize the rendering subsystem
@@ -85,7 +80,7 @@ namespace PixelCraft::Rendering
         void update(float deltaTime) override;
 
         /**
-         * @brief Render the scene
+         * @brief Render the scene via the active pipeline
          */
         void render() override;
 
@@ -110,36 +105,39 @@ namespace PixelCraft::Rendering
         std::vector<std::string> getDependencies() const override;
 
         /**
-         * @brief Create a new render pipeline
-         * @param name The name of the pipeline
-         * @param pipeline The pipeline to register
+         * @brief Getter to check if render system is initialized
          */
-        void createRenderPipeline(const std::string& name, std::shared_ptr<RenderPipeline> pipeline);
-
-        /**
-         * @brief Get a render pipeline by name
-         * @param name The name of the pipeline to retrieve
-         * @return The requested pipeline or nullptr if not found
-         */
-        std::shared_ptr<RenderPipeline> getRenderPipeline(const std::string& name);
-
-        /**
-         * @brief Set the active render pipeline
-         * @param name The name of the pipeline to set as active
-         */
-        void setActivePipeline(const std::string& name);
-
-        /**
-         * @brief Get the name of the currently active pipeline
-         * @return The name of the active pipeline
-         */
-        const std::string& getActivePipeline() const;
+        bool isInitialized() const
+        {
+            return m_initialized;
+        }
 
         /**
          * @brief Submit an object to the render queue
          * @param renderable The object to render
          */
         void submitRenderable(const RenderableObject& renderable);
+
+        /**
+         * @brief Register a renderable object with spatial partitioning
+         * @param renderable The renderable to register
+         * @return ID assigned to the renderable
+         */
+        uint64_t registerRenderable(std::shared_ptr<Renderable> renderable);
+
+        /**
+         * @brief Unregister a renderable object
+         * @param id The ID of the renderable to unregister
+         * @return True if the renderable was found and unregistered
+         */
+        bool unregisterRenderable(uint64_t id);
+
+        /**
+         * @brief Update a renderable's position in spatial partitioning
+         * @param id The ID of the renderable to update
+         * @return True if the update was successful
+         */
+        bool updateRenderable(uint64_t id);
 
         /**
          * @brief Clear all render queues
@@ -150,13 +148,19 @@ namespace PixelCraft::Rendering
          * @brief Set the main camera for rendering
          * @param camera The camera to use for rendering
          */
-        void setMainCamera(const std::shared_ptr<Camera::Camera> camera);
+        void setMainCamera(const std::shared_ptr<Rendering::Cameras::Camera> camera);
 
         /**
          * @brief Get the main camera for rendering
          * @return The camera used for rendering
          */
-        std::shared_ptr<Camera::Camera> getMainCamera() const;
+        std::shared_ptr<Rendering::Cameras::Camera> getMainCamera() const;
+
+        /**
+         * @brief Get the current render pipeline
+         * @return The active render pipeline
+         */
+        std::shared_ptr<RenderPipeline> getRenderPipeline() const;
 
         /**
          * @brief Set the viewport dimensions
@@ -168,18 +172,65 @@ namespace PixelCraft::Rendering
         void setViewport(int x, int y, int width, int height);
 
         /**
-         * @brief Create a new shader
-         * @param name The name of the shader
-         * @return The created shader
+         * @brief Set the isometric view angle
+         * @param angle The isometric angle in degrees (default is 45)
          */
-        std::shared_ptr<Shader> createShader(const std::string& name);
+        void setIsometricAngle(float angle);
 
         /**
-         * @brief Create a new texture
-         * @param name The name of the texture
-         * @return The created texture
+         * @brief Get the isometric view angle
+         * @return The isometric angle in degrees
          */
-        std::shared_ptr<Texture> createTexture(const std::string& name);
+        float getIsometricAngle() const;
+
+        /**
+         * @brief Set the pixel grid alignment
+         * @param enabled Whether pixel alignment is enabled
+         */
+        void setPixelGridAlignment(bool enabled);
+
+        /**
+         * @brief Check if pixel grid alignment is enabled
+         * @return True if pixel grid alignment is enabled
+         */
+        bool isPixelGridAlignmentEnabled() const;
+
+        /**
+         * @brief Set whether to use depth sorting for transparent objects
+         * @param enabled Whether depth sorting is enabled
+         */
+        void setDepthSortingEnabled(bool enabled);
+
+        /**
+         * @brief Check if depth sorting is enabled
+         * @return True if depth sorting is enabled
+         */
+        bool isDepthSortingEnabled() const;
+
+        /**
+         * @brief Set whether to show debug visualization
+         * @param enabled Whether debug visualization is enabled
+         */
+        void setDebugVisualizationEnabled(bool enabled);
+
+        /**
+         * @brief Check if debug visualization is enabled
+         * @return True if debug visualization is enabled
+         */
+        bool isDebugVisualizationEnabled() const;
+
+        /**
+         * @brief Toggle for enabling/disabling debugging at runtime
+         * @param enabled Whether to enable/disable debugging at runtime
+         */
+        void toggleDebugging(bool enabled);
+
+        /**
+         * @brief Get a shader by delegating to ShaderManager
+         * @param name The name of the shader
+         * @return The shader or nullptr if not found
+         */
+        std::shared_ptr<Shader> getShader(const std::string& name);
 
         /**
          * @brief Create a new material
@@ -208,6 +259,12 @@ namespace PixelCraft::Rendering
         PaletteManager& getPaletteManager();
 
         /**
+         * @brief Get the clustered light culler
+         * @return Reference to the clustered light culler
+         */
+        ClusteredLightCuller& getClusteredLightCuller();
+
+        /**
          * @brief Draw a debug line
          * @param start The start point of the line
          * @param end The end point of the line
@@ -231,18 +288,6 @@ namespace PixelCraft::Rendering
         void drawSphere(const glm::vec3& center, float radius, const glm::vec3& color);
 
         /**
-         * @brief Take a screenshot
-         * @param filepath The path to save the screenshot to
-         */
-        void takeScreenshot(const std::string& filepath);
-
-        /**
-         * @brief Render the scene to a texture
-         * @param texture The texture to render to
-         */
-        void renderToTexture(std::shared_ptr<Texture> texture);
-
-        /**
          * @brief Get the number of draw calls in the last frame
          * @return The draw call count
          */
@@ -260,6 +305,36 @@ namespace PixelCraft::Rendering
          */
         int getVisibleObjectCount() const;
 
+        /**
+         * @brief Get statistics about the rendering
+         * @return String containing rendering statistics
+         */
+        std::string getRenderStats() const;
+
+        /**
+         * @brief Get the current render context
+         * @return Reference to the render context
+         */
+        const RenderContext& getRenderContext() const;
+
+        /**
+         * @brief Get the opaque render queue (for pipeline stages)
+         * @return Const reference to the opaque queue
+         */
+        const std::vector<RenderableObject>& getOpaqueQueue() const;
+
+        /**
+         * @brief Get the transparent render queue (for pipeline stages)
+         * @return Const reference to the transparent queue
+         */
+        const std::vector<RenderableObject>& getTransparentQueue() const;
+
+        /**
+         * @brief Get the UI render queue (for pipeline stages)
+         * @return Const reference to the UI queue
+         */
+        const std::vector<RenderableObject>& getUIQueue() const;
+
     private:
         /**
          * @brief Sort render queues by material and depth
@@ -267,13 +342,7 @@ namespace PixelCraft::Rendering
         void sortRenderQueues();
 
         /**
-         * @brief Submit a queue of renderables to the renderer
-         * @param queue The queue to render
-         */
-        void submitQueueToRenderer(const std::vector<RenderableObject>& queue);
-
-        /**
-         * @brief Perform frustum culling on objects
+         * @brief Perform frustum culling on objects using spatial partitioning
          */
         void cullObjects();
 
@@ -282,10 +351,84 @@ namespace PixelCraft::Rendering
          */
         void updateRenderStats();
 
+        /**
+         * @brief Convert a Renderable to a RenderableObject for submission
+         * @param renderable The Renderable to convert
+         * @return A RenderableObject suitable for rendering
+         */
+        RenderableObject convertToRenderableObject(const std::shared_ptr<Renderable>& renderable);
+
+        /**
+         * @brief Set up the isometric camera
+         */
+        void setupIsometricCamera();
+
+        /**
+         * @brief Get visible renderables using spatial partitioning
+         * @return Vector of visible renderables
+         */
+        std::vector<std::shared_ptr<Renderable>> getVisibleRenderables();
+
+        /**
+         * @brief Sort transparent objects by depth
+         * @param renderables The renderables to sort
+         */
+        void sortByDepth(std::vector<std::shared_ptr<Renderable>>& renderables);
+
+        /**
+         * @brief Apply pixel grid alignment to renderable transforms
+         * @param renderable The renderable to align
+         */
+        void applyPixelGridAlignment(std::shared_ptr<Renderable> renderable);
+
+        /**
+         * @brief Render debug visualization
+         */
+        void renderDebugVisualization();
+
+        /**
+         * @brief Setup debugging for the render pipeline
+         */
+        void setupPipelineDebugging();
+
+        /**
+         * @brief Pipeline debugging execution
+         */
+        void diagnosePipelineIssues();
+
+        /**
+         * @brief Quick pipeline debugging setup for immediate use
+         */
+        void quickDebugSetup();
+
+        /**
+         * @brief Custom stage configuration for pipeline debugging
+         */
+        void configureAdvancedDebugging();
+
+        /**
+         * @brief Collect rendering statistics
+         */
+        void collectRenderStats();
+
+        /**
+         * @brief Configure forward plus pipeline stages
+         */
+        void configurePipelineStages();
+
         // Core rendering state
         RenderContext m_renderContext;
-        std::unordered_map<std::string, std::shared_ptr<RenderPipeline>> m_pipelines;
-        std::string m_activePipeline;
+        std::shared_ptr<Rendering::Cameras::Camera> m_mainCamera;
+
+        // Rendering pipeline
+        std::shared_ptr<RenderPipeline> m_forwardPlusPipeline;
+
+        // Forward+ rendering components
+        std::unique_ptr<ClusteredLightCuller> m_clusteredLightCuller;
+
+        // Spatial partitioning for efficient culling
+        std::shared_ptr<Utility::Quadtree> m_spatialTree;
+        std::unordered_map<uint64_t, std::shared_ptr<Renderable>> m_registeredRenderables;
 
         // Rendering queues
         std::vector<RenderableObject> m_opaqueQueue;
@@ -298,12 +441,15 @@ namespace PixelCraft::Rendering
         int m_viewportWidth;
         int m_viewportHeight;
 
-        // Subsystems
-        std::unique_ptr<LightManager> m_lightManager;
-        std::unique_ptr<PaletteManager> m_paletteManager;
+        // Isometric-specific settings
+        float m_isometricAngle;
+        bool m_pixelGridAlignmentEnabled;
+        bool m_depthSortingEnabled;
+        bool m_debugVisualizationEnabled;
 
-        // Debug rendering
-        std::unique_ptr<Utility::LineBatchRenderer> m_debugRenderer;
+        // Subsystems
+        std::shared_ptr<LightManager> m_lightManager;
+        std::shared_ptr<PaletteManager> m_paletteManager;
 
         // Stats
         int m_drawCallCount;
@@ -311,7 +457,7 @@ namespace PixelCraft::Rendering
         int m_visibleObjectCount;
 
         // Initialization flag
-        bool m_initialized = false;
+        bool m_initialized;
     };
 
 } // namespace PixelCraft::Rendering

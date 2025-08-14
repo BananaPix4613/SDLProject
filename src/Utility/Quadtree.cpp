@@ -5,6 +5,7 @@
 #include "Core/Application.h"
 #include "Utility/DebugDraw.h"
 #include "Utility/StringUtils.h"
+#include "Utility/Frustum.h"
 #include "Utility/Ray.h"
 #include "Core/Logger.h"
 
@@ -12,7 +13,6 @@
 #include <Utility/Color.h>
 
 using StringUtils = PixelCraft::Utility::StringUtils;
-namespace Log = PixelCraft::Core;
 
 namespace PixelCraft::Utility
 {
@@ -243,7 +243,7 @@ namespace PixelCraft::Utility
                 closestPoint.y = std::max(objectMin.y, std::min(center.y, objectMax.y));
 
                 // Check if the closest point is within the circle
-                float distanceSquared = length2(closestPoint - center);
+                float distanceSquared = glm::dot(closestPoint - center, closestPoint - center);
                 if (distanceSquared <= radius * radius)
                 {
                     results.push_back(object);
@@ -361,7 +361,7 @@ namespace PixelCraft::Utility
             color = Color(0.8f, 0.2f, 0.2f, 0.2f);
         }
 
-        debugDraw.drawBox(aabb, color.rgba());
+        //debugDraw.drawBox(aabb, color.rgba());
 
         // Draw contained objects if requested
         if (drawObjects)
@@ -370,7 +370,7 @@ namespace PixelCraft::Utility
             {
                 AABB2D bounds2D = object->getBounds2D();
                 AABB objAABB = bounds2D.toAABB(minY, maxY);
-                debugDraw.drawBox(objAABB, glm::vec4(0.2f, 0.2f, 0.8f, 0.5f));
+                //debugDraw.drawBox(objAABB, glm::vec4(0.2f, 0.2f, 0.8f, 0.5f));
             }
         }
 
@@ -616,7 +616,7 @@ namespace PixelCraft::Utility
             m_config.minObjectsPerNode
         );
 
-        Log::info(StringUtils::format("Quadtree initialized with world bounds: ({}, {}) to ({}, {})",
+        Core::info(StringUtils::format("Quadtree initialized with world bounds: ({}, {}) to ({}, {})",
                                       m_worldBounds2D.getMin().x, m_worldBounds2D.getMin().y,
                                       m_worldBounds2D.getMax().x, m_worldBounds2D.getMax().y));
 
@@ -643,10 +643,7 @@ namespace PixelCraft::Utility
             return;
         }
 
-        // Get the debug drawing utility
-        auto& app = Core::Application::getInstance();
-
-        auto debugDraw = app.getSubsystem<DebugDraw>();
+        auto debugDraw = Core::Application::getInstance()->getSubsystem<DebugDraw>();
         if (!debugDraw)
         {
             return;
@@ -669,9 +666,7 @@ namespace PixelCraft::Utility
 
     std::vector<std::string> Quadtree::getDependencies() const
     {
-        return {
-            "DebugDraw" // Only needed for visualization
-        };
+        return {"MemoryManager", "DebugDraw"};
     }
 
     uint64_t Quadtree::insert(std::shared_ptr<ISpatialObject> object)
@@ -687,7 +682,7 @@ namespace PixelCraft::Utility
         // Check if the object is within the world bounds
         if (!m_worldBounds2D.intersects(wrapper->getBounds2D()))
         {
-            Log::warn("Object outside world bounds, cannot insert: ID " + object->getID());
+            Core::warn("Object outside world bounds, cannot insert: ID " + object->getID());
             return 0;
         }
 
@@ -838,7 +833,7 @@ namespace PixelCraft::Utility
             m_config.minObjectsPerNode
         );
 
-        Log::info("Quadtree cleared");
+        Core::info("Quadtree cleared");
     }
 
     void Quadtree::setWorldBounds(const AABB& bounds)
@@ -874,11 +869,11 @@ namespace PixelCraft::Utility
                 }
                 else
                 {
-                    Log::warn("Object outside new world bounds, not reinserted: ID " + id);
+                    Core::warn("Object outside new world bounds, not reinserted: ID " + id);
                 }
             }
 
-            Log::info(StringUtils::format("Quadtree world bounds updated: ({}, {}) to ({}, {})",
+            Core::info(StringUtils::format("Quadtree world bounds updated: ({}, {}) to ({}, {})",
                                           m_worldBounds2D.getMin().x, m_worldBounds2D.getMin().y,
                                           m_worldBounds2D.getMax().x, m_worldBounds2D.getMax().y));
         }
@@ -943,7 +938,7 @@ namespace PixelCraft::Utility
             {
                 // Perform a more precise 3D sphere test
                 glm::vec3 closestPoint = it->second->getBounds().getClosestPoint(center);
-                float distanceSquared = length2(closestPoint - center);
+                float distanceSquared = glm::dot(closestPoint - center, closestPoint - center);
 
                 if (distanceSquared <= radius * radius)
                 {
@@ -962,7 +957,7 @@ namespace PixelCraft::Utility
         glm::vec2 direction2D(ray.getDirection().x, ray.getDirection().z);
 
         // Normalize the 2D direction
-        float length = direction2D.length();
+        float length = static_cast<float>(direction2D.length());
         if (length > 0.0001f)
         {
             direction2D /= length;

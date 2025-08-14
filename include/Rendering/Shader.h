@@ -3,19 +3,27 @@
 // -------------------------------------------------------------------------
 #pragma once
 
+#include "Core/Resource.h"
+#include "Core/Logger.h"
+
 #include <memory>
 #include <string>
 #include <vector>
 #include <unordered_map>
 #include <type_traits>
+#include <glad/glad.h>
+#include <glm/glm.hpp>
 
-#include "Core/Resource.h"
-#include "Core/Logger.h"
-#include "glad/glad.h"
-#include "glm/glm.hpp"
+namespace PixelCraft::Utility
+{
+    class Color;
+}
 
 namespace PixelCraft::Rendering
 {
+
+    // Forward declarations
+    class Texture;
 
     /**
      * @brief Shader types supported by the engine
@@ -50,6 +58,11 @@ namespace PixelCraft::Rendering
     {
     public:
         /**
+         * @brief Default constructor
+         */
+        Shader();
+
+        /**
          * @brief Constructor
          * @param name Unique name for this shader resource
          */
@@ -58,7 +71,7 @@ namespace PixelCraft::Rendering
         /**
          * @brief Destructor
          */
-        virtual ~Shader();
+        ~Shader();
 
         /**
          * @brief Load the shader from associated source files
@@ -100,6 +113,13 @@ namespace PixelCraft::Rendering
         bool isValid() const;
 
         /**
+         * @brief Check if a uniform exists in the shader without logging warnings
+         * @param name The uniform name to check
+         * @return True if the uniform exists, false otherwise
+         */
+        bool hasUniform(const std::string& name);
+
+        /**
          * @brief Get the file paths for all shader stages
          * @return Map of shader types to file paths
          */
@@ -137,6 +157,13 @@ namespace PixelCraft::Rendering
         void dispatchCompute(uint32_t numGroupsX, uint32_t numGroupsY, uint32_t numGroupsZ);
 
         /**
+         * @brief Set a bool uniform value
+         * @param name The uniform name
+         * @param value The value to set
+         */
+        void setBool(const std::string& name, bool value);
+
+        /**
          * @brief Set a float uniform value
          * @param name The uniform name
          * @param value The value to set
@@ -158,6 +185,13 @@ namespace PixelCraft::Rendering
         void setVec2(const std::string& name, const glm::vec2& value);
 
         /**
+         * @brief Set a ivec2 uniform value
+         * @param name The uniform name
+         * @param value The value to set
+         */
+        void setIVec2(const std::string& name, const glm::ivec2& value);
+
+        /**
          * @brief Set a vec3 uniform value
          * @param name The uniform name
          * @param value The value to set
@@ -165,11 +199,25 @@ namespace PixelCraft::Rendering
         void setVec3(const std::string& name, const glm::vec3& value);
 
         /**
+         * @brief Set a ivec3 uniform value
+         * @param name The uniform name
+         * @param value The value to set
+         */
+        void setIVec3(const std::string& name, const glm::ivec3& value);
+
+        /**
          * @brief Set a vec4 uniform value
          * @param name The uniform name
          * @param value The value to set
          */
         void setVec4(const std::string& name, const glm::vec4& value);
+
+        /**
+         * @brief Set a ivec4 uniform value
+         * @param name The uniform name
+         * @param value The value to set
+         */
+        void setIVec4(const std::string& name, const glm::ivec4& value);
 
         /**
          * @brief Set a mat3 uniform value
@@ -192,41 +240,7 @@ namespace PixelCraft::Rendering
          * @param value The value to set
          */
         template<typename T>
-        void setUniform(const std::string& name, const T& value)
-        {
-            if constexpr (std::is_same_v<T, float>)
-            {
-                setFloat(name, value);
-            }
-            else if constexpr (std::is_same_v<T, int>)
-            {
-                setInt(name, value);
-            }
-            else if constexpr (std::is_same_v<T, glm::vec2>)
-            {
-                setVec2(name, value);
-            }
-            else if constexpr (std::is_same_v<T, glm::vec3>)
-            {
-                setVec3(name, value);
-            }
-            else if constexpr (std::is_same_v<T, glm::vec4>)
-            {
-                setVec4(name, value);
-            }
-            else if constexpr (std::is_same_v<T, glm::mat3>)
-            {
-                setMat3(name, value);
-            }
-            else if constexpr (std::is_same_v<T, glm::mat4>)
-            {
-                setMat4(name, value);
-            }
-            else
-            {
-                static_assert(false, "Unsupported uniform type");
-            }
-        }
+        void setUniform(const std::string& name, const T& value) = delete;
 
     private:
         /**
@@ -242,6 +256,13 @@ namespace PixelCraft::Rendering
          * @return The uniform location or -1 if not found
          */
         GLint getUniformLocation(const std::string& name);
+
+        /**
+         * @brief Get the location of a uniform without logging warnings
+         * @param name The uniform name
+         * @return The uniform location or -1 if not found
+         */
+        GLint getUniformLocationSilent(const std::string& name);
 
         /**
          * @brief Compile an individual shader stage
@@ -283,5 +304,19 @@ namespace PixelCraft::Rendering
         std::vector<ShaderAttribute> m_attributes;
         bool m_isValid;
     };
+
+    // Template specializations for setUniform
+    template<> void Shader::setUniform<float>(const std::string& name, const float& value);
+    template<> void Shader::setUniform<int>(const std::string& name, const int& value);
+    template<> void Shader::setUniform<glm::vec2>(const std::string& name, const glm::vec2& value);
+    template<> void Shader::setUniform<glm::ivec2>(const std::string& name, const glm::ivec2& value);
+    template<> void Shader::setUniform<glm::vec3>(const std::string& name, const glm::vec3& value);
+    template<> void Shader::setUniform<glm::ivec3>(const std::string& name, const glm::ivec3& value);
+    template<> void Shader::setUniform<glm::vec4>(const std::string& name, const glm::vec4& value);
+    template<> void Shader::setUniform<glm::ivec4>(const std::string& name, const glm::ivec4& value);
+    template<> void Shader::setUniform<glm::mat3>(const std::string& name, const glm::mat3& value);
+    template<> void Shader::setUniform<glm::mat4>(const std::string& name, const glm::mat4& value);
+    template<> void Shader::setUniform<Utility::Color>(const std::string& name, const Utility::Color& value);
+    template<> void Shader::setUniform<std::shared_ptr<Texture>>(const std::string& name, const std::shared_ptr<Texture>& value);
 
 } // namespace PixelCraft::Rendering

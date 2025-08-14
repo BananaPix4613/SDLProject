@@ -11,7 +11,7 @@
 #include <mutex>
 #include <shared_mutex>
 
-#include "ECS/Types.h"
+#include "ECS/ComponentTypes.h"
 #include "ECS/UUID.h"
 
 namespace PixelCraft::ECS

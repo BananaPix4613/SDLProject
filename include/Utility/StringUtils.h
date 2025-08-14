@@ -7,6 +7,7 @@
 #include <vector>
 #include <cstdint>
 #include <functional>
+#include <sstream>
 #include <glm/glm.hpp>
 
 namespace PixelCraft::Utility
@@ -183,6 +184,8 @@ namespace PixelCraft::Utility
          * @param format The format string
          * @param args The arguments to format
          * @return The formatted string
+         * @note This function only accepts primitive types (int, float, double, const char*)
+         *       For std::string arguments, use .c_str() to convert to const char*
          */
         template<typename... Args>
         static std::string format(const std::string& format, Args&&... args);
@@ -388,29 +391,54 @@ namespace PixelCraft::Utility
         // Prevent instantiation
         StringUtils() = delete;
         ~StringUtils() = delete;
+
+        // Helper to convert arguments to printf-compatible types
+        template<typename T>
+        static auto toPrintfArg(T&& arg) -> typename std::enable_if<
+            std::is_arithmetic<typename std::decay<T>::type>::value ||
+            std::is_same<typename std::decay<T>::type, char*>::value ||
+            std::is_same<typename std::decay<T>::type, const char*>::value,
+            T&&>::type
+        {
+            return std::forward<T>(arg);
+        }
+
+        // Overload for std::string - convert to const char*
+        static const char* toPrintfArg(const std::string& str)
+        {
+            return str.c_str();
+        }
     };
 
     // Template implementation for format
     template<typename... Args>
     std::string StringUtils::format(const std::string& format, Args&&... args)
     {
-        // Calculate the required buffer size
-        int size = std::snprintf(nullptr, 0, format.c_str(), std::forward<Args>(args)...);
+        // Convert arguments to printf-compatible types
+        auto convertedArgs = std::make_tuple(toPrintfArg(std::forward<Args>(args))...);
+        
+        // Calculate the required buffer size using a lambda to unpack the tuple
+        auto calculateSize = [&format](auto&&... convertedArgs) {
+            return std::snprintf(nullptr, 0, format.c_str(), convertedArgs...);
+        };
+        
+        int size = std::apply(calculateSize, convertedArgs);
         if (size <= 0)
         {
             return "";
         }
 
         // Allocate buffer of required size (+1 for null terminator)
-        std::string buffer(size + 1, '\0');
+        std::vector<char> buffer(size + 1);
 
-        // Format the string
-        std::snprintf(&buffer[0], size + 1, format.c_str(), std::forward<Args>(args)...);
+        // Format the string using the converted arguments
+        auto formatString = [&format, &buffer, size](auto&&... convertedArgs) {
+            std::snprintf(buffer.data(), size + 1, format.c_str(), convertedArgs...);
+        };
+        
+        std::apply(formatString, convertedArgs);
 
-        // Remove the null terminator from the string
-        buffer.resize(size);
-
-        return buffer;
+        return std::string(buffer.data(), size);
     }
 
 } // namespace PixelCraft::Utility

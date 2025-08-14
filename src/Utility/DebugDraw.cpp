@@ -1,34 +1,28 @@
 // -------------------------------------------------------------------------
 // DebugDraw.cpp
 // -------------------------------------------------------------------------
+#include <glad/glad.h>
+
 #include "Utility/DebugDraw.h"
+#include "Utility/Color.h"
 #include "Core/Logger.h"
 #include "Core/Application.h"
+#include "Core/ResourceManager.h"
 #include "Rendering/RenderSystem.h"
+#include "Rendering/ShaderManager.h"
+#include "Rendering/Cameras/Camera.h"
+#include "Rendering/Texture.h"
+#include "Rendering/Mesh.h"
 
 #include <algorithm>
 #include <cmath>
 #include <mutex>
 
-namespace Log = PixelCraft::Core;
-
 namespace PixelCraft::Utility
 {
 
     // Static members initialization
-    DebugDraw* DebugDraw::s_instance = nullptr;
     std::mutex DebugDraw::s_mutex;
-
-    // Singleton accessor
-    DebugDraw& DebugDraw::getInstance()
-    {
-        std::lock_guard<std::mutex> lock(s_mutex);
-        if (s_instance == nullptr)
-        {
-            s_instance = new DebugDraw();
-        }
-        return *s_instance;
-    }
 
     DebugDraw::DebugDraw()
         : m_lineVAO(0)
@@ -54,25 +48,17 @@ namespace PixelCraft::Utility
     {
         if (m_initialized)
         {
-            Log::warn("DebugDraw already initialized");
+            Core::warn("DebugDraw already initialized");
             return true;
         }
 
-        Log::info("Initializing DebugDraw subsystem");
+        Core::info("Initializing DebugDraw subsystem");
 
         // Get the render system from the application
-        auto renderSystem = Core::Application::getInstance().getSubsystem<Rendering::RenderSystem>();
+        auto renderSystem = Core::Application::getInstance()->getSubsystem<Rendering::RenderSystem>();
         if (!renderSystem)
         {
-            Log::error("DebugDraw initialization failed: RenderSystem not found");
-            return false;
-        }
-
-        // Load the debug shader
-        m_shader = renderSystem->getResourceManager()->createResource<Rendering::Shader>("DebugDraw");
-        if (!m_shader)
-        {
-            Log::error("DebugDraw initialization failed: Failed to create shader");
+            Core::error("DebugDraw initialization failed: RenderSystem not found");
             return false;
         }
 
@@ -91,7 +77,7 @@ namespace PixelCraft::Utility
             gl_Position = uViewProjection * uModel * vec4(aPos, 1.0);
             vertexColor = aColor;
         }
-    )";
+        )";
 
         const char* fragmentShaderSource = R"(
         #version 330 core
@@ -102,12 +88,14 @@ namespace PixelCraft::Utility
         void main() {
             FragColor = vertexColor;
         }
-    )";
+        )";
 
-        // Compile shader
-        if (!m_shader->compileFromSource(vertexShaderSource, fragmentShaderSource))
+        // Load and compile the debug shader
+        auto shaderSystem = Core::Application::getInstance()->getSubsystem<Rendering::ShaderManager>();
+        m_shader = shaderSystem->createStandardShader("DebugDraw", vertexShaderSource, fragmentShaderSource);
+        if (!m_shader)
         {
-            Log::error("DebugDraw initialization failed: Failed to compile shader");
+            Core::error("DebugDraw initialization failed: Failed to create shader");
             return false;
         }
 
@@ -137,10 +125,10 @@ namespace PixelCraft::Utility
         glGenBuffers(1, &m_billboardVBO);
 
         // Load font texture
-        m_fontTexture = renderSystem->getResourceManager()->loadResource<Rendering::Texture>("Fonts/DebugFont.png");
+        m_fontTexture = Core::Application::getInstance()->getSubsystem<Core::ResourceManager>()->load<Rendering::Texture>("Fonts/DebugFont.png");
         if (!m_fontTexture)
         {
-            Log::warn("DebugDraw: Failed to load debug font texture");
+            Core::warn("DebugDraw: Failed to load debug font texture");
             // Continue without text rendering capability
         }
 
@@ -151,6 +139,21 @@ namespace PixelCraft::Utility
         return true;
     }
 
+    void DebugDraw::update(float deltaTime)
+    {
+        if (!m_initialized)
+        {
+            return;
+        }
+
+        m_currentTime += deltaTime;
+    }
+
+    void DebugDraw::render()
+    {
+        // Debug draw has no personal debug info to render
+    }
+
     void DebugDraw::shutdown()
     {
         if (!m_initialized)
@@ -158,7 +161,7 @@ namespace PixelCraft::Utility
             return;
         }
 
-        Log::info("Shutting down DebugDraw subsystem");
+        Core::info("Shutting down DebugDraw subsystem");
 
         // Delete OpenGL resources
         glDeleteVertexArrays(1, &m_lineVAO);
@@ -184,6 +187,11 @@ namespace PixelCraft::Utility
         m_fontTexture.reset();
 
         m_initialized = false;
+    }
+
+    std::vector<std::string> DebugDraw::getDependencies() const
+    {
+        return {"RenderSystem"};
     }
 
     void DebugDraw::begin()
@@ -250,7 +258,7 @@ namespace PixelCraft::Utility
         auto camera = m_camera.lock();
         if (!camera)
         {
-            Log::warn("DebugDraw::flush - No camera set");
+            Core::warn("DebugDraw::flush - No camera set");
             return;
         }
 
@@ -273,7 +281,7 @@ namespace PixelCraft::Utility
     }
 
     void DebugDraw::drawLine(const glm::vec3& start, const glm::vec3& end,
-                             const glm::vec4& color, float thickness,
+                             const Color& color, float thickness,
                              float duration, bool depthTest)
     {
         if (!m_initialized)
@@ -294,7 +302,7 @@ namespace PixelCraft::Utility
     }
 
     void DebugDraw::drawRay(const glm::vec3& origin, const glm::vec3& direction,
-                            float length, const glm::vec4& color, float thickness,
+                            float length, const Color& color, float thickness,
                             float duration, bool depthTest)
     {
         if (!m_initialized)
@@ -308,7 +316,7 @@ namespace PixelCraft::Utility
     }
 
     void DebugDraw::drawLineStrip(const std::vector<glm::vec3>& points,
-                                  const glm::vec4& color, float thickness,
+                                  const Color& color, float thickness,
                                   float duration, bool depthTest)
     {
         if (!m_initialized || points.size() < 2)
@@ -323,7 +331,7 @@ namespace PixelCraft::Utility
     }
 
     void DebugDraw::drawBox(const glm::vec3& center, const glm::vec3& dimensions,
-                            const glm::quat& rotation, const glm::vec4& color,
+                            const glm::quat& rotation, const Color& color,
                             bool wireframe, float duration, bool depthTest)
     {
         if (!m_initialized)
@@ -345,7 +353,7 @@ namespace PixelCraft::Utility
         m_shapes.push_back(shape);
     }
 
-    void DebugDraw::drawBox(const AABB& aabb, const glm::vec4& color,
+    void DebugDraw::drawBox(const AABB& aabb, const Color& color,
                             bool wireframe, float duration, bool depthTest)
     {
         if (!m_initialized)
@@ -359,7 +367,7 @@ namespace PixelCraft::Utility
     }
 
     void DebugDraw::drawSphere(const glm::vec3& center, float radius,
-                               const glm::vec4& color, bool wireframe,
+                               const Color& color, bool wireframe,
                                int segments, float duration, bool depthTest)
     {
         if (!m_initialized)
@@ -374,6 +382,7 @@ namespace PixelCraft::Utility
         shape.scale = glm::vec3(radius);
         shape.color = color;
         shape.wireframe = wireframe;
+        shape.segments = segments;
         shape.duration = duration;
         shape.depthTest = depthTest;
         shape.creationTime = m_currentTime;
@@ -382,7 +391,7 @@ namespace PixelCraft::Utility
     }
 
     void DebugDraw::drawCylinder(const glm::vec3& base, const glm::vec3& top,
-                                 float radius, const glm::vec4& color, bool wireframe,
+                                 float radius, const Color& color, bool wireframe,
                                  int segments, float duration, bool depthTest)
     {
         if (!m_initialized)
@@ -428,6 +437,7 @@ namespace PixelCraft::Utility
         shape.scale = glm::vec3(radius, height * 0.5f, radius);
         shape.color = color;
         shape.wireframe = wireframe;
+        shape.segments = segments;
         shape.duration = duration;
         shape.depthTest = depthTest;
         shape.creationTime = m_currentTime;
@@ -436,7 +446,7 @@ namespace PixelCraft::Utility
     }
 
     void DebugDraw::drawCone(const glm::vec3& apex, const glm::vec3& direction,
-                             float length, float radius, const glm::vec4& color,
+                             float length, float radius, const Color& color,
                              bool wireframe, int segments, float duration, bool depthTest)
     {
         if (!m_initialized)
@@ -481,6 +491,7 @@ namespace PixelCraft::Utility
         shape.scale = glm::vec3(radius, length * 0.5f, radius);
         shape.color = color;
         shape.wireframe = wireframe;
+        shape.segments = segments;
         shape.duration = duration;
         shape.depthTest = depthTest;
         shape.creationTime = m_currentTime;
@@ -489,7 +500,7 @@ namespace PixelCraft::Utility
     }
 
     void DebugDraw::drawCapsule(const glm::vec3& start, const glm::vec3& end,
-                                float radius, const glm::vec4& color, bool wireframe,
+                                float radius, const Color& color, bool wireframe,
                                 int segments, float duration, bool depthTest)
     {
         if (!m_initialized)
@@ -535,6 +546,7 @@ namespace PixelCraft::Utility
         shape.scale = glm::vec3(radius, (height * 0.5f) + radius, radius);
         shape.color = color;
         shape.wireframe = wireframe;
+        shape.segments = segments;
         shape.duration = duration;
         shape.depthTest = depthTest;
         shape.creationTime = m_currentTime;
@@ -543,7 +555,7 @@ namespace PixelCraft::Utility
     }
 
     void DebugDraw::drawArrow(const glm::vec3& start, const glm::vec3& end,
-                              float headSize, const glm::vec4& color,
+                              float headSize, const Color& color,
                               float thickness, float duration, bool depthTest)
     {
         if (!m_initialized)
@@ -597,7 +609,7 @@ namespace PixelCraft::Utility
     }
 
     void DebugDraw::drawCircle(const glm::vec3& center, float radius,
-                               const glm::vec3& normal, const glm::vec4& color,
+                               const glm::vec3& normal, const Color& color,
                                int segments, float duration, bool depthTest)
     {
         if (!m_initialized)
@@ -639,7 +651,7 @@ namespace PixelCraft::Utility
         drawLineStrip(points, color, 1.0f, duration, depthTest);
     }
 
-    void DebugDraw::drawFrustum(const Frustum& frustum, const glm::vec4& color,
+    void DebugDraw::drawFrustum(const Frustum& frustum, const Color& color,
                                 float duration, bool depthTest)
     {
         if (!m_initialized)
@@ -670,7 +682,7 @@ namespace PixelCraft::Utility
     }
 
     void DebugDraw::drawGrid(const glm::vec3& center, const glm::vec2& size,
-                             float cellSize, const glm::vec4& color, bool xzPlane,
+                             float cellSize, const Color& color, bool xzPlane,
                              float duration, bool depthTest)
     {
         if (!m_initialized)
@@ -749,19 +761,19 @@ namespace PixelCraft::Utility
 
         // X axis (red)
         drawLine(position, position + glm::vec3(size, 0.0f, 0.0f),
-                 glm::vec4(1.0f, 0.0f, 0.0f, 1.0f), 1.0f, duration, depthTest);
+                 Color(1.0f, 0.0f, 0.0f, 1.0f), 1.0f, duration, depthTest);
 
         // Y axis (green)
         drawLine(position, position + glm::vec3(0.0f, size, 0.0f),
-                 glm::vec4(0.0f, 1.0f, 0.0f, 1.0f), 1.0f, duration, depthTest);
+                 Color(0.0f, 1.0f, 0.0f, 1.0f), 1.0f, duration, depthTest);
 
         // Z axis (blue)
         drawLine(position, position + glm::vec3(0.0f, 0.0f, size),
-                 glm::vec4(0.0f, 0.0f, 1.0f, 1.0f), 1.0f, duration, depthTest);
+                 Color(0.0f, 0.0f, 1.0f, 1.0f), 1.0f, duration, depthTest);
     }
 
     void DebugDraw::drawText(const std::string& text, const glm::vec3& position,
-                             const glm::vec4& color, float size, bool billboard,
+                             const Color& color, float size, bool billboard,
                              float duration, bool depthTest)
     {
         if (!m_initialized)
@@ -783,7 +795,7 @@ namespace PixelCraft::Utility
     }
 
     void DebugDraw::draw2DText(const std::string& text, const glm::vec2& position,
-                               const glm::vec4& color, float size, float duration)
+                               const Color& color, float size, float duration)
     {
         if (!m_initialized)
         {
@@ -804,7 +816,7 @@ namespace PixelCraft::Utility
     }
 
     void DebugDraw::drawRect2D(const glm::vec2& position, const glm::vec2& size,
-                               const glm::vec4& color, bool filled, float duration)
+                               const Color& color, bool filled, float duration)
     {
         if (!m_initialized)
         {
@@ -836,7 +848,7 @@ namespace PixelCraft::Utility
     }
 
     void DebugDraw::drawCircle2D(const glm::vec2& center, float radius,
-                                 const glm::vec4& color, bool filled,
+                                 const Color& color, bool filled,
                                  int segments, float duration)
     {
         if (!m_initialized)
@@ -877,7 +889,7 @@ namespace PixelCraft::Utility
     }
 
     void DebugDraw::drawLine2D(const glm::vec2& start, const glm::vec2& end,
-                               const glm::vec4& color, float thickness, float duration)
+                               const Color& color, float thickness, float duration)
     {
         if (!m_initialized)
         {
@@ -896,19 +908,9 @@ namespace PixelCraft::Utility
         m_lines2D.push_back(line);
     }
 
-    void DebugDraw::setCamera(std::weak_ptr<Camera> camera)
+    void DebugDraw::setCamera(std::weak_ptr<Rendering::Cameras::Camera> camera)
     {
         m_camera = camera;
-    }
-
-    void DebugDraw::update(float deltaTime)
-    {
-        if (!m_initialized)
-        {
-            return;
-        }
-
-        m_currentTime += deltaTime;
     }
 
     void DebugDraw::renderLines()
@@ -967,19 +969,19 @@ namespace PixelCraft::Utility
                 lineData.push_back(line.start.x);
                 lineData.push_back(line.start.y);
                 lineData.push_back(line.start.z);
-                lineData.push_back(line.color.r);
-                lineData.push_back(line.color.g);
-                lineData.push_back(line.color.b);
-                lineData.push_back(line.color.a);
+                lineData.push_back(line.color.r());
+                lineData.push_back(line.color.g());
+                lineData.push_back(line.color.b());
+                lineData.push_back(line.color.a());
 
                 // End point
                 lineData.push_back(line.end.x);
                 lineData.push_back(line.end.y);
                 lineData.push_back(line.end.z);
-                lineData.push_back(line.color.r);
-                lineData.push_back(line.color.g);
-                lineData.push_back(line.color.b);
-                lineData.push_back(line.color.a);
+                lineData.push_back(line.color.r());
+                lineData.push_back(line.color.g());
+                lineData.push_back(line.color.b());
+                lineData.push_back(line.color.a());
             }
 
             // Upload line data
@@ -1007,19 +1009,19 @@ namespace PixelCraft::Utility
                 lineData.push_back(line.start.x);
                 lineData.push_back(line.start.y);
                 lineData.push_back(line.start.z);
-                lineData.push_back(line.color.r);
-                lineData.push_back(line.color.g);
-                lineData.push_back(line.color.b);
-                lineData.push_back(line.color.a);
+                lineData.push_back(line.color.r());
+                lineData.push_back(line.color.g());
+                lineData.push_back(line.color.b());
+                lineData.push_back(line.color.a());
 
                 // End point
                 lineData.push_back(line.end.x);
                 lineData.push_back(line.end.y);
                 lineData.push_back(line.end.z);
-                lineData.push_back(line.color.r);
-                lineData.push_back(line.color.g);
-                lineData.push_back(line.color.b);
-                lineData.push_back(line.color.a);
+                lineData.push_back(line.color.r());
+                lineData.push_back(line.color.g());
+                lineData.push_back(line.color.b());
+                lineData.push_back(line.color.a());
             }
 
             // Upload line data
@@ -1327,19 +1329,19 @@ namespace PixelCraft::Utility
                 lineData.push_back(line.start.x);
                 lineData.push_back(line.start.y);
                 lineData.push_back(line.start.z);
-                lineData.push_back(line.color.r);
-                lineData.push_back(line.color.g);
-                lineData.push_back(line.color.b);
-                lineData.push_back(line.color.a);
+                lineData.push_back(line.color.r());
+                lineData.push_back(line.color.g());
+                lineData.push_back(line.color.b());
+                lineData.push_back(line.color.a());
 
                 // End point
                 lineData.push_back(line.end.x);
                 lineData.push_back(line.end.y);
                 lineData.push_back(line.end.z);
-                lineData.push_back(line.color.r);
-                lineData.push_back(line.color.g);
-                lineData.push_back(line.color.b);
-                lineData.push_back(line.color.a);
+                lineData.push_back(line.color.r());
+                lineData.push_back(line.color.g());
+                lineData.push_back(line.color.b());
+                lineData.push_back(line.color.a());
             }
 
             // Upload line data
@@ -1360,7 +1362,7 @@ namespace PixelCraft::Utility
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-            m_fontTexture->bind(0);
+            //m_fontTexture->bind(0);
             m_shader->setUniform("uFontTexture", 0);
 
             glBindVertexArray(m_textVAO);
@@ -1395,17 +1397,17 @@ namespace PixelCraft::Utility
     void DebugDraw::createPrimitiveMeshes()
     {
         // Get the render system
-        auto renderSystem = Core::Application::getInstance().getSubsystem<Rendering::RenderSystem>();
+        auto renderSystem = Core::Application::getInstance()->getSubsystem<Rendering::RenderSystem>();
         if (!renderSystem)
         {
-            Log::error("DebugDraw::createPrimitiveMeshes - RenderSystem not found");
+            Core::error("DebugDraw::createPrimitiveMeshes - RenderSystem not found");
             return;
         }
 
-        auto resourceManager = renderSystem->getResourceManager();
+        auto resourceManager = Core::Application::getInstance()->getSubsystem<Core::ResourceManager>();
         if (!resourceManager)
         {
-            Log::error("DebugDraw::createPrimitiveMeshes - ResourceManager not found");
+            Core::error("DebugDraw::createPrimitiveMeshes - ResourceManager not found");
             return;
         }
 
@@ -1413,52 +1415,66 @@ namespace PixelCraft::Utility
         m_boxMesh = resourceManager->createResource<Rendering::Mesh>("DebugBox");
         if (m_boxMesh)
         {
-            // Box vertices, normals, UVs, and indices would be set here
-            // For simplicity, we're not showing the full implementation
-            m_boxMesh->createBox(glm::vec3(1.0f, 1.0f, 1.0f));
+            m_boxMesh->createBox();
         }
 
         // Create a sphere mesh
         m_sphereMesh = resourceManager->createResource<Rendering::Mesh>("DebugSphere");
         if (m_sphereMesh)
         {
-            m_sphereMesh->createSphere(1.0f, 16, 16);
+            m_sphereMesh->createSphere();
         }
 
         // Create a cylinder mesh
         m_cylinderMesh = resourceManager->createResource<Rendering::Mesh>("DebugCylinder");
         if (m_cylinderMesh)
         {
-            m_cylinderMesh->createCylinder(1.0f, 1.0f, 16);
+            m_cylinderMesh->createCylinder();
         }
 
         // Create a cone mesh
         m_coneMesh = resourceManager->createResource<Rendering::Mesh>("DebugCone");
         if (m_coneMesh)
         {
-            m_coneMesh->createCone(1.0f, 1.0f, 16);
+            m_coneMesh->createCone();
         }
     }
 
     // Global convenience functions
-    void drawLine(const glm::vec3& start, const glm::vec3& end, const glm::vec4& color)
+    void drawLine(const glm::vec3& start, const glm::vec3& end, const Color& color)
     {
-        DebugDraw::getInstance().drawLine(start, end, color);
+        auto debugDraw = PixelCraft::Core::Application::getInstance()->getSubsystem<DebugDraw>();
+        if (debugDraw)
+        {
+            debugDraw->drawLine(start, end, color);
+        }
     }
 
-    void drawBox(const glm::vec3& center, const glm::vec3& dimensions, const glm::vec4& color)
+    void drawBox(const glm::vec3& center, const glm::vec3& dimensions, const Color& color)
     {
-        DebugDraw::getInstance().drawBox(center, dimensions, glm::quat(1.0f, 0.0f, 0.0f, 0.0f), color);
+        auto debugDraw = PixelCraft::Core::Application::getInstance()->getSubsystem<DebugDraw>();
+        if (debugDraw)
+        {
+            debugDraw->drawBox(center, dimensions, glm::quat(1.0f, 0.0f, 0.0f, 0.0f), color);
+        }
     }
 
-    void drawSphere(const glm::vec3& center, float radius, const glm::vec4& color)
+    void drawSphere(const glm::vec3& center, float radius, const Color& color)
     {
-        DebugDraw::getInstance().drawSphere(center, radius, color);
+        auto debugDraw = PixelCraft::Core::Application::getInstance()->getSubsystem<DebugDraw>();
+        if (debugDraw)
+        {
+            debugDraw->drawSphere(center, radius, color);
+        }
     }
 
-    void drawText(const std::string& text, const glm::vec3& position, const glm::vec4& color)
+    void drawText(const std::string& text, const glm::vec3& position, const Color& color)
     {
-        DebugDraw::getInstance().drawText(text, position, color);
+        auto debugDraw = PixelCraft::Core::Application::getInstance()->getSubsystem<DebugDraw>();
+        if (debugDraw)
+        {
+            debugDraw->drawText(text, position, color);
+        }
     }
 
 } // namespace PixelCraft::Utility

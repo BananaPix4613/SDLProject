@@ -5,6 +5,8 @@
 
 #include "Core/Resource.h"
 #include "Core/ThreadSafeQueue.h"
+#include "Core/Subsystem.h"
+
 #include <unordered_map>
 #include <typeindex>
 #include <memory>
@@ -13,31 +15,62 @@
 #include <atomic>
 #include <filesystem>
 
+// In namespace PixelCraft
 namespace PixelCraft::Core
 {
 
     /**
      * @brief Unified resource loading, caching, and hot-reloading
      */
-    class ResourceManager
+    class ResourceManager : public Core::Subsystem
     {
     public:
         /**
-         * @brief Get the singleton instance
-         * @return Reference to the ResourceManager instance
+         * @brief Constructor
          */
-        static ResourceManager& getInstance();
+        ResourceManager();
+
+        /**
+         * @brief Destructor
+         */
+        virtual ~ResourceManager();
 
         /**
          * @brief Initialize the resource manager
          * @return True if initialization was successful
          */
-        bool initialize();
+        bool initialize() override;
+
+        /**
+         * @brief Update the resource manager (checks for hot-reloading)
+         * @param deltaTime Time since last update
+         */
+        void update(float deltaTime) override;
+
+        /**
+         * @brief Render debug info (if enabled)
+         */
+        void render() override;
 
         /**
          * @brief Shut down the resource manager and release resources
          */
-        void shutdown();
+        void shutdown() override;
+
+        /**
+         * @brief Get the name of the subsystem
+         * @return The subsystem name
+         */
+        std::string getName() const override
+        {
+            return "ResourceManager";
+        }
+
+        /**
+         * @brief Get dependencies required by this subsystem
+         * @return List of dependency subsystem names
+         */
+        std::vector<std::string> getDependencies() const override;
 
         /**
          * @brief Load a resource of the specified type
@@ -295,23 +328,11 @@ namespace PixelCraft::Core
 
     private:
         /**
-         * @brief Constructor (private for singleton)
-         */
-        ResourceManager();
-
-        /**
-         * @brief Destructor
-         */
-        ~ResourceManager();
-
-        // Prevent copying
-        ResourceManager(const ResourceManager&) = delete;
-        ResourceManager& operator=(const ResourceManager&) = delete;
-
-        /**
          * @brief Async loading thread function
          */
         void asyncLoadingThreadFunc();
+
+        bool m_initialized;
 
         // Type-specific resource maps
         std::unordered_map<std::type_index, std::unordered_map<std::string, std::shared_ptr<Resource>>> m_resources;

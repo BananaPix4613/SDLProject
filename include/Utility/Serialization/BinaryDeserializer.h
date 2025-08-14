@@ -8,6 +8,8 @@
 #include <istream>
 #include <stack>
 #include <unordered_map>
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 namespace PixelCraft::Utility::Serialization
 {
@@ -112,6 +114,69 @@ namespace PixelCraft::Utility::Serialization
         SerializationResult readDouble(double& value) override;
 
         /**
+         * @brief Read a glm::vec2 value
+         * @param value Output parameter for glm::vec2 value
+         * @return Result of the operation
+         */
+        SerializationResult readVec2(glm::vec2& value);
+
+        /**
+         * @brief Read a glm::ivec2 value
+         * @param value Output parameter for glm::ivec2 value
+         * @return Result of the operation
+         */
+        SerializationResult readIVec2(glm::ivec2& value);
+
+        /**
+         * @brief Read a glm::vec3 value
+         * @param value Output parameter for glm::vec3 value
+         * @return Result of the operation
+         */
+        SerializationResult readVec3(glm::vec3& value);
+
+        /**
+         * @brief Read a glm::ivec3 value
+         * @param value Output parameter for glm::ivec3 value
+         * @return Result of the operation
+         */
+        SerializationResult readIVec3(glm::ivec3& value);
+
+        /**
+         * @brief Read a glm::vec4 value
+         * @param value Output parameter for glm::vec4 value
+         * @return Result of the operation
+         */
+        SerializationResult readVec4(glm::vec4& value);
+
+        /**
+         * @brief Read a glm::ivec4 value
+         * @param value Output parameter for glm::ivec4 value
+         * @return Result of the operation
+         */
+        SerializationResult readIVec4(glm::ivec4& value);
+
+        /**
+         * @brief Read a glm::mat3 value
+         * @param value Output parameter for glm::mat3 value
+         * @return Result of the operation
+         */
+        SerializationResult readMat3(glm::mat3& value);
+
+        /**
+         * @brief Read a glm::mat4 value
+         * @param value Output parameter for glm::mat4 value
+         * @return Result of the operation
+         */
+        SerializationResult readMat4(glm::mat4& value);
+
+        /**
+         * @brief Read a glm::quat value
+         * @param value Output parameter for glm::quat value
+         * @return Result of the operation
+         */
+        SerializationResult readQuat(glm::quat& value);
+
+        /**
          * @brief Read a string value
          * @param value Output parameter for string value
          * @return Result of the operation
@@ -132,7 +197,7 @@ namespace PixelCraft::Utility::Serialization
          * @param entityId Output parameter for entity ID
          * @return Result of the operation
          */
-        SerializationResult readEntityRef(uint64_t& entityId) override;
+        SerializationResult readEntityRef(uint32_t& entityId) override;
 
         /**
          * @brief Read a resource reference

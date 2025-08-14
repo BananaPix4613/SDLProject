@@ -9,7 +9,6 @@
 #include "Utility/StringUtils.h"
 
 using StringUtils = PixelCraft::Utility::StringUtils;
-namespace Log = PixelCraft::Core;
 
 namespace PixelCraft::Utility
 {
@@ -340,14 +339,14 @@ namespace PixelCraft::Utility
             color = Color(0.8f, 0.2f, 0.2f, 0.2f);
         }
 
-        debugDraw.drawBox(m_bounds, color.rgba(), false, 5.0f, false);
+        debugDraw.drawBox(m_bounds, color, false, 5.0f, false);
 
         // Draw contained objects if requested
         if (drawObjects)
         {
             for (const auto& object : m_objects)
             {
-                debugDraw.drawBox(object->getBounds(), glm::vec4(0.2f, 0.2f, 0.8f, 0.5f), false, 5.0f, false);
+                debugDraw.drawBox(object->getBounds(), Color(0.2f, 0.2f, 0.8f, 0.5f), false, 5.0f, false);
             }
         }
 
@@ -592,7 +591,7 @@ namespace PixelCraft::Utility
             m_config.minObjectsPerNode
         );
 
-        Log::info(StringUtils::format("Octree initialized with world bounds: ({}, {}, {}) to ({}, {}, {})",
+        Core::info(StringUtils::format("Octree initialized with world bounds: ({}, {}, {}) to ({}, {}, {})",
                                       m_worldBounds.getMin().x, m_worldBounds.getMin().y, m_worldBounds.getMin().z,
                                       m_worldBounds.getMax().x, m_worldBounds.getMax().y, m_worldBounds.getMax().z));
 
@@ -619,10 +618,7 @@ namespace PixelCraft::Utility
             return;
         }
 
-        // Get the debug drawing utility
-        auto& app = Core::Application::getInstance();
-
-        auto debugDraw = app.getSubsystem<DebugDraw>();
+        auto debugDraw = Core::Application::getInstance()->getSubsystem<DebugDraw>();
         if (!debugDraw)
         {
             return;
@@ -645,9 +641,7 @@ namespace PixelCraft::Utility
 
     std::vector<std::string> Octree::getDependencies() const
     {
-        return {
-            "DebugDraw" // Only needed for visualization
-        };
+        return {"MemoryManager", "DebugDraw"};
     }
 
     uint64_t Octree::insert(std::shared_ptr<ISpatialObject> object)
@@ -660,7 +654,7 @@ namespace PixelCraft::Utility
         // Check if the object is within the world bounds
         if (!m_worldBounds.intersects(object->getBounds()))
         {
-            Log::warn("Object outside world bounds, cannot insert: ID " + object->getID());
+            Core::warn("Object outside world bounds, cannot insert: ID " + object->getID());
             return 0;
         }
 
@@ -797,7 +791,7 @@ namespace PixelCraft::Utility
             m_config.minObjectsPerNode
         );
 
-        Log::info("Octree cleared");
+        Core::info("Octree cleared");
     }
 
     void Octree::setWorldBounds(const AABB& bounds)
@@ -823,11 +817,11 @@ namespace PixelCraft::Utility
                 }
                 else
                 {
-                    Log::warn("Object outside new world bounds, not reinserted: ID " + id);
+                    Core::warn("Object outside new world bounds, not reinserted: ID " + id);
                 }
             }
 
-            Log::info(StringUtils::format("Octree world bounds updated: ({}, {}, {}) to ({}, {}, {})",
+            Core::info(StringUtils::format("Octree world bounds updated: ({}, {}, {}) to ({}, {}, {})",
                                           m_worldBounds.getMin().x, m_worldBounds.getMin().y, m_worldBounds.getMin().z,
                                           m_worldBounds.getMax().x, m_worldBounds.getMax().y, m_worldBounds.getMax().z));
         }

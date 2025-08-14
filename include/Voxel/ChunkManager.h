@@ -3,6 +3,10 @@
 // -------------------------------------------------------------------------
 #pragma once
 
+#include "Core/Subsystem.h"
+#include "Core/ThreadSafeQueue.h"
+#include "Voxel/ChunkCoord.h"
+
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -10,16 +14,13 @@
 #include <mutex>
 #include <thread>
 #include <atomic>
-
-#include "Core/Subsystem.h"
-#include "Core/ThreadSafeQueue.h"
-#include "Voxel/Chunk.h"
-#include "glm/glm.hpp"
+#include <glm/glm.hpp>
 
 namespace PixelCraft::Voxel
 {
 
     // Forward declarations
+    class Chunk;
     class ChunkStorage;
     class StreamingManager;
 
@@ -108,6 +109,13 @@ namespace PixelCraft::Voxel
         std::shared_ptr<Chunk> getChunk(const ChunkCoord& coord);
 
         /**
+         * @brief Get a loaded chunk (const version)
+         * @param coord Chunk coordinate
+         * @return Shared pointer to the chunk, or nullptr if not loaded
+         */
+        std::shared_ptr<Chunk> getChunk(const ChunkCoord& coord) const;
+
+        /**
          * @brief Check if a chunk is loaded
          * @param coord Chunk coordinate
          * @return True if the chunk is loaded
@@ -140,17 +148,17 @@ namespace PixelCraft::Voxel
 
         /**
          * @brief Get chunks around a point within a radius
-         * @param position World position
+         * @param point World position
          * @param radius Distance radius
          * @return Vector of chunks within the radius
          */
-        std::vector<std::shared_ptr<Chunk>> getChunksAroundPoint(const glm::vec3& position, float radius);
+        std::vector<std::shared_ptr<Chunk>> getChunksAroundPoint(const glm::vec3& point, float radius) const;
 
         /**
          * @brief Get map of all loaded chunks
          * @return Map of chunk coordinates to chunk pointers
          */
-        const std::unordered_map<ChunkCoord, std::shared_ptr<Chunk>>& getLoadedChunks() const
+        const std::unordered_map<ChunkCoord, std::shared_ptr<Chunk>, ChunkCoordHash>& getLoadedChunks() const
         {
             return m_chunks;
         }
@@ -208,7 +216,7 @@ namespace PixelCraft::Voxel
 
     private:
         // Chunk storage
-        std::unordered_map<ChunkCoord, std::shared_ptr<Chunk>> m_chunks;
+        std::unordered_map<ChunkCoord, std::shared_ptr<Chunk>, ChunkCoordHash> m_chunks;
         std::set<ChunkCoord> m_dirtyChunks;
         std::shared_ptr<ChunkStorage> m_chunkStorage;
 

@@ -3,11 +3,14 @@
 // -------------------------------------------------------------------------
 #pragma once
 
+#include "Core/Resource.h"
+#include "Core/MemoryManager.h"
+
 #include <memory>
 #include <string>
 #include <glm/glm.hpp>
-#include "Core/Resource.h"
 
+// In namespace PixelCraft
 namespace PixelCraft::Rendering
 {
 
@@ -40,6 +43,9 @@ namespace PixelCraft::Rendering
      */
     enum class TextureFormat
     {
+        // No format
+        None,
+
         // Standard formats
         R8,              ///< 8-bit single channel (red)
         RG8,             ///< 8-bit dual channel (red, green)
@@ -112,16 +118,22 @@ namespace PixelCraft::Rendering
     };
 
     /**
-     * @brief 2D image resource with pixel art optimizations
+     * @brief 2D image resource with pixel art optimizations and managed memory
      *
      * Texture class represents 2D image resources that can be loaded from files,
      * created from raw data, or generated procedurally. It provides special
      * handling for pixel art with features like pixel-perfect filtering and
-     * palette mapping.
+     * palette mapping. Memory allocation is managed through the MemoryManager
+     * for better control and tracking.
      */
     class Texture : public Core::Resource
     {
     public:
+        /**
+         * @brief Default constructor
+         */
+        Texture();
+
         /**
          * @brief Constructor
          * @param name Resource name for identification and tracking
@@ -130,10 +142,28 @@ namespace PixelCraft::Rendering
 
         /**
          * @brief Destructor
-         *
-         * Automatically releases GPU resources if not already unloaded
          */
         virtual ~Texture();
+
+        /**
+         * @brief Copy constructor (deleted - resources should not be copied)
+         */
+        Texture(const Texture&) = delete;
+
+        /**
+         * @brief @Copy assignment (deleted - resources should not be copied)
+         */
+        Texture& operator=(const Texture&) = delete;
+
+        /**
+         * @brief @brief Move constructor
+         */
+        Texture(Texture&& other) noexcept;
+
+        /**
+         * @brief Move assignment operator
+         */
+        Texture& operator=(Texture&& other) noexcept;
 
         /**
          * @brief Initializes the texture with default settings
@@ -177,7 +207,7 @@ namespace PixelCraft::Rendering
          * @return True if creation was successful, false otherwise
          *
          * The data pointer should point to contiguous memory with size at least
-         * width × height × channels bytes, where channels depends on the format.
+         * width * height * channels bytes, where channels depends on the format.
          */
         bool initialize(int width, int height, TextureFormat format, const void* data);
 
@@ -384,6 +414,18 @@ namespace PixelCraft::Rendering
          */
         TextureFormat getFormat() const;
 
+        /**
+         * @brief Get the total pixel data allocated
+         * @return Size of total pixel data allocated 
+         */
+        static size_t getTotalPixelDataAllocated();
+
+        /**
+         * @brief Get the total texture count
+         * @return Total texture count
+         */
+        static int getTotalTextureCount();
+
     private:
         uint32_t m_textureID;               ///< OpenGL texture handle
         int m_width;                         ///< Texture width in pixels
@@ -394,9 +436,18 @@ namespace PixelCraft::Rendering
         bool m_hasMipmaps;                   ///< Whether mipmaps have been generated
         bool m_pixelGridAligned;             ///< Whether pixel-perfect mode is enabled
         bool m_hasPixelData;                 ///< Whether CPU-side pixel data is available
-        std::unique_ptr<uint8_t[]> m_pixelData; ///< CPU-side pixel data cache
+        
+        /// CPU-side pixel data cache (managed by MemoryManager)
+        std::unique_ptr<uint8_t[], std::function<void(uint8_t*)>> m_pixelData;
+
         int m_channels;                      ///< Number of color channels
         int m_multisampleCount;              ///< Number of multisample samples (0 = no multisampling)
+
+        /**
+         * @brief Helper function to move resources from another texture
+         * @param other The texture to move from
+         */
+        void moveFrom(Texture&& other) noexcept;
 
         /**
          * @brief Loads texture data from a file

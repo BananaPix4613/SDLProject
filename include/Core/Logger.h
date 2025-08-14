@@ -12,6 +12,7 @@
 #include <iomanip>
 #include <sstream>
 
+// In namespace PixelCraft
 namespace PixelCraft::Core
 {
 
@@ -25,6 +26,21 @@ namespace PixelCraft::Core
         Warning, // Potential issues that aren't critical errors
         Error,   // Errors that affect functionality but don't crash
         Fatal,   // Critical errors that prevent operation
+    };
+
+    /**
+     * @brief Log rotation configuration
+     */
+    struct LogRotationConfig
+    {
+        std::string logDirectory = "logs";
+        std::string logPrefix = "log";
+        std::string latestLogFilename = "latest_log.txt";
+        int maxLogFiles = 10;
+        bool enableTimestamps = true;
+        bool enableLatestSymlink = true;
+
+        LogRotationConfig() = default;
     };
 
     /**
@@ -71,7 +87,7 @@ namespace PixelCraft::Core
          * @brief Constructor
          * @param filename Path to the log file
          */
-        FileLogChannel(const std::string& filename);
+        FileLogChannel(const std::string& filename, bool append);
         ~FileLogChannel() override;
 
         void write(LogLevel level, const std::string& message) override;
@@ -79,6 +95,46 @@ namespace PixelCraft::Core
 
     private:
         std::ofstream m_fileStream;
+    };
+
+    /**
+     * @brief Rotating file log channel with timestamped logs and cleanup
+     */
+    class RotatingFileLogChannel : public LogChannel
+    {
+    public:
+        /**
+         * @brief Constructor
+         * @param config Log rotation and configuration
+         */
+        RotatingFileLogChannel(const LogRotationConfig& config = LogRotationConfig());
+        ~RotatingFileLogChannel() override;
+
+        void write(LogLevel level, const std::string& message) override;
+        void flush() override;
+
+        /**
+         * @brief Get the path to the current log file
+         */
+        std::string getCurrentLogPath() const;
+
+        /**
+         * @brief Get the path to the latest log file
+         */
+        std::string getLatestLogPath() const;
+
+    private:
+        LogRotationConfig m_config;
+        std::ofstream m_fileStream;
+        std::ofstream m_latestFileStream;
+        std::string m_currentLogFile;
+        std::string m_fullLogDirectory;
+
+        void initializeLogDirectory();
+        void createNewLogFile();
+        void cleanupOldLogFiles();
+        std::string generateTimestampedFilename() const;
+        std::vector<std::string> getExistingLogFiles() const;
     };
 
     /**
@@ -98,6 +154,13 @@ namespace PixelCraft::Core
          * @return True if initialization succeeded
          */
         bool initialize();
+
+        /**
+         * @brief Initialize with log rotation support
+         * @param rotationConfig Log rotation configuration
+         * @return True if initialization succeeded
+         */
+        bool initializeWithRotation(const LogRotationConfig& rotationConfig = LogRotationConfig());
 
         /**
          * @brief Shut down the logging system and flush all channels
@@ -127,6 +190,13 @@ namespace PixelCraft::Core
          * @param channel Shared pointer to the channel to remove
          */
         void removeChannel(std::shared_ptr<LogChannel> channel);
+
+        /**
+         * @brief Add a rotating file log channel with specified configuration
+         * @param config Log rotation configuration
+         * @return Shared pointer to the created channel
+         */
+        std::shared_ptr<RotatingFileLogChannel> addRotatingFileChannel(const LogRotationConfig& config = LogRotationConfig());
 
         /**
          * @brief Set a category for subsequent log messages
@@ -189,6 +259,13 @@ namespace PixelCraft::Core
         std::mutex m_logMutex;
         std::string m_category;
         bool m_initialized;
+
+        /**
+         * @brief Internal logging method that assumes mutex is already locked
+         * @param level The severity level
+         * @param message The message to log
+         */
+        void logInternal(LogLevel level, const std::string& message);
 
         /**
          * @brief Format a log message with timestamp and context

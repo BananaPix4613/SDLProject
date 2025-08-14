@@ -102,6 +102,60 @@ namespace PixelCraft::Utility::Serialization
     }
 
     template<>
+    SerializationResult Deserializer::readValue<glm::vec2>(glm::vec2& value)
+    {
+        return readVec2(value);
+    }
+
+    template<>
+    SerializationResult Deserializer::readValue<glm::ivec2>(glm::ivec2& value)
+    {
+        return readIVec2(value);
+    }
+
+    template<>
+    SerializationResult Deserializer::readValue<glm::vec3>(glm::vec3& value)
+    {
+        return readVec3(value);
+    }
+
+    template<>
+    SerializationResult Deserializer::readValue<glm::ivec3>(glm::ivec3& value)
+    {
+        return readIVec3(value);
+    }
+
+    template<>
+    SerializationResult Deserializer::readValue<glm::vec4>(glm::vec4& value)
+    {
+        return readVec4(value);
+    }
+
+    template<>
+    SerializationResult Deserializer::readValue<glm::ivec4>(glm::ivec4& value)
+    {
+        return readIVec4(value);
+    }
+
+    template<>
+    SerializationResult Deserializer::readValue<glm::mat3>(glm::mat3& value)
+    {
+        return readMat3(value);
+    }
+
+    template<>
+    SerializationResult Deserializer::readValue<glm::mat4>(glm::mat4& value)
+    {
+        return readMat4(value);
+    }
+
+    template<>
+    SerializationResult Deserializer::readValue<glm::quat>(glm::quat& value)
+    {
+        return readQuat(value);
+    }
+
+    template<>
     SerializationResult Deserializer::readValue<std::string>(std::string& value)
     {
         return readString(value);

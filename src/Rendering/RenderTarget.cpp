@@ -8,10 +8,19 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
-namespace Log = PixelCraft::Core;
-
 namespace PixelCraft::Rendering
 {
+
+    RenderTarget::RenderTarget()
+        : m_width(1024)
+        , m_height(1024)
+        , m_multisampled(false)
+        , m_multisampleCount(4)
+        , m_initialized(false)
+        , m_framebufferID(0)
+        , m_resolveFramebufferID(0)
+    {
+    }
 
     RenderTarget::RenderTarget(int width, int height, bool multisampled)
         : m_width(width)
@@ -36,11 +45,11 @@ namespace PixelCraft::Rendering
     {
         if (m_initialized)
         {
-            Log::warn("RenderTarget already initialized");
+            Core::warn("RenderTarget already initialized");
             return true;
         }
 
-        Log::info("Initializing RenderTarget");
+        Core::info("Initializing RenderTarget");
 
         // Generate framebuffer
         glGenFramebuffers(1, &m_framebufferID);
@@ -69,7 +78,7 @@ namespace PixelCraft::Rendering
             return;
         }
 
-        Log::info("Shutting down RenderTarget");
+        Core::info("Shutting down RenderTarget");
 
         // Delete framebuffers
         if (m_framebufferID != 0)
@@ -103,13 +112,13 @@ namespace PixelCraft::Rendering
     {
         if (!m_initialized)
         {
-            Log::error("RenderTarget not initialized");
+            Core::error("RenderTarget not initialized");
             return false;
         }
 
         if (index < 0 || index >= 8)
         {
-            Log::error("Invalid color attachment index: " + std::to_string(index));
+            Core::error("Invalid color attachment index: " + std::to_string(index));
             return false;
         }
 
@@ -120,7 +129,7 @@ namespace PixelCraft::Rendering
         if (m_multisampled)
         {
             // Create multisampled texture
-            auto msTexture = std::make_shared<Texture>();
+            auto msTexture = Core::makeShared<Texture>();
             msTexture->initialize(m_width, m_height, format, m_multisampleCount);
 
             // Attach to framebuffer
@@ -130,7 +139,7 @@ namespace PixelCraft::Rendering
             m_colorTextures[index] = msTexture;
 
             // Also create resolve texture
-            auto resolveTexture = std::make_shared<Texture>();
+            auto resolveTexture = Core::makeShared<Texture>();
             resolveTexture->initialize(m_width, m_height, format);
 
             // Bind resolve framebuffer and attach texture
@@ -146,7 +155,7 @@ namespace PixelCraft::Rendering
         else
         {
             // Create normal texture
-            auto texture = std::make_shared<Texture>();
+            auto texture = Core::makeShared<Texture>();
             texture->initialize(m_width, m_height, format);
 
             // Attach to framebuffer
@@ -182,7 +191,7 @@ namespace PixelCraft::Rendering
     {
         if (!m_initialized)
         {
-            Log::error("RenderTarget not initialized");
+            Core::error("RenderTarget not initialized");
             return false;
         }
 
@@ -192,7 +201,7 @@ namespace PixelCraft::Rendering
         if (m_multisampled)
         {
             // Create multisampled depth texture
-            auto depthTexture = std::make_shared<Texture>();
+            auto depthTexture = Core::makeShared<Texture>();
             depthTexture->initialize(m_width, m_height, format, m_multisampleCount);
 
             // Attach to framebuffer
@@ -202,7 +211,7 @@ namespace PixelCraft::Rendering
             m_depthTexture = depthTexture;
 
             // Bind resolve framebuffer and attach normal depth texture
-            auto resolveDepthTexture = std::make_shared<Texture>();
+            auto resolveDepthTexture = Core::makeShared<Texture>();
             resolveDepthTexture->initialize(m_width, m_height, format);
 
             glBindFramebuffer(GL_FRAMEBUFFER, m_resolveFramebufferID);
@@ -215,7 +224,7 @@ namespace PixelCraft::Rendering
         else
         {
             // Create normal depth texture
-            auto depthTexture = std::make_shared<Texture>();
+            auto depthTexture = Core::makeShared<Texture>();
             depthTexture->initialize(m_width, m_height, format);
 
             // Attach to framebuffer
@@ -229,11 +238,74 @@ namespace PixelCraft::Rendering
         return true;
     }
 
+    bool RenderTarget::setDepthRenderbuffer(TextureFormat format)
+    {
+        if (!m_initialized)
+        {
+            Core::error("RenderTarget not initialized");
+            return false;
+        }
+
+        bind();
+
+        // Create depth renderbuffer instead of depth texture (fallback for unsupported depth textures)
+        GLuint depthRenderbuffer;
+        glGenRenderbuffers(1, &depthRenderbuffer);
+        glBindRenderbuffer(GL_RENDERBUFFER, depthRenderbuffer);
+
+        // Set up renderbuffer storage
+        GLenum internalFormat = GL_DEPTH_COMPONENT24; // Default depth format
+        switch (format)
+        {
+            case TextureFormat::Depth16:
+                internalFormat = GL_DEPTH_COMPONENT16;
+                break;
+            case TextureFormat::Depth24:
+                internalFormat = GL_DEPTH_COMPONENT24;
+                break;
+            case TextureFormat::Depth32F:
+                internalFormat = GL_DEPTH_COMPONENT32F;
+                break;
+            default:
+                Core::warn("Unsupported depth renderbuffer format, using Depth24");
+                break;
+        }
+
+        if (m_multisampled)
+        {
+            glRenderbufferStorageMultisample(GL_RENDERBUFFER, m_multisampleCount, internalFormat, m_width, m_height);
+        }
+        else
+        {
+            glRenderbufferStorage(GL_RENDERBUFFER, internalFormat, m_width, m_height);
+        }
+
+        // Attach renderbuffer to framebuffer
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthRenderbuffer);
+
+        // Note: m_depthTexture remains null since we're using a renderbuffer instead
+        // The depth buffer detection logic in GeometryStage will use glGetFramebufferAttachmentParameteriv
+        // to detect the renderbuffer attachment
+
+        Core::info("RenderTarget: Created depth renderbuffer (fallback for unsupported depth textures)");
+
+        unbind();
+        return true;
+    }
+
+    void RenderTarget::setSharedDepthTexture(std::shared_ptr<Texture> sharedDepthTexture)
+    {
+        // Simply update the depth texture reference - framebuffer attachment is done elsewhere
+        m_depthTexture = sharedDepthTexture;
+        Core::debug("RenderTarget::setSharedDepthTexture called - depth texture " + 
+                   std::string(sharedDepthTexture ? "set" : "cleared"));
+    }
+
     bool RenderTarget::setStencilAttachment()
     {
         if (!m_initialized)
         {
-            Log::error("RenderTarget not initialized");
+            Core::error("RenderTarget not initialized");
             return false;
         }
 
@@ -243,7 +315,7 @@ namespace PixelCraft::Rendering
         if (m_multisampled)
         {
             // Create multisampled stencil texture
-            auto stencilTexture = std::make_shared<Texture>();
+            auto stencilTexture = Core::makeShared<Texture>();
             stencilTexture->initialize(m_width, m_height, TextureFormat::Stencil8, m_multisampleCount);
 
             // Attach to framebuffer
@@ -253,7 +325,7 @@ namespace PixelCraft::Rendering
             m_stencilTexture = stencilTexture;
 
             // Bind resolve framebuffer and attach normal stencil texture
-            auto resolveStencilTexture = std::make_shared<Texture>();
+            auto resolveStencilTexture = Core::makeShared<Texture>();
             resolveStencilTexture->initialize(m_width, m_height, TextureFormat::Stencil8);
 
             glBindFramebuffer(GL_FRAMEBUFFER, m_resolveFramebufferID);
@@ -266,7 +338,7 @@ namespace PixelCraft::Rendering
         else
         {
             // Create normal stencil texture
-            auto stencilTexture = std::make_shared<Texture>();
+            auto stencilTexture = Core::makeShared<Texture>();
             stencilTexture->initialize(m_width, m_height, TextureFormat::Stencil8);
 
             // Attach to framebuffer
@@ -284,7 +356,7 @@ namespace PixelCraft::Rendering
     {
         if (!m_initialized)
         {
-            Log::error("RenderTarget not initialized");
+            Core::error("RenderTarget not initialized");
             return false;
         }
 
@@ -294,7 +366,7 @@ namespace PixelCraft::Rendering
         if (m_multisampled)
         {
             // Create multisampled depth-stencil texture
-            auto depthStencilTexture = std::make_shared<Texture>();
+            auto depthStencilTexture = Core::makeShared<Texture>();
             depthStencilTexture->initialize(m_width, m_height, TextureFormat::Depth24Stencil8, m_multisampleCount);
 
             // Attach to framebuffer
@@ -304,7 +376,7 @@ namespace PixelCraft::Rendering
             m_depthStencilTexture = depthStencilTexture;
 
             // Bind resolve framebuffer and attach normal depth-stencil texture
-            auto resolveDepthStencilTexture = std::make_shared<Texture>();
+            auto resolveDepthStencilTexture = Core::makeShared<Texture>();
             resolveDepthStencilTexture->initialize(m_width, m_height, TextureFormat::Depth24Stencil8);
 
             glBindFramebuffer(GL_FRAMEBUFFER, m_resolveFramebufferID);
@@ -317,7 +389,7 @@ namespace PixelCraft::Rendering
         else
         {
             // Create normal depth-stencil texture
-            auto depthStencilTexture = std::make_shared<Texture>();
+            auto depthStencilTexture = Core::makeShared<Texture>();
             depthStencilTexture->initialize(m_width, m_height, TextureFormat::Depth24Stencil8);
 
             // Attach to framebuffer
@@ -335,7 +407,7 @@ namespace PixelCraft::Rendering
     {
         if (!m_initialized)
         {
-            Log::error("RenderTarget not initialized");
+            Core::error("RenderTarget not initialized");
             return false;
         }
 
@@ -350,7 +422,7 @@ namespace PixelCraft::Rendering
     {
         if (!m_initialized)
         {
-            Log::error("RenderTarget not initialized");
+            Core::error("RenderTarget not initialized");
             return;
         }
 
@@ -374,7 +446,7 @@ namespace PixelCraft::Rendering
     {
         if (!m_initialized)
         {
-            Log::error("RenderTarget not initialized");
+            Core::error("RenderTarget not initialized");
             return;
         }
 
@@ -394,13 +466,13 @@ namespace PixelCraft::Rendering
     {
         if (!m_initialized)
         {
-            Log::error("RenderTarget not initialized");
+            Core::error("RenderTarget not initialized");
             return;
         }
 
         if (index < 0 || index >= 8 || !m_colorTextures[index])
         {
-            Log::error("Invalid color attachment index: " + std::to_string(index));
+            Core::error("Invalid color attachment index: " + std::to_string(index));
             return;
         }
 
@@ -423,13 +495,13 @@ namespace PixelCraft::Rendering
     {
         if (!m_initialized)
         {
-            Log::error("RenderTarget not initialized");
+            Core::error("RenderTarget not initialized");
             return nullptr;
         }
 
         if (index < 0 || index >= 8)
         {
-            Log::error("Invalid color attachment index: " + std::to_string(index));
+            Core::error("Invalid color attachment index: " + std::to_string(index));
             return nullptr;
         }
 
@@ -462,7 +534,7 @@ namespace PixelCraft::Rendering
     {
         if (!m_initialized || !target || !target->isInitialized())
         {
-            Log::error("RenderTarget not initialized for blit operation");
+            Core::error("RenderTarget not initialized for blit operation");
             return;
         }
 
@@ -493,13 +565,13 @@ namespace PixelCraft::Rendering
     {
         if (!m_initialized)
         {
-            Log::error("RenderTarget not initialized");
+            Core::error("RenderTarget not initialized");
             return;
         }
 
         if (width <= 0 || height <= 0)
         {
-            Log::error("Invalid dimensions for resize: " + std::to_string(width) + "x" + std::to_string(height));
+            Core::error("Invalid dimensions for resize: " + std::to_string(width) + "x" + std::to_string(height));
             return;
         }
 
@@ -582,7 +654,7 @@ namespace PixelCraft::Rendering
     {
         if (!m_initialized)
         {
-            Log::error("RenderTarget not initialized");
+            Core::error("RenderTarget not initialized");
             return;
         }
 
@@ -590,7 +662,7 @@ namespace PixelCraft::Rendering
         if (x < 0 || y < 0 || width <= 0 || height <= 0 ||
             x + width > m_width || y + height > m_height)
         {
-            Log::error("Invalid parameters for readPixels");
+            Core::error("Invalid parameters for readPixels");
             return;
         }
 
@@ -633,7 +705,7 @@ namespace PixelCraft::Rendering
                 glType = GL_FLOAT;
                 break;
             default:
-                Log::error("Unsupported format for readPixels");
+                Core::error("Unsupported format for readPixels");
                 return;
         }
 
@@ -742,28 +814,28 @@ namespace PixelCraft::Rendering
             switch (status)
             {
                 case GL_FRAMEBUFFER_UNDEFINED:
-                    Log::error("Framebuffer undefined");
+                    Core::error("Framebuffer undefined");
                     break;
                 case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
-                    Log::error("Framebuffer incomplete attachment");
+                    Core::error("Framebuffer incomplete attachment");
                     break;
                 case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
-                    Log::error("Framebuffer incomplete missing attachment");
+                    Core::error("Framebuffer incomplete missing attachment");
                     break;
                 case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER:
-                    Log::error("Framebuffer incomplete draw buffer");
+                    Core::error("Framebuffer incomplete draw buffer");
                     break;
                 case GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER:
-                    Log::error("Framebuffer incomplete read buffer");
+                    Core::error("Framebuffer incomplete read buffer");
                     break;
                 case GL_FRAMEBUFFER_UNSUPPORTED:
-                    Log::error("Framebuffer unsupported");
+                    Core::error("Framebuffer unsupported");
                     break;
                 case GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE:
-                    Log::error("Framebuffer incomplete multisample");
+                    Core::error("Framebuffer incomplete multisample");
                     break;
                 default:
-                    Log::error("Framebuffer error: Unknown status");
+                    Core::error("Framebuffer error: Unknown status");
                     break;
             }
             return false;

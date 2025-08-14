@@ -2,13 +2,14 @@
 // ShaderManager.cpp
 // -------------------------------------------------------------------------
 #include "Rendering/ShaderManager.h"
+#include "Rendering/ForwardPlusShaderManager.h"
 #include "Core/Logger.h"
 #include "Core/Application.h"
-#include "Core/FileSystem.h"
+#include "Core/MemoryManager.h"
+#include "Utility/FileSystem.h"
+
 #include <filesystem>
 #include <exception>
-
-namespace Log = PixelCraft::Core;
 
 namespace PixelCraft::Rendering
 {
@@ -32,11 +33,11 @@ namespace PixelCraft::Rendering
     {
         if (m_initialized)
         {
-            Log::warn("ShaderManager already initialized");
+            Core::warn("ShaderManager already initialized");
             return true;
         }
 
-        Log::info("Initializing ShaderManager");
+        Core::info("Initializing ShaderManager");
 
         m_initialized = true;
         return true;
@@ -64,7 +65,7 @@ namespace PixelCraft::Rendering
 
     void ShaderManager::render()
     {
-        // Nothing to render for shader manager
+        // Render debug info for forward+ manager if available
     }
 
     void ShaderManager::shutdown()
@@ -74,7 +75,7 @@ namespace PixelCraft::Rendering
             return;
         }
 
-        Log::info("Shutting down ShaderManager");
+        Core::info("Shutting down ShaderManager");
 
         // Clear all cached shaders
         m_shaders.clear();
@@ -84,8 +85,7 @@ namespace PixelCraft::Rendering
 
     std::vector<std::string> ShaderManager::getDependencies() const
     {
-        // ShaderManager only depends on core systems
-        return {"ResourceManager"};
+        return {"MemoryManager", "ResourceManager"};
     }
 
     std::shared_ptr<Shader> ShaderManager::createShader(const std::string& name)
@@ -98,7 +98,7 @@ namespace PixelCraft::Rendering
         }
 
         // Create a new shader
-        auto shader = std::make_shared<Shader>(name);
+        auto shader = Core::makeShared<Shader>(name);
         m_shaders[name] = shader;
 
         return shader;
@@ -127,7 +127,27 @@ namespace PixelCraft::Rendering
 
         if (!shader->load())
         {
-            Log::error("Failed to load standard shader: " + name);
+            Core::error("Failed to load standard shader: " + name);
+            m_shaders.erase(name);
+            return nullptr;
+        }
+
+        return shader;
+    }
+
+    std::shared_ptr<Shader> ShaderManager::createShaderFromSource(
+        const std::string& name,
+        const std::string& vertexSource,
+        const std::string& fragmentSource)
+    {
+        auto shader = createShader(name);
+
+        shader->setSource(ShaderType::Vertex, vertexSource);
+        shader->setSource(ShaderType::Fragment, fragmentSource);
+
+        if (!shader->load())
+        {
+            Core::error("Failed to load standard shader: " + name);
             m_shaders.erase(name);
             return nullptr;
         }
@@ -145,7 +165,7 @@ namespace PixelCraft::Rendering
 
         if (!shader->load())
         {
-            Log::error("Failed to load compute shader: " + name);
+            Core::error("Failed to load compute shader: " + name);
             m_shaders.erase(name);
             return nullptr;
         }
@@ -155,7 +175,7 @@ namespace PixelCraft::Rendering
 
     void ShaderManager::reloadAllShaders()
     {
-        Log::info("Reloading all shaders");
+        Core::info("Reloading all shaders");
 
         for (auto& [name, shader] : m_shaders)
         {
@@ -163,7 +183,7 @@ namespace PixelCraft::Rendering
             {
                 if (!shader->onReload())
                 {
-                    Log::error("Failed to reload shader: " + name);
+                    Core::error("Failed to reload shader: " + name);
                 }
             }
         }
@@ -185,7 +205,7 @@ namespace PixelCraft::Rendering
             {
                 try
                 {
-                    auto lastModified = Core::FileSystem::getLastModifiedTime(filepath);
+                    auto lastModified = Utility::FileSystem::getFileModificationTime(filepath);
 
                     // If we haven't seen this file before, store its timestamp
                     if (m_fileTimestamps.find(filepath) == m_fileTimestamps.end())
@@ -198,24 +218,24 @@ namespace PixelCraft::Rendering
                     auto cachedTime = m_fileTimestamps[filepath];
                     if (lastModified > cachedTime)
                     {
-                        Log::debug("Shader file modified: " + filepath);
+                        Core::debug("Shader file modified: " + filepath);
                         needsReload = true;
                         m_fileTimestamps[filepath] = lastModified;
                     }
                 }
                 catch (const std::exception& e)
                 {
-                    Log::warn("Failed to check shader file modification time: " + filepath + " | " + e.what());
+                    Core::warn("Failed to check shader file modification time: " + filepath + " | " + e.what());
                 }
             }
 
             // Reload the shader if any of its source files were modified
             if (needsReload)
             {
-                Log::info("Hot-reloading shader: " + name);
+                Core::info("Hot-reloading shader: " + name);
                 if (!shader->onReload())
                 {
-                    Log::error("Failed to hot-reload shader: " + name);
+                    Core::error("Failed to hot-reload shader: " + name);
                 }
             }
         }

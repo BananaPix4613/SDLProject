@@ -4,13 +4,12 @@
 #include "ECS/Registry.h"
 #include "ECS/Entity.h"
 #include "ECS/ComponentRegistry.h"
+#include "Utility/Serialization/Serializer.h"
+#include "Utility/Serialization/Deserializer.h"
 #include "Core/Logger.h"
-
-namespace Log = PixelCraft::Core;
 
 namespace PixelCraft::ECS
 {
-
     Registry::Registry() : m_nextEntityID(1)
     {
         // Constructor constructor
@@ -118,34 +117,7 @@ namespace PixelCraft::ECS
         // Validate entity
         if (!isValid(entity))
         {
-            Log::error("Cannot serialize invalid entity: " + std::to_string(entity));
-            return;
-        }
-
-        auto result = serializer.beginObject("Entity");
-        if (!result)
-        {
-            Log::error("Failed to begin entity serialization: " + result.error);
-            return;
-        }
-
-        // Serialize entity ID
-        result = serializer.writeField("id", entity);
-        if (!result) return;
-
-        // Serialize entity metadata (UUID, name, etc.)
-        UUID uuid = m_entityMetadata.getUUID(entity);
-        if (uuid != UUID())
-        {
-            result = serializer.writeField("uuid", uuid);
-            if (!result) return;
-        }
-
-        std::string name = m_entityMetadata.getName(entity);
-        if (!name.empty())
-        {
-            result = serializer.writeField("name", name);
-            if (!result) return;
+            return Utility::Serialization::SerializationResult("Cannot serialize invalid entity: " + std::to_string(entity));
         }
 
         // Serialize components
@@ -162,8 +134,8 @@ namespace PixelCraft::ECS
         }
 
         // Serialize components array
-        result = serializer.beginArray("components", componentsToSerialize.size());
-        if (!result) return;
+        auto result = serializer.beginArray("components", componentsToSerialize.size());
+        if (!result) return result;
 
         for (ComponentTypeID typeID : componentsToSerialize)
         {
@@ -175,21 +147,18 @@ namespace PixelCraft::ECS
                 {
                     // Serialize component type
                     result = serializer.writeField("typeID", typeID);
-                    if (!result) return;
+                    if (!result) return result;
 
                     // Let component pool handle serialization
                     result = it->second->serializeComponent(entity, serializer);
                     if (!result)
                     {
-                        Log::warn("Failed to serialize component " +
+                        Core::warn("Failed to serialize component " +
                                            std::to_string(typeID) + ": " + result.error);
                     }
                 }
             }
         }
-
-        result = serializer.endArray();
-        if (!result) return;
 
         return serializer.endObject();
     }
@@ -205,41 +174,12 @@ namespace PixelCraft::ECS
             entity = createEntity();
         }
 
-        auto result = deserializer.beginObject("Entity");
-        if (!result)
-        {
-            Log::error("Failed to begin entity deserialization: " + result.error);
-            return;
-        }
-
-        // Read UUID if present
-        if (deserializer.hasField("uuid"))
-        {
-            UUID uuid;
-            result = deserializer.readField("uuid", uuid);
-            if (result)
-            {
-                m_entityMetadata.setUUID(entity, uuid);
-            }
-        }
-
-        // Read name if present
-        if (deserializer.hasField("name"))
-        {
-            std::string name;
-            result = deserializer.readField("name", name);
-            if (result)
-            {
-                m_entityMetadata.setName(entity, name);
-            }
-        }
-
         // Read components if present
         if (deserializer.hasField("components"))
         {
             size_t componentCount = 0;
-            result = deserializer.beginArray("components", componentCount);
-            if (!result) return;
+            auto result = deserializer.beginArray("components", componentCount);
+            if (!result) return result;
 
             for (size_t i = 0; i < componentCount; ++i)
             {
@@ -260,7 +200,7 @@ namespace PixelCraft::ECS
                     auto pool = ComponentRegistry::getInstance().createPool(typeID);
                     if (!pool)
                     {
-                        Log::error("Unknown component type: " + std::to_string(typeID));
+                        Core::error("Unknown component type: " + std::to_string(typeID));
                         deserializer.skipValue();
                         continue;
                     }
@@ -277,12 +217,10 @@ namespace PixelCraft::ECS
                 }
                 else
                 {
-                    Log::warn("Failed to deserialize component " +
+                    Core::warn("Failed to deserialize component " +
                                        std::to_string(typeID) + ": " + result.error);
                 }
             }
-
-            result = deserializer.endArray();
         }
 
         return deserializer.endObject();
@@ -293,15 +231,15 @@ namespace PixelCraft::ECS
         std::shared_lock entityLock(m_entityMutex);
 
         auto result = serializer.beginObject("Registry");
-        if (!result) return;
+        if (!result) return result;
 
         // Serialize entities count
         result = serializer.writeField("entityCount", m_entities.size());
-        if (!result) return;
+        if (!result) return result;
 
         // Serialize entities array
         result = serializer.beginArray("entities", m_entities.size());
-        if (!result) return;
+        if (!result) return result;
 
         for (EntityID entity : m_entities)
         {
@@ -314,17 +252,19 @@ namespace PixelCraft::ECS
             }
         }
 
-        serializer.endArray();
+        result = serializer.endArray();
+        if (!result) return result;
+
         return serializer.endObject();
     }
 
     Utility::Serialization::SerializationResult Registry::deserializeAll(Utility::Serialization::Deserializer& deserializer)
     {
         auto result = deserializer.beginObject("Registry");
-        if (!result) return;
+        if (!result) return result;
 
         // Read entity count
-        size_t entityCount = 0;
+        uint64_t entityCount = 0;
         result = deserializer.readField("entityCount", entityCount);
 
         // Read entities array
@@ -332,7 +272,7 @@ namespace PixelCraft::ECS
         {
             size_t arraySize = 0;
             result = deserializer.beginArray("entities", arraySize);
-            if (!result) return;
+            if (!result) return result;
 
             for (size_t i = 0; i < arraySize; ++i)
             {
@@ -347,6 +287,17 @@ namespace PixelCraft::ECS
         }
 
         return deserializer.endObject();
+    }
+
+    void Registry::defineSchema(Utility::Serialization::Schema& schema)
+    {
+        schema.addField("entityCount", Utility::Serialization::ValueType::UInt64);
+        schema.addArrayField("entities", Utility::Serialization::ValueType::Object);
+    }
+
+    std::string Registry::getTypeName()
+    {
+        return "Registry";
     }
 
     UUID Registry::getEntityUUID(EntityID entity) const

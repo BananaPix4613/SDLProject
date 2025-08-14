@@ -1,0 +1,467 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+  </PropertyGroup>
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="MinSizeRel|x64">
+      <Configuration>MinSizeRel</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="RelWithDebInfo|x64">
+      <Configuration>RelWithDebInfo</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{878301C2-C2DE-3390-A23A-F33FD9485C42}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0.22621.0</WindowsTargetPlatformVersion>
+    <Platform>x64</Platform>
+    <ProjectName>SDLProject</ProjectName>
+    <VCProjectUpgraderObjectName>NoUpgrade</VCProjectUpgraderObjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\dev\SDLProject\Debug\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">SDLProject.dir\Debug\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">SDLProject</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\dev\SDLProject\Release\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">SDLProject.dir\Release\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">SDLProject</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">C:\dev\SDLProject\MinSizeRel\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">SDLProject.dir\MinSizeRel\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">SDLProject</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">false</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">C:\dev\SDLProject\RelWithDebInfo\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">SDLProject.dir\RelWithDebInfo\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">SDLProject</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">true</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">true</GenerateManifest>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\deps\GLFW\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /external:I "C:/dev/SDLProject/include" /external:I "C:/dev/SDLProject/deps/fmod/api/core/inc" /external:I "C:/dev/SDLProject/deps/glm" /external:I "C:/dev/SDLProject/deps/glad/include" /external:I "C:/dev/SDLProject/deps/imgui" /external:I "C:/dev/SDLProject/deps/imgui/backends/imgui_impl_opengl3.h" /external:I "C:/dev/SDLProject/deps/imgui/backends/imgui_impl_opengl3_loader.h" /external:I "C:/dev/SDLProject/deps/imgui/backends/imgui_impl_glfw.h" /external:I "C:/dev/SDLProject/deps/nlohmann/include" /external:I "C:/dev/SDLProject/deps/yaml-cpp/include" /external:I "C:/dev/SDLProject/deps/zlib" /external:I "C:/Program Files/OpenSSL/include"</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <Optimization>Disabled</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;YAML_CPP_STATIC_DEFINE;CMAKE_INTDIR="Debug"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_DEBUG;_WINDOWS;YAML_CPP_STATIC_DEFINE;CMAKE_INTDIR=\"Debug\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\deps\GLFW\include;C:\dev\SDLProject\include;C:\dev\SDLProject\deps\fmod\api\core\inc;C:\dev\SDLProject\deps\glm;C:\dev\SDLProject\deps\glad\include;C:\dev\SDLProject\deps\imgui;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_opengl3.h;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_opengl3_loader.h;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_glfw.h;C:\dev\SDLProject\deps\nlohmann\include;C:\dev\SDLProject\deps\yaml-cpp\include;C:\dev\SDLProject\deps\zlib;C:\Program Files\OpenSSL\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\deps\GLFW\include;C:\dev\SDLProject\include;C:\dev\SDLProject\deps\fmod\api\core\inc;C:\dev\SDLProject\deps\glm;C:\dev\SDLProject\deps\glad\include;C:\dev\SDLProject\deps\imgui;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_opengl3.h;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_opengl3_loader.h;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_glfw.h;C:\dev\SDLProject\deps\nlohmann\include;C:\dev\SDLProject\deps\yaml-cpp\include;C:\dev\SDLProject\deps\zlib;C:\Program Files\OpenSSL\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Link>
+      <AdditionalDependencies>opengl32.lib;glu32.lib;deps\GLFW\src\Debug\glfw3.lib;deps\fmod\lib\x64\fmod_vc.lib;C:\Program Files\OpenSSL\lib\libssl.lib;C:\Program Files\OpenSSL\lib\libcrypto.lib;deps\yaml-cpp\Debug\yaml-cppd.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>C:/dev/SDLProject/Debug/SDLProject.lib</ImportLibrary>
+      <ProgramDataBaseFile>C:/dev/SDLProject/Debug/SDLProject.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\deps\GLFW\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /external:I "C:/dev/SDLProject/include" /external:I "C:/dev/SDLProject/deps/fmod/api/core/inc" /external:I "C:/dev/SDLProject/deps/glm" /external:I "C:/dev/SDLProject/deps/glad/include" /external:I "C:/dev/SDLProject/deps/imgui" /external:I "C:/dev/SDLProject/deps/imgui/backends/imgui_impl_opengl3.h" /external:I "C:/dev/SDLProject/deps/imgui/backends/imgui_impl_opengl3_loader.h" /external:I "C:/dev/SDLProject/deps/imgui/backends/imgui_impl_glfw.h" /external:I "C:/dev/SDLProject/deps/nlohmann/include" /external:I "C:/dev/SDLProject/deps/yaml-cpp/include" /external:I "C:/dev/SDLProject/deps/zlib" /external:I "C:/Program Files/OpenSSL/include"</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <Optimization>MaxSpeed</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;YAML_CPP_STATIC_DEFINE;CMAKE_INTDIR="Release"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <DebugInformationFormat>
+      </DebugInformationFormat>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;YAML_CPP_STATIC_DEFINE;CMAKE_INTDIR=\"Release\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\deps\GLFW\include;C:\dev\SDLProject\include;C:\dev\SDLProject\deps\fmod\api\core\inc;C:\dev\SDLProject\deps\glm;C:\dev\SDLProject\deps\glad\include;C:\dev\SDLProject\deps\imgui;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_opengl3.h;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_opengl3_loader.h;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_glfw.h;C:\dev\SDLProject\deps\nlohmann\include;C:\dev\SDLProject\deps\yaml-cpp\include;C:\dev\SDLProject\deps\zlib;C:\Program Files\OpenSSL\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\deps\GLFW\include;C:\dev\SDLProject\include;C:\dev\SDLProject\deps\fmod\api\core\inc;C:\dev\SDLProject\deps\glm;C:\dev\SDLProject\deps\glad\include;C:\dev\SDLProject\deps\imgui;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_opengl3.h;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_opengl3_loader.h;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_glfw.h;C:\dev\SDLProject\deps\nlohmann\include;C:\dev\SDLProject\deps\yaml-cpp\include;C:\dev\SDLProject\deps\zlib;C:\Program Files\OpenSSL\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Link>
+      <AdditionalDependencies>opengl32.lib;glu32.lib;deps\GLFW\src\Release\glfw3.lib;deps\fmod\lib\x64\fmod_vc.lib;C:\Program Files\OpenSSL\lib\libssl.lib;C:\Program Files\OpenSSL\lib\libcrypto.lib;deps\yaml-cpp\Release\yaml-cpp.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>C:/dev/SDLProject/Release/SDLProject.lib</ImportLibrary>
+      <ProgramDataBaseFile>C:/dev/SDLProject/Release/SDLProject.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\deps\GLFW\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /external:I "C:/dev/SDLProject/include" /external:I "C:/dev/SDLProject/deps/fmod/api/core/inc" /external:I "C:/dev/SDLProject/deps/glm" /external:I "C:/dev/SDLProject/deps/glad/include" /external:I "C:/dev/SDLProject/deps/imgui" /external:I "C:/dev/SDLProject/deps/imgui/backends/imgui_impl_opengl3.h" /external:I "C:/dev/SDLProject/deps/imgui/backends/imgui_impl_opengl3_loader.h" /external:I "C:/dev/SDLProject/deps/imgui/backends/imgui_impl_glfw.h" /external:I "C:/dev/SDLProject/deps/nlohmann/include" /external:I "C:/dev/SDLProject/deps/yaml-cpp/include" /external:I "C:/dev/SDLProject/deps/zlib" /external:I "C:/Program Files/OpenSSL/include"</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <Optimization>MinSpace</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;YAML_CPP_STATIC_DEFINE;CMAKE_INTDIR="MinSizeRel"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <DebugInformationFormat>
+      </DebugInformationFormat>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;YAML_CPP_STATIC_DEFINE;CMAKE_INTDIR=\"MinSizeRel\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\deps\GLFW\include;C:\dev\SDLProject\include;C:\dev\SDLProject\deps\fmod\api\core\inc;C:\dev\SDLProject\deps\glm;C:\dev\SDLProject\deps\glad\include;C:\dev\SDLProject\deps\imgui;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_opengl3.h;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_opengl3_loader.h;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_glfw.h;C:\dev\SDLProject\deps\nlohmann\include;C:\dev\SDLProject\deps\yaml-cpp\include;C:\dev\SDLProject\deps\zlib;C:\Program Files\OpenSSL\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\deps\GLFW\include;C:\dev\SDLProject\include;C:\dev\SDLProject\deps\fmod\api\core\inc;C:\dev\SDLProject\deps\glm;C:\dev\SDLProject\deps\glad\include;C:\dev\SDLProject\deps\imgui;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_opengl3.h;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_opengl3_loader.h;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_glfw.h;C:\dev\SDLProject\deps\nlohmann\include;C:\dev\SDLProject\deps\yaml-cpp\include;C:\dev\SDLProject\deps\zlib;C:\Program Files\OpenSSL\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Link>
+      <AdditionalDependencies>opengl32.lib;glu32.lib;deps\GLFW\src\MinSizeRel\glfw3.lib;deps\fmod\lib\x64\fmod_vc.lib;C:\Program Files\OpenSSL\lib\libssl.lib;C:\Program Files\OpenSSL\lib\libcrypto.lib;deps\yaml-cpp\MinSizeRel\yaml-cpp.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>C:/dev/SDLProject/MinSizeRel/SDLProject.lib</ImportLibrary>
+      <ProgramDataBaseFile>C:/dev/SDLProject/MinSizeRel/SDLProject.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\deps\GLFW\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /external:I "C:/dev/SDLProject/include" /external:I "C:/dev/SDLProject/deps/fmod/api/core/inc" /external:I "C:/dev/SDLProject/deps/glm" /external:I "C:/dev/SDLProject/deps/glad/include" /external:I "C:/dev/SDLProject/deps/imgui" /external:I "C:/dev/SDLProject/deps/imgui/backends/imgui_impl_opengl3.h" /external:I "C:/dev/SDLProject/deps/imgui/backends/imgui_impl_opengl3_loader.h" /external:I "C:/dev/SDLProject/deps/imgui/backends/imgui_impl_glfw.h" /external:I "C:/dev/SDLProject/deps/nlohmann/include" /external:I "C:/dev/SDLProject/deps/yaml-cpp/include" /external:I "C:/dev/SDLProject/deps/zlib" /external:I "C:/Program Files/OpenSSL/include"</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <Optimization>MaxSpeed</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;YAML_CPP_STATIC_DEFINE;CMAKE_INTDIR="RelWithDebInfo"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;YAML_CPP_STATIC_DEFINE;CMAKE_INTDIR=\"RelWithDebInfo\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\deps\GLFW\include;C:\dev\SDLProject\include;C:\dev\SDLProject\deps\fmod\api\core\inc;C:\dev\SDLProject\deps\glm;C:\dev\SDLProject\deps\glad\include;C:\dev\SDLProject\deps\imgui;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_opengl3.h;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_opengl3_loader.h;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_glfw.h;C:\dev\SDLProject\deps\nlohmann\include;C:\dev\SDLProject\deps\yaml-cpp\include;C:\dev\SDLProject\deps\zlib;C:\Program Files\OpenSSL\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>C:\dev\SDLProject\deps\GLFW\include;C:\dev\SDLProject\include;C:\dev\SDLProject\deps\fmod\api\core\inc;C:\dev\SDLProject\deps\glm;C:\dev\SDLProject\deps\glad\include;C:\dev\SDLProject\deps\imgui;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_opengl3.h;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_opengl3_loader.h;C:\dev\SDLProject\deps\imgui\backends\imgui_impl_glfw.h;C:\dev\SDLProject\deps\nlohmann\include;C:\dev\SDLProject\deps\yaml-cpp\include;C:\dev\SDLProject\deps\zlib;C:\Program Files\OpenSSL\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Link>
+      <AdditionalDependencies>opengl32.lib;glu32.lib;deps\GLFW\src\RelWithDebInfo\glfw3.lib;deps\fmod\lib\x64\fmod_vc.lib;C:\Program Files\OpenSSL\lib\libssl.lib;C:\Program Files\OpenSSL\lib\libcrypto.lib;deps\yaml-cpp\RelWithDebInfo\yaml-cpp.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>C:/dev/SDLProject/RelWithDebInfo/SDLProject.lib</ImportLibrary>
+      <ProgramDataBaseFile>C:/dev/SDLProject/RelWithDebInfo/SDLProject.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\dev\SDLProject\CMakeLists.txt">
+      <UseUtf8Encoding>Always</UseUtf8Encoding>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Building Custom Rule C:/dev/SDLProject/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">setlocal
+C:\Strawberry\c\bin\cmake.exe -SC:/dev/SDLProject -BC:/dev/SDLProject --check-stamp-file C:/dev/SDLProject/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCXXInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCommonLanguageInclude.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeGenericSystem.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeInitializeConfigs.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeLanguageInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeRCInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeSystemSpecificInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeSystemSpecificInitialize.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC-C.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC-CXX.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindOpenGL.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindOpenSSL.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindPackageHandleStandardArgs.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindPackageMessage.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC-C.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC-CXX.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\WindowsPaths.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\SelectLibraryConfigurations.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeCCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeCXXCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeRCCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeSystem.cmake;C:\dev\SDLProject\CMakeFiles\cmake.verify_globs;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\dev\SDLProject\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Building Custom Rule C:/dev/SDLProject/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">setlocal
+C:\Strawberry\c\bin\cmake.exe -SC:/dev/SDLProject -BC:/dev/SDLProject --check-stamp-file C:/dev/SDLProject/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCXXInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCommonLanguageInclude.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeGenericSystem.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeInitializeConfigs.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeLanguageInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeRCInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeSystemSpecificInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeSystemSpecificInitialize.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC-C.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC-CXX.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindOpenGL.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindOpenSSL.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindPackageHandleStandardArgs.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindPackageMessage.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC-C.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC-CXX.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\WindowsPaths.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\SelectLibraryConfigurations.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeCCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeCXXCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeRCCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeSystem.cmake;C:\dev\SDLProject\CMakeFiles\cmake.verify_globs;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\dev\SDLProject\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">Building Custom Rule C:/dev/SDLProject/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">setlocal
+C:\Strawberry\c\bin\cmake.exe -SC:/dev/SDLProject -BC:/dev/SDLProject --check-stamp-file C:/dev/SDLProject/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCXXInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCommonLanguageInclude.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeGenericSystem.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeInitializeConfigs.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeLanguageInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeRCInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeSystemSpecificInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeSystemSpecificInitialize.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC-C.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC-CXX.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindOpenGL.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindOpenSSL.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindPackageHandleStandardArgs.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindPackageMessage.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC-C.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC-CXX.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\WindowsPaths.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\SelectLibraryConfigurations.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeCCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeCXXCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeRCCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeSystem.cmake;C:\dev\SDLProject\CMakeFiles\cmake.verify_globs;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">C:\dev\SDLProject\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">Building Custom Rule C:/dev/SDLProject/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">setlocal
+C:\Strawberry\c\bin\cmake.exe -SC:/dev/SDLProject -BC:/dev/SDLProject --check-stamp-file C:/dev/SDLProject/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCXXInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeCommonLanguageInclude.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeGenericSystem.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeInitializeConfigs.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeLanguageInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeRCInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeSystemSpecificInformation.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\CMakeSystemSpecificInitialize.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC-C.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC-CXX.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Compiler\MSVC.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindOpenGL.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindOpenSSL.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindPackageHandleStandardArgs.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\FindPackageMessage.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC-C.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC-CXX.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows-MSVC.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\Windows.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\Platform\WindowsPaths.cmake;C:\Strawberry\c\share\cmake-3.26\Modules\SelectLibraryConfigurations.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeCCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeCXXCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeRCCompiler.cmake;C:\dev\SDLProject\CMakeFiles\3.26.4\CMakeSystem.cmake;C:\dev\SDLProject\CMakeFiles\cmake.verify_globs;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">C:\dev\SDLProject\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="C:\dev\SDLProject\deps\glad\src\glad.c" />
+    <ClCompile Include="C:\dev\SDLProject\deps\imgui\backends\imgui_impl_glfw.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\deps\imgui\backends\imgui_impl_opengl3.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\deps\imgui\imgui.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\deps\imgui\imgui_demo.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\deps\imgui\imgui_draw.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\deps\imgui\imgui_tables.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\deps\imgui\imgui_widgets.cpp" />
+    <None Include="C:\dev\SDLProject\src\Core">
+    </None>
+    <ClCompile Include="C:\dev\SDLProject\src\Core\Application.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Core\ConfigManager.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Core\EventSystem.cpp" />
+    <None Include="C:\dev\SDLProject\src\Core\Events">
+    </None>
+    <ClCompile Include="C:\dev\SDLProject\src\Core\Logger.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Core\MemoryManager.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Core\MemoryPool.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Core\Resource.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Core\ResourceManager.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Core\Subsystem.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Core\TimeManager.cpp" />
+    <None Include="C:\dev\SDLProject\src\ECS">
+    </None>
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\Component.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\Components\CameraComponent.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\Components\MeshRendererComponent.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\Components\TransformComponent.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\Entity.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\EntityMetadata.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\Error.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\Registry.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\Scene.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\System.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\UUID.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\ECS\World.cpp" />
+    <None Include="C:\dev\SDLProject\src\Rendering">
+    </None>
+    <None Include="C:\dev\SDLProject\src\Rendering\Cameras">
+    </None>
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Cameras\Camera.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Cameras\CameraAnimator.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Cameras\FPSCameraController.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Cameras\OrthographicCamera.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Cameras\PerspectiveCamera.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\IsometricRenderSystem.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Light.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\LightManager.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Material.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Mesh.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\PaletteManager.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\RenderContext.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\RenderPipeline.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\RenderStage.cpp" />
+    <ClInclude Include="C:\dev\SDLProject\src\Rendering\RenderStage.inl" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\RenderSystem.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\RenderTarget.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Shader.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\ShaderManager.cpp" />
+    <None Include="C:\dev\SDLProject\src\Rendering\Stages">
+    </None>
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Stages\DepthPrepassStage.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Stages\GeometryStage.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Stages\LightingStage.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Stages\PostProcessStage.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Stages\ShadowStage.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Stages\SkyboxStage.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Stages\TransparencyStage.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Stages\UIStage.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Stages\VelocityStage.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Rendering\Texture.cpp" />
+    <None Include="C:\dev\SDLProject\src\Utility">
+    </None>
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Color.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\DebugDraw.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\FileSystem.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Frustum.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Frustum_SIMD.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Math.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Octree.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Profiler.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Quadtree.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Random.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Ray.cpp" />
+    <None Include="C:\dev\SDLProject\src\Utility\Serialization">
+    </None>
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Serialization\BinaryDeserializer.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Serialization\BinarySerializer.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Serialization\Deserializer.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Serialization\ParameterValue.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Serialization\Schema.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Serialization\SchemaRegistry.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Serialization\SerializationTypes.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Serialization\SerializationUtility.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Serialization\Serializer.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\SpatialPartitionFactory.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\SpatialPartitioning.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\SpatialQuery.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\StringUtils.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\Transform.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Utility\stb_image_impl.cpp" />
+    <None Include="C:\dev\SDLProject\src\Voxel">
+    </None>
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\Biome.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\BiomeManager.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\Chunk.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\ChunkManager.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\ChunkMesh.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\ChunkStorage.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\DistributionControl.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\FeaturePlacement.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\GenerationParameters.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\Grid.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\NoiseGenerator.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\NoiseLayer.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\ProceduralGenerationSystem.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\StreamingManager.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\Voxel\VoxelRenderer.cpp" />
+    <ClCompile Include="C:\dev\SDLProject\src\main.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="C:\dev\SDLProject\ZERO_CHECK.vcxproj">
+      <Project>{4A9C05B1-DB99-3200-8517-1C860685B008}</Project>
+      <Name>ZERO_CHECK</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\dev\SDLProject\deps\GLFW\src\glfw.vcxproj">
+      <Project>{E13F40CC-2756-30C8-A7E2-F9D441DA7899}</Project>
+      <Name>glfw</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\dev\SDLProject\deps\yaml-cpp\yaml-cpp.vcxproj">
+      <Project>{5E3F140C-CF3D-3C22-B01F-5417334B6DE3}</Project>
+      <Name>yaml-cpp</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

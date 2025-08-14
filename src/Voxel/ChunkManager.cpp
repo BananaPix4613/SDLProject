@@ -13,7 +13,6 @@
 #include <algorithm>
 #include <chrono>
 
-namespace Log = PixelCraft::Core;
 using StringUtils = PixelCraft::Utility::StringUtils;
 
 namespace PixelCraft::Voxel
@@ -44,11 +43,11 @@ namespace PixelCraft::Voxel
     {
         if (m_initialized)
         {
-            Log::warn("ChunkManager already initialized");
+            Core::warn("ChunkManager already initialized");
             return true;
         }
 
-        Log::info("Initializing ChunkManager subsystem");
+        Core::info("Initializing ChunkManager subsystem");
 
         // Create chunk storage with default world path
         std::string worldPath = "worlds/default";
@@ -56,7 +55,7 @@ namespace PixelCraft::Voxel
 
         if (!m_chunkStorage->initialize())
         {
-            Log::error("Failed to initialize chunk storage");
+            Core::error("Failed to initialize chunk storage");
             return false;
         }
 
@@ -69,13 +68,15 @@ namespace PixelCraft::Voxel
         m_streamingManager = app->getSubsystem<StreamingManager>();
 
         m_initialized = true;
-        Log::info("ChunkManager initialized with chunk size: " + m_chunkSize);
+        Core::info("ChunkManager initialized with chunk size: " + std::to_string(m_chunkSize));
 
         return true;
     }
 
     void ChunkManager::update(float deltaTime)
     {
+        (void)deltaTime;  // Currently unused
+
         if (!m_initialized)
         {
             return;
@@ -137,14 +138,14 @@ namespace PixelCraft::Voxel
             return;
         }
 
-        Log::info("Shutting down ChunkManager subsystem");
+        Core::info("Shutting down ChunkManager subsystem");
 
         // Save all dirty chunks
         saveModifiedChunks();
 
         // Stop save thread
         m_saveThreadActive = false;
-        m_saveQueue.push(nullptr); // Push null to wake up thread
+        m_saveQueue.shutdown(); // Signal shutdown to wake up thread
 
         if (m_saveThread.joinable())
         {
@@ -167,16 +168,14 @@ namespace PixelCraft::Voxel
 
     std::vector<std::string> ChunkManager::getDependencies() const
     {
-        return {
-            "ResourceManager"
-        };
+        return {"MemoryManager", "ResourceManager"};
     }
 
     std::shared_ptr<Chunk> ChunkManager::loadChunk(const ChunkCoord& coord)
     {
         if (!m_initialized)
         {
-            Log::error("ChunkManager not initialized");
+            Core::error("ChunkManager not initialized");
             return nullptr;
         }
 
@@ -197,7 +196,7 @@ namespace PixelCraft::Voxel
         auto chunk = std::make_shared<Chunk>(coord);
         if (!chunk->initialize(m_chunkSize))
         {
-            Log::error("Failed to initialize chunk at " + coord.toString());
+            Core::error("Failed to initialize chunk at " + coord.toString());
             Utility::Profiler::getInstance()->endSample();
             return nullptr;
         }
@@ -209,7 +208,7 @@ namespace PixelCraft::Voxel
             loaded = m_chunkStorage->loadChunk(coord, *chunk);
             if (!loaded)
             {
-                Log::warn("Failed to load chunk data for " + coord.toString() + ", will generate new chunk");
+                Core::warn("Failed to load chunk data for " + coord.toString() + ", will generate new chunk");
             }
         }
 
@@ -243,7 +242,7 @@ namespace PixelCraft::Voxel
     {
         if (!m_initialized)
         {
-            Log::error("ChunkManager not initialized");
+            Core::error("ChunkManager not initialized");
             return false;
         }
 
@@ -301,11 +300,11 @@ namespace PixelCraft::Voxel
         return true;
     }
 
-    std::shared_ptr<Chunk>ChunkManager::createChunk(const ChunkCoord& coord)
+    std::shared_ptr<Chunk> ChunkManager::createChunk(const ChunkCoord& coord)
     {
         if (!m_initialized)
         {
-            Log::error("ChunkManager not initialized");
+            Core::error("ChunkManager not initialized");
             return nullptr;
         }
 
@@ -326,7 +325,7 @@ namespace PixelCraft::Voxel
         auto chunk = std::make_shared<Chunk>(coord);
         if (!chunk->initialize(m_chunkSize))
         {
-            Log::error("Failed to initialize chunk at " + coord.toString());
+            Core::error("Failed to initialize chunk at " + coord.toString());
             Utility::Profiler::getInstance()->endSample();
             return nullptr;
         }
@@ -363,6 +362,18 @@ namespace PixelCraft::Voxel
         return it != m_chunks.end() ? it->second : nullptr;
     }
 
+    std::shared_ptr<Chunk> ChunkManager::getChunk(const ChunkCoord& coord) const
+    {
+        if (!m_initialized)
+        {
+            return nullptr;
+        }
+
+        std::lock_guard<std::mutex> lock(m_chunksMutex);
+        auto it = m_chunks.find(coord);
+        return it != m_chunks.end() ? it->second : nullptr;
+    }
+
     bool ChunkManager::isChunkLoaded(const ChunkCoord& coord) const
     {
         if (!m_initialized)
@@ -378,7 +389,7 @@ namespace PixelCraft::Voxel
     {
         if (!m_initialized || !m_chunkStorage)
         {
-            Log::error("ChunkManager or ChunkStorage not initialized");
+            Core::error("ChunkManager or ChunkStorage not initialized");
             return false;
         }
 
@@ -400,7 +411,7 @@ namespace PixelCraft::Voxel
         }
         else
         {
-            Log::error("Failed to save chunk at " + chunk.getCoord().toString());
+            Core::error("Failed to save chunk at " + chunk.getCoord().toString());
         }
 
         Utility::Profiler::getInstance()->endSample();
@@ -411,7 +422,7 @@ namespace PixelCraft::Voxel
     {
         if (!m_initialized || !m_chunkStorage)
         {
-            Log::error("ChunkManager or ChunkStorage not initialized");
+            Core::error("ChunkManager or ChunkStorage not initialized");
             return false;
         }
 
@@ -430,7 +441,7 @@ namespace PixelCraft::Voxel
         }
         else
         {
-            Log::error("Failed to load chunk at " + chunk.getCoord().toString());
+            Core::error("Failed to load chunk at " + chunk.getCoord().toString());
         }
 
         Utility::Profiler::getInstance()->endSample();
@@ -444,7 +455,7 @@ namespace PixelCraft::Voxel
             return;
         }
 
-        Utility::Profiler::getInstance()->beginSample("ChunkManager::saveModiferChunks");
+        Utility::Profiler::getInstance()->beginSample("ChunkManager::saveModifiedChunks");
 
         // Get all dirty chunks
         std::vector<ChunkCoord> dirtyChunkCoords;
@@ -475,15 +486,19 @@ namespace PixelCraft::Voxel
 
     void ChunkManager::backgroundSaveThread()
     {
-        Log::debug("ChunkManager save thread started");
+        Core::debug("ChunkManager save thread started");
 
         while (m_saveThreadActive)
         {
             // Wait for a chunk to save
             std::shared_ptr<Chunk> chunk;
-            m_saveQueue.waitAndPop(chunk);
+            if (!m_saveQueue.waitAndPop(chunk))
+            {
+                // Queue was shut down, exit thread
+                break;
+            }
 
-            // Check for shutdown signal (null chunk) or if thread should stop
+            // Check for shutdown signal or if thread should stop
             if (!chunk || !m_saveThreadActive)
             {
                 break;
@@ -496,50 +511,40 @@ namespace PixelCraft::Voxel
             }
         }
 
-        Log::debug("ChunkManager save thread stopped");
+        Core::debug("ChunkManager save thread stopped");
     }
 
-    std::vector<std::shared_ptr<Chunk>> ChunkManager::getChunksAroundPoint(const glm::vec3& position, float radius)
+    std::vector<std::shared_ptr<Chunk>> ChunkManager::getChunksAroundPoint(
+        const glm::vec3& point, float radius) const
     {
-        if (!m_initialized)
-        {
-            return {};
-        }
-
         std::vector<std::shared_ptr<Chunk>> result;
 
-        // Convert world position to chunk coordinates
-        int chunkX = static_cast<int>(floor(position.x / m_chunkSize));
-        int chunkY = static_cast<int>(floor(position.y / m_chunkSize));
-        int chunkZ = static_cast<int>(floor(position.z / m_chunkSize));
+        // Calculate chunk coordinates for the radius
+        int chunkRadius = static_cast<int>(ceil(radius / m_chunkSize));
+        ChunkCoord centerCoord = ChunkCoord::fromWorldPosition(point, m_chunkSize);
 
-        // Calculate chunk radius
-        int chunkRadius = static_cast<int>(ceil(radius / m_chunkSize)) + 1;
-
-        // Iterate through chunks in the radius
-        for (int x = chunkX - chunkRadius; x <= chunkX + chunkRadius; x++)
+        // Check all chunks in the radius
+        for (int x = -chunkRadius; x <= chunkRadius; x++)
         {
-            for (int y = chunkY - chunkRadius; y <= chunkY + chunkRadius; y++)
+            for (int y = -chunkRadius; y <= chunkRadius; y++)
             {
-                for (int z = chunkZ - chunkRadius; z <= chunkZ + chunkRadius; z++)
+                for (int z = -chunkRadius; z <= chunkRadius; z++)
                 {
-                    ChunkCoord coord(x, y, z);
-
-                    // Calculate center of this chunk
-                    glm::vec3 chunkCenter(
-                        (x + 0.5f) * m_chunkSize,
-                        (y + 0.5f) * m_chunkSize,
-                        (z + 0.5f) * m_chunkSize
+                    ChunkCoord coord(
+                        centerCoord.x + x,
+                        centerCoord.y + y,
+                        centerCoord.z + z
                     );
 
-                    // Calculate distance to chunk center
-                    float distance = glm::distance(position, chunkCenter);
+                    auto chunk = getChunk(coord);
+                    if (chunk)
+                    {
+                        // Check if chunk center is within radius
+                        glm::vec3 chunkCenter = coord.toWorldPosition(m_chunkSize) +
+                            glm::vec3(m_chunkSize * 0.5f);
+                        float dist = glm::distance(point, chunkCenter);
 
-                    // If chunk is within radius, add it to result
-                    if (distance <= radius + m_chunkSize * 0.866f)
-                    { // 0.866 = sqrt(3)/2 for diagonal
-                        auto chunk = getChunk(coord);
-                        if (chunk)
+                        if (dist <= radius + m_chunkSize * 0.866f) // Add chunk diagonal
                         {
                             result.push_back(chunk);
                         }
@@ -555,7 +560,7 @@ namespace PixelCraft::Voxel
     {
         if (!m_initialized)
         {
-            Log::error("ChunkManager not initialized");
+            Core::error("ChunkManager not initialized");
             return false;
         }
 
@@ -577,14 +582,14 @@ namespace PixelCraft::Voxel
         auto newStorage = std::make_shared<ChunkStorage>(path);
         if (!newStorage->initialize())
         {
-            Log::error("Failed to initialize chunk storage for path: " + path);
+            Core::error("Failed to initialize chunk storage for path: " + path);
             return false;
         }
 
         // Replace the storage
         m_chunkStorage = newStorage;
 
-        Log::info("ChunkStorage world path set to: " + path);
+        Core::info("ChunkStorage world path set to: " + path);
         return true;
     }
 
@@ -604,18 +609,18 @@ namespace PixelCraft::Voxel
     {
         if (size <= 0)
         {
-            Log::error("Invalid chunk size: " + size);
+            Core::error("Invalid chunk size: " + std::to_string(size));
             return;
         }
 
         if (m_initialized && !m_chunks.empty())
         {
-            Log::error("Cannot change chunk size after chunks have been created");
+            Core::error("Cannot change chunk size after chunks have been created");
             return;
         }
 
         m_chunkSize = size;
-        Log::info("Chunk size set to " + size);
+        Core::info("Chunk size set to " + std::to_string(size));
     }
 
     void ChunkManager::updateChunkNeighbors(std::shared_ptr<Chunk> chunk)

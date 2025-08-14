@@ -3,14 +3,20 @@
 // -------------------------------------------------------------------------
 #pragma once
 
+#include "Core/Application.h"
+#include "Core/Subsystem.h"
+#include "Core/MemoryPool.h"
+
 #include <memory>
 #include <unordered_map>
 #include <string>
 #include <mutex>
 #include <typeindex>
 #include <atomic>
-#include "Core/MemoryPool.h"
+#include <vector>
+#include <functional>
 
+// In namespace PixelCraft
 namespace PixelCraft::Core
 {
 
@@ -20,25 +26,55 @@ namespace PixelCraft::Core
      * Manages multiple typed memory pools, provides custom allocators for smart pointers,
      * and tracks memory usage throughout the engine.
      */
-    class MemoryManager
+    class MemoryManager : public Subsystem
     {
     public:
         /**
-         * @brief Get the singleton instance
-         * @return Reference to the MemoryManager instance
+         * @brief Constructor
          */
-        static MemoryManager& getInstance();
+        MemoryManager();
+
+        /**
+         * @brief Destructor
+         */
+        virtual ~MemoryManager();
 
         /**
          * @brief Initialize the memory manager
          * @return True if initialization was successful
          */
-        bool initialize();
+        bool initialize() override;
+
+        /**
+         * @brief Update the memory manager (periodic cleanup, defragmentation checks)
+         * @param deltaTime Time since last update
+         */
+        void update(float deltaTime) override;
+
+        /**
+         * @brief Render debug information if enabled
+         */
+        void render() override;
 
         /**
          * @brief Shut down the memory manager and release all memory
          */
-        void shutdown();
+        void shutdown() override;
+
+        /**
+         * @brief Get the name of this subsystem
+         * @return The subsystem name
+         */
+        std::string getName() const override
+        {
+            return "MemoryManager";
+        }
+
+        /**
+         * @brief Get dependencies for this subsystem
+         * @return Empty vector (no dependencies)
+         */
+        std::vector<std::string> getDependencies() const override;
 
         /**
          * @brief Create a memory pool for a specific type
@@ -155,6 +191,39 @@ namespace PixelCraft::Core
         }
 
         /**
+         * @brief Allocate variable-sized raw memory with tracking
+         * @param size Number of bytes to allocate
+         * @param alignment Memory alignment requirement (default: 16 bytes)
+         * @return Pointer to allocated memory or nullptr if allocation failed
+         */
+        void* allocateRaw(size_t size, size_t alignment = 16);
+
+        /**
+         * @brief Deallocate variable-sized raw memory
+         * @param ptr Pointer to memory previously allocated with allocateRaw
+         * @param size Size of the allocation (must match original allocation size)
+         */
+        void deallocateRaw(void* ptr, size_t size);
+
+        /**
+         * @brief Allocate pixel data with specific tracking
+         * @param width Width of the texture
+         * @param height Height of the texture  
+         * @param channels Number of color channels
+         * @return Pointer to allocated pixel data or nullptr if allocation failed
+         */
+        uint8_t* allocatePixelData(int width, int height, int channels);
+
+        /**
+         * @brief Deallocate pixel data
+         * @param ptr Pointer to pixel data
+         * @param width Width of the texture
+         * @param height Height of the texture
+         * @param channels Number of color channels
+         */
+        void deallocatePixelData(uint8_t* ptr, int width, int height, int channels);
+
+        /**
          * @brief Structure for tracking memory allocation statistics
          */
         struct AllocationStats
@@ -167,6 +236,20 @@ namespace PixelCraft::Core
             int activePoolCount{0};       // Number of active memory pools
             int allocationCount{0};       // Number of allocation operations
             int deallocationCount{0};     // Number of deallocation operations
+
+            // Raw allocation tracking
+            size_t rawAllocated{0};       // Total raw bytes allocated
+            size_t rawFreed{0};           // Total raw bytes freed
+            size_t rawCurrentUsage{0};    // Current raw memory usage
+            int rawAllocationCount{0};    // Number of raw allocation operations
+            int rawDeallocationCount{0};  // Number of raw deallocation operations
+
+            // Pixel data specific tracking
+            size_t pixelDataAllocated{0}; // Total pixel data bytes allocated
+            size_t pixelDataFreed{0};     // Total pixel data bytes freed
+            size_t pixelDataCurrentUsage{0}; // Current pixel data usage
+            int pixelDataAllocationCount{0}; // Number of pixel data allocations
+            int pixelDataDeallocationCount{0}; // Number of pixel data deallocations
         };
 
         /**
@@ -190,19 +273,6 @@ namespace PixelCraft::Core
         int releaseUnused();
 
         /**
-         * @brief Custom deleter for use with smart pointers
-         * @tparam T Type of object to delete
-         */
-        template<typename T>
-        struct PoolDeleter
-        {
-            void operator()(T* ptr) const
-            {
-                MemoryManager::getInstance().deallocate<T>(ptr);
-            }
-        };
-
-        /**
          * @brief Create a shared_ptr using pool allocation
          * @tparam T Type of object to create
          * @tparam Args Constructor argument types
@@ -218,8 +288,10 @@ namespace PixelCraft::Core
             // Placement new with constructor arguments
             new(ptr) T(std::forward<Args>(args)...);
 
-            // Create shared_ptr with custom deleter
-            return std::shared_ptr<T>(ptr, PoolDeleter<T>());
+            // Create shared_ptr with lambda deleter
+            return std::shared_ptr<T>(ptr, [this](T* p) {
+                this->deallocate<T>(p);
+            });
         }
 
         /**
@@ -230,7 +302,7 @@ namespace PixelCraft::Core
          * @return unique_ptr to the newly created object
          */
         template<typename T, typename... Args>
-        std::unique_ptr<T, PoolDeleter<T>> makeUnique(Args&&... args)
+        std::unique_ptr<T, std::function<void(T*)>> makeUnique(Args&&... args)
         {
             T* ptr = allocate<T>();
             if (!ptr) return nullptr;
@@ -238,32 +310,83 @@ namespace PixelCraft::Core
             // Placement new with constructor arguments
             new(ptr) T(std::forward<Args>(args)...);
 
-            // Create unique_ptr with custom deleter
-            return std::unique_ptr<T, PoolDeleter<T>>(ptr, PoolDeleter<T>());
+            // Create unique_ptr with lambda deleter
+            auto deleter = [this](T* p) {
+                this->deallocate<T>(p);
+            };
+            return std::unique_ptr<T, std::function<void(T*)>>(ptr, deleter);
         }
+
+        /**
+         * @brief Create a unique_ptr for pixel data with proper cleanup
+         * @param width Width of the texture
+         * @param height Height of the texture
+         * @param channels Number of color channels
+         * @return unique_ptr to allocated pixel data
+         */
+        std::unique_ptr<uint8_t[], std::function<void(uint8_t*)>> makePixelDataUnique(int width, int height, int channels);
 
     private:
         /**
-         * @brief Private constructor for singleton pattern
+         * @brief Internal method to create a memory pool without acquiring locks
+         * @tparam T Type of objects to be allocated from the pool
+         * @param initialCapacity Initial number of objects the pool can hold
+         * @return Pointer to the created memory pool
          */
-        MemoryManager();
+        template<typename T>
+        MemoryPool* createPoolInternal(size_t initialCapacity = 64)
+        {
+            // Internal method that assumes mutex is already locked
+            auto typeIndex = std::type_index(typeid(T));
+            auto it = m_pools.find(typeIndex);
+
+            // Return existing pool if already created
+            if (it != m_pools.end())
+            {
+                return it->second.get();
+            }
+
+            // Create new pool
+            auto pool = std::make_unique<MemoryPool>(sizeof(T), initialCapacity);
+            MemoryPool* poolPtr = pool.get();
+            m_pools[typeIndex] = std::move(pool);
+
+            // Update statistics
+            {
+                std::lock_guard<std::mutex> statsLock(m_statsMutex);
+                m_stats.activePoolCount++;
+                m_stats.totalCapacity += initialCapacity * sizeof(T);
+            }
+
+            return poolPtr;
+        }
 
         /**
-         * @brief Private destructor for singleton pattern
+         * @brief Find the best size pool for a given allocation size
+         * @param size Requested allocation size
+         * @return Pool size or 0 if no suitable pool exists
          */
-        //~MemoryManager();
+        size_t findBestPoolSize(size_t size);
 
-        // Delete copy/move constructors and assignment operators
-        MemoryManager(const MemoryManager&) = delete;
-        MemoryManager& operator=(const MemoryManager&) = delete;
-        MemoryManager(MemoryManager&&) = delete;
-        MemoryManager& operator=(MemoryManager&&) = delete;
+        /**
+         * @brief Get or create a raw memory pool for a given size
+         * @param poolSize Size of objects in the pool
+         * @return Pointer to the memory pool
+         */
+        MemoryPool* getRawMemoryPool(size_t poolSize);
 
         std::unordered_map<std::type_index, std::unique_ptr<MemoryPool>> m_pools;
+        std::unordered_map<size_t, std::unique_ptr<MemoryPool>> m_rawPools;
+        std::vector<size_t> m_poolSizes;
         mutable std::mutex m_mutex;
         mutable std::mutex m_statsMutex;
         bool m_initialized;
         AllocationStats m_stats;
+
+        // Update tracking
+        float m_lastDefragmentTime;
+        float m_defragmentInterval;
+        bool m_enableDebugRendering;
     };
 
     /**
@@ -276,7 +399,7 @@ namespace PixelCraft::Core
     template<typename T, typename... Args>
     std::shared_ptr<T> makeShared(Args&&... args)
     {
-        return MemoryManager::getInstance().makeShared<T>(std::forward<Args>(args)...);
+        return Application::getInstance()->getSubsystem<MemoryManager>()->makeShared<T>(std::forward<Args>(args)...);
     }
 
     /**
@@ -287,9 +410,9 @@ namespace PixelCraft::Core
      * @return unique_ptr to the newly created object
      */
     template<typename T, typename... Args>
-    std::unique_ptr<T, MemoryManager::PoolDeleter<T>> makeUnique(Args&&... args)
+    std::unique_ptr<T, std::function<void(T*)>> makeUnique(Args&&... args)
     {
-        return MemoryManager::getInstance().makeUnique<T>(std::forward<Args>(args)...);
+        return Application::getSubsystem<MemoryManager>()->makeUnique<T>(std::forward<Args>(args)...);
     }
 
 } // namespace PixelCraft::Core

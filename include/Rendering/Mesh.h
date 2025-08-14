@@ -3,10 +3,12 @@
 // -------------------------------------------------------------------------
 #pragma once
 
+#include "Core/Resource.h"
+#include "Utility/AABB.h"
+
 #include <memory>
 #include <string>
 #include <vector>
-#include "Core/Resource.h"
 
 namespace PixelCraft::Rendering
 {
@@ -57,15 +59,6 @@ namespace PixelCraft::Rendering
     };
 
     /**
-     * @brief Collection of vertex attributes defining a vertex layout
-     */
-    struct VertexAttributes
-    {
-        std::vector<VertexAttribute> attributes;
-        int stride;
-    };
-
-    /**
      * @brief 3D geometry data with efficient GPU storage
      *
      * Manages vertex and index buffer objects with support for different vertex
@@ -74,6 +67,11 @@ namespace PixelCraft::Rendering
     class Mesh : public Core::Resource
     {
     public:
+        /**
+         * @brief Default constructor
+         */
+        Mesh();
+
         /**
          * @brief Constructor
          * @param name Resource name for identification
@@ -104,19 +102,68 @@ namespace PixelCraft::Rendering
 
         /**
          * @brief Create a mesh from vertex and index data
-         *
-         * @param vertices Pointer to vertex data
+         * @param vertexData Pointer to vertex data
          * @param vertexCount Number of vertices
-         * @param indices Pointer to index data (can be nullptr for non-indexed geometry)
-         * @param indexCount Number of indices (0 for non-indexed geometry)
+         * @param vertexStride Stride between vertices in bytes
          * @param attributes Vertex attribute layout
-         * @param primitiveType Primitive type to use for rendering
+         * @param indexData Pointer to index data
+         * @param indexCount Number of indices
          * @return True if creation was successful
          */
-        bool createFromData(const void* vertices, uint32_t vertexCount,
-                            const uint32_t* indices, uint32_t indexCount,
-                            const VertexAttributes& attributes,
-                            PrimitiveType primitiveType = PrimitiveType::Triangles);
+        bool createFromData(const void* vertexData,
+                            size_t vertexCount,
+                            size_t vertexStride,
+                            const std::vector<VertexAttribute>& attributes,
+                            const void* indexData,
+                            size_t indexCount);
+
+        /**
+         * @brief Create a box mesh with the specified dimensions
+         * @param width Width of the box
+         * @param height Height of the box
+         * @param depth Depth of the box
+         * @param createUVs Whether to create texture coordinates
+         * @return True if the box mesh was created successfully
+         */
+        bool createBox(float width = 1.0f, float height = 1.0f,
+                       float depth = 1.0f, bool createUVs = true);
+
+        /**
+         * @brief Create a sphere mesh with the specified parameters
+         * @param radius Radius of the sphere
+         * @param rings Number of horizontal subdivisions
+         * @param sectors Number of vertical subdivisions
+         * @param createUVs Whether to create texture coordinates
+         * @return True if the sphere was created successfully
+         */
+        bool createSphere(float radius = 1.0f, uint32_t rings = 16,
+                          uint32_t sectors = 32, bool createUVs = true);
+
+        /**
+         * @brief Create a cylinder mesh with the specified parameters
+         * @param radius Radius of the cylinder
+         * @param height Height of the cylinder
+         * @param sectors Number of sides around the cylinder
+         * @param capped Whether to create top and bottom caps
+         * @param createUVs Whether to create texture coordinates
+         * @return True if the cylinder was successfully created
+         */
+        bool createCylinder(float radius = 1.0f, float height = 2.0f,
+                            uint32_t sectors = 24, bool capped = true,
+                            bool createUVs = true);
+
+        /**
+         * @brief Create a cone mesh with the specified parameters
+         * @param radius Radius of the cone base
+         * @param height Height of the cone
+         * @param sectors Number of sides around the cone
+         * @param capped Whether to create bottom cap
+         * @param createUVs Whether to create texture coordinates
+         * @return True if the cone was successfully created
+         */
+        bool createCone(float radius = 1.0f, float height = 2.0f,
+                        uint32_t sectors = 24, bool capped = true,
+                        bool createUVs = true);
 
         /**
          * @brief Bind the mesh for rendering
@@ -200,7 +247,7 @@ namespace PixelCraft::Rendering
          * @brief Get the vertex attribute layout
          * @return Vertex attributes
          */
-        const VertexAttributes& getAttributes() const;
+        const std::vector<VertexAttribute>& getAttributes() const;
 
         /**
          * @brief Get the bounding box
@@ -216,7 +263,7 @@ namespace PixelCraft::Rendering
         uint32_t m_vertexCount;
         uint32_t m_indexCount;
         PrimitiveType m_primitiveType;
-        VertexAttributes m_attributes;
+        std::vector<VertexAttribute> m_attributes;
         Utility::AABB m_bounds;
         bool m_dynamic;
 

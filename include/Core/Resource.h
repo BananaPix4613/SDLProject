@@ -7,6 +7,7 @@
 #include <atomic>
 #include <filesystem>
 
+// In namespace PixelCraft
 namespace PixelCraft::Core
 {
 
@@ -26,6 +27,26 @@ namespace PixelCraft::Core
          * @brief Virtual destructor
          */
         virtual ~Resource();
+
+        /**
+         * @brief Copy constructor (deleted - resources should not be copied)
+         */
+        Resource(const Resource&) = delete;
+
+        /**
+         * @brief Copy assignment (deleted - resources should not be copied)
+         */
+        Resource& operator=(const Resource&) = delete;
+
+        /**
+         * @brief Move constructor
+         */
+        Resource(Resource&& other) noexcept;
+
+        /**
+         * @brief Move assignment operator
+         */
+        Resource& operator=(Resource&& other) noexcept;
 
         /**
          * @brief Load the resource from its path
@@ -54,6 +75,14 @@ namespace PixelCraft::Core
         const std::string& getPath() const
         {
             return m_path;
+        }
+
+        /**
+         * @brief Set the file path for this resource
+         */
+        void setPath(const std::string& path)
+        {
+            m_path = path;
         }
 
         /**
@@ -103,6 +132,37 @@ namespace PixelCraft::Core
         std::string m_name;    ///< Name of the resource (derived from path)
         bool m_loaded;         ///< Whether the resource is currently loaded
         std::atomic<int> m_refCount; ///< Reference count for memory management
+    };
+
+    /**
+     * @brief Concrete implementation of Resource for testing purposes
+     */
+    class TestResource : public Resource
+    {
+    public:
+        /**
+         * @brief Constructor
+         * @param path The file path for this resource
+         */
+        TestResource(const std::string& path) : Resource(path) {}
+
+        /**
+         * @brief Load the resource from its path
+         * @return True if loading was successful
+         */
+        bool load() override
+        {
+            m_loaded = true;
+            return true;
+        }
+
+        /**
+         * @brief Unload the resource and free memory
+         */
+        void unload() override
+        {
+            m_loaded = false;
+        }
     };
 
 } // namespace PixelCraft::Core

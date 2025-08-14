@@ -9,14 +9,11 @@
 #include "Core/Logger.h"
 #include "Utility/Random.h"
 #include "Utility/Math.h"
-#include "ECS/Serializer.h"
-#include "ECS/Deserializer.h"
+#include "Utility/Serialization/SerializationUtility.h"
 
 #include <algorithm>
 #include <random>
 #include <cmath>
-
-namespace Log = PixelCraft::Core;
 
 namespace PixelCraft::Voxel
 {
@@ -36,35 +33,27 @@ namespace PixelCraft::Voxel
         // Nothing specific to clean up
     }
 
-    int BiomeManager::registerBiome(const std::string& name)
+    std::shared_ptr<Biome> BiomeManager::registerBiome(const std::string& name)
     {
         // Check if already registered
         auto it = m_biomeNameToId.find(name);
         if (it != m_biomeNameToId.end())
         {
-            Log::warn("Biome '" + name + "' already registered");
-            return it->second;
+            Core::warn("Biome '" + name + "' already registered");
+            return getBiome(it->second);
         }
 
         // Generate new ID
         int id = getNextBiomeId();
 
         // Create biome info
-        BiomeInfo info;
-        info.name = name;
-        info.id = id;
-        info.threshold = 0.5f;
-        info.weight = 1.0f;
-        info.enabled = true;
-        info.temperatureRange = glm::vec2(0.0f, 1.0f);
-        info.humidityRange = glm::vec2(0.0f, 1.0f);
-        info.elevationRange = glm::vec2(0.0f, 1.0f);
+        auto biome = std::make_shared<Biome>(name, id);
 
         // Register it
-        m_biomes[id] = info;
+        m_biomes[id] = biome;
         m_biomeNameToId[name] = id;
 
-        return id;
+        return biome;
     }
 
     bool BiomeManager::removeBiome(int biomeId)
@@ -76,7 +65,7 @@ namespace PixelCraft::Voxel
         }
 
         // Remove from name map first
-        m_biomeNameToId.erase(it->second.name);
+        m_biomeNameToId.erase(it->second->getBiomeName());
 
         // Remove from biomes map
         m_biomes.erase(it);
@@ -84,7 +73,7 @@ namespace PixelCraft::Voxel
         return true;
     }
 
-    const BiomeManager::BiomeInfo* BiomeManager::getBiomeInfo(int biomeId) const
+    std::shared_ptr<Biome> BiomeManager::getBiome(int biomeId) const
     {
         auto it = m_biomes.find(biomeId);
         if (it == m_biomes.end())
@@ -92,10 +81,10 @@ namespace PixelCraft::Voxel
             return nullptr;
         }
 
-        return &(it->second);
+        return it->second;
     }
 
-    const BiomeManager::BiomeInfo* BiomeManager::getBiomeInfo(const std::string& name) const
+    std::shared_ptr<Biome> BiomeManager::getBiome(const std::string& name) const
     {
         auto it = m_biomeNameToId.find(name);
         if (it == m_biomeNameToId.end())
@@ -103,7 +92,7 @@ namespace PixelCraft::Voxel
             return nullptr;
         }
 
-        return getBiomeInfo(it->second);
+        return getBiome(it->second);
     }
 
     std::vector<int> BiomeManager::getBiomeIds() const
@@ -124,175 +113,12 @@ namespace PixelCraft::Voxel
         std::vector<std::string> names;
         names.reserve(m_biomes.size());
 
-        for (const auto& [_, info] : m_biomes)
+        for (const auto& [_, biome] : m_biomes)
         {
-            names.push_back(info.name);
+            names.push_back(biome->getBiomeName());
         }
 
         return names;
-    }
-
-    bool BiomeManager::setBiomeNoise(int biomeId, const std::string& noiseLayerId, float threshold)
-    {
-        auto it = m_biomes.find(biomeId);
-        if (it == m_biomes.end())
-        {
-            Log::error("Biome ID " + std::to_string(biomeId) + " not found");
-            return false;
-        }
-
-        it->second.noiseLayerId = noiseLayerId;
-        it->second.threshold = threshold;
-        return true;
-    }
-
-    bool BiomeManager::setBiomeTemperatureRange(int biomeId, float minTemp, float maxTemp)
-    {
-        auto it = m_biomes.find(biomeId);
-        if (it == m_biomes.end())
-        {
-            Log::error("Biome ID " + std::to_string(biomeId) + " not found");
-            return false;
-        }
-
-        it->second.temperatureRange = glm::vec2(minTemp, maxTemp);
-        return true;
-    }
-
-    bool BiomeManager::setBiomeHumidityRange(int biomeId, float minHumidity, float maxHumidity)
-    {
-        auto it = m_biomes.find(biomeId);
-        if (it == m_biomes.end())
-        {
-            Log::error("Biome ID " + std::to_string(biomeId) + " not found");
-            return false;
-        }
-
-        it->second.humidityRange = glm::vec2(minHumidity, maxHumidity);
-        return true;
-    }
-
-    bool BiomeManager::setBiomeElevationRange(int biomeId, float minElevation, float maxElevation)
-    {
-        auto it = m_biomes.find(biomeId);
-        if (it == m_biomes.end())
-        {
-            Log::error("Biome ID " + std::to_string(biomeId) + " not found");
-            return false;
-        }
-
-        it->second.elevationRange = glm::vec2(minElevation, maxElevation);
-        return true;
-    }
-
-    bool BiomeManager::setVoxelProbability(int biomeId, const std::string& voxelType, float probability)
-    {
-        auto it = m_biomes.find(biomeId);
-        if (it == m_biomes.end())
-        {
-            Log::error("Biome ID " + std::to_string(biomeId) + " not found");
-            return false;
-        }
-
-        it->second.voxelProbabilities[voxelType] = std::max(0.0f, std::min(1.0f, probability));
-        return true;
-    }
-
-    float BiomeManager::getVoxelProbability(int biomeId, const std::string& voxelType) const
-    {
-        auto it = m_biomes.find(biomeId);
-        if (it == m_biomes.end())
-        {
-            return 0.0f;
-        }
-
-        auto& probs = it->second.voxelProbabilities;
-        auto probIt = probs.find(voxelType);
-        if (probIt == probs.end())
-        {
-            return 0.0f;
-        }
-
-        return probIt->second;
-    }
-
-    bool BiomeManager::setFeatureProbability(int biomeId, const std::string& featureType, float probability)
-    {
-        auto it = m_biomes.find(biomeId);
-        if (it == m_biomes.end())
-        {
-            Log::error("Biome ID " + std::to_string(biomeId) + " not found");
-            return false;
-        }
-
-        it->second.featureProbabilities[featureType] = std::max(0.0f, std::min(1.0f, probability));
-        return true;
-    }
-
-    float BiomeManager::getFeatureProbability(int biomeId, const std::string& featureType) const
-    {
-        auto it = m_biomes.find(biomeId);
-        if (it == m_biomes.end())
-        {
-            return 0.0f;
-        }
-
-        auto& probs = it->second.featureProbabilities;
-        auto probIt = probs.find(featureType);
-        if (probIt == probs.end())
-        {
-            return 0.0f;
-        }
-
-        return probIt->second;
-    }
-
-    bool BiomeManager::setBiomeWeight(int biomeId, float weight)
-    {
-        auto it = m_biomes.find(biomeId);
-        if (it == m_biomes.end())
-        {
-            Log::error("Biome ID " + std::to_string(biomeId) + " not found");
-            return false;
-        }
-
-        it->second.weight = std::max(0.0f, weight);
-        return true;
-    }
-
-    float BiomeManager::getBiomeWeight(int biomeId) const
-    {
-        auto it = m_biomes.find(biomeId);
-        if (it == m_biomes.end())
-        {
-            return 0.0f;
-        }
-
-        return it->second.weight;
-    }
-
-    bool BiomeManager::setBiomeEnabled(int biomeId, bool enabled)
-    {
-        auto it = m_biomes.find(biomeId);
-        if (it == m_biomes.end())
-        {
-            Log::error("Biome ID " + std::to_string(biomeId) + " not found");
-            return false;
-        }
-
-        it->second.enabled = enabled;
-        return true;
-    }
-
-    bool BiomeManager::isBiomeEnabled(int biomeId) const
-    {
-        auto it = m_biomes.find(biomeId);
-        if (it == m_biomes.end())
-        {
-            return false;
-        }
-
-        return it->second.enabled;
     }
 
     int BiomeManager::getBiomeAt(const glm::vec3& position, const GenerationContext& context) const
@@ -382,18 +208,18 @@ namespace PixelCraft::Voxel
         // Calculate influence for each enabled biome
         float totalInfluence = 0.0f;
 
-        for (const auto& [biomeId, biomeInfo] : m_biomes)
+        for (const auto& [id, biome] : m_biomes)
         {
-            if (!biomeInfo.enabled)
+            if (!biome->isBiomeEnabled())
             {
                 continue;
             }
 
-            float influence = calculateBiomeInfluence(biomeId, position, temperature, humidity, elevation, context);
+            float influence = calculateBiomeInfluence(id, position, temperature, humidity, elevation, context);
 
             if (influence > 0.0f)
             {
-                influences[biomeId] = influence;
+                influences[id] = influence;
                 totalInfluence += influence;
             }
         }
@@ -496,8 +322,8 @@ namespace PixelCraft::Voxel
 
                         if (dominantBiome >= 0)
                         {
-                            auto biomeInfo = getBiomeInfo(dominantBiome);
-                            if (biomeInfo)
+                            auto biome = getBiome(dominantBiome);
+                            if (biome)
                             {
                                 // Apply biome-specific surface block
                                 // Example: use data value to store biome ID
@@ -505,12 +331,12 @@ namespace PixelCraft::Voxel
 
                                 // Apply based on voxel probabilities
                                 // This is simplified and would be more complex in a real implementation
-                                for (const auto& [voxelType, probability] : biomeInfo->voxelProbabilities)
+                                for (const auto& [voxelType, probability] : biome->getVoxelProbabilities())
                                 {
                                     if (probability > 0.0f)
                                     {
                                         // Convert voxel type name to ID (simplified)
-                                        uint16_t voxelTypeId = std::stoi(voxelType);
+                                        uint16_t voxelTypeId = static_cast<uint16_t>(std::stoi(voxelType));
 
                                         // Apply with probability
                                         Utility::Random rand(context.seed);
@@ -572,57 +398,57 @@ namespace PixelCraft::Voxel
             m_biomeNameToId.clear();
 
             // Create realistic biome distribution based on temperature and humidity
-            int desertId = registerBiome("Desert");
-            setBiomeTemperatureRange(desertId, 0.7f, 1.0f);
-            setBiomeHumidityRange(desertId, 0.0f, 0.3f);
-            setVoxelProbability(desertId, "4", 0.9f); // Sand
-            setFeatureProbability(desertId, "cactus", 0.1f);
+            std::shared_ptr<Biome> desert = registerBiome("Desert");
+            desert->setBiomeTemperatureRange(0.7f, 1.0f);
+            desert->setBiomeHumidityRange(0.0f, 0.3f);
+            desert->setVoxelProbability("4", 0.9f); // Sand
+            desert->setFeatureProbability("cactus", 0.1f);
 
-            int savannaId = registerBiome("Savanna");
-            setBiomeTemperatureRange(savannaId, 0.7f, 1.0f);
-            setBiomeHumidityRange(savannaId, 0.3f, 0.5f);
-            setVoxelProbability(savannaId, "1", 0.8f); // Dirt/Grass
-            setFeatureProbability(savannaId, "tree", 0.05f);
+            std::shared_ptr<Biome> savanna = registerBiome("Savanna");
+            savanna->setBiomeTemperatureRange(0.7f, 1.0f);
+            savanna->setBiomeHumidityRange(0.3f, 0.5f);
+            savanna->setVoxelProbability("1", 0.8f); // Dirt/Grass
+            savanna->setFeatureProbability("tree", 0.05f);
 
-            int jungleId = registerBiome("Jungle");
-            setBiomeTemperatureRange(jungleId, 0.7f, 1.0f);
-            setBiomeHumidityRange(jungleId, 0.5f, 1.0f);
-            setVoxelProbability(jungleId, "1", 0.9f); // Dirt/Grass
-            setFeatureProbability(jungleId, "tree", 0.4f);
+            std::shared_ptr<Biome> jungle = registerBiome("Jungle");
+            jungle->setBiomeTemperatureRange(0.7f, 1.0f);
+            jungle->setBiomeHumidityRange(0.5f, 1.0f);
+            jungle->setVoxelProbability("1", 0.9f); // Dirt/Grass
+            jungle->setFeatureProbability("tree", 0.4f);
 
-            int plainId = registerBiome("Plains");
-            setBiomeTemperatureRange(jungleId, 0.4f, 0.7f);
-            setBiomeHumidityRange(plainId, 0.2f, 0.6f);
-            setVoxelProbability(plainId, "1", 1.0f); // Dirt/Grass
-            setFeatureProbability(plainId, "tree", 0.05f);
+            std::shared_ptr<Biome> plain = registerBiome("Plains");
+            plain->setBiomeTemperatureRange(0.4f, 0.7f);
+            plain->setBiomeHumidityRange(0.2f, 0.6f);
+            plain->setVoxelProbability("1", 1.0f); // Dirt/Grass
+            plain->setFeatureProbability("tree", 0.05f);
 
-            int forestId = registerBiome("Forest");
-            setBiomeTemperatureRange(forestId, 0.4f, 0.7f);
-            setBiomeHumidityRange(forestId, 0.6f, 1.0f);
-            setVoxelProbability(forestId, "1", 1.0f); // Dirt/Grass
-            setFeatureProbability(forestId, "tree", 0.3f);
+            std::shared_ptr<Biome> forest = registerBiome("Forest");
+            forest->setBiomeTemperatureRange(0.4f, 0.7f);
+            forest->setBiomeHumidityRange(0.6f, 1.0f);
+            forest->setVoxelProbability("1", 1.0f); // Dirt/Grass
+            forest->setFeatureProbability("tree", 0.3f);
 
-            int taigaId = registerBiome("Taiga");
-            setBiomeTemperatureRange(taigaId, 0.1f, 0.4f);
-            setBiomeHumidityRange(taigaId, 0.1f, 1.0f);
-            setVoxelProbability(taigaId, "1", 0.9f); // Dirt/Grass
-            setVoxelProbability(taigaId, "6", 0.1f); // Snow
-            setFeatureProbability(taigaId, "pine", 0.2f);
+            std::shared_ptr<Biome> taiga = registerBiome("Taiga");
+            taiga->setBiomeTemperatureRange(0.1f, 0.4f);
+            taiga->setBiomeHumidityRange(0.1f, 1.0f);
+            taiga->setVoxelProbability("1", 0.9f); // Dirt/Grass
+            taiga->setVoxelProbability("6", 0.1f); // Snow
+            taiga->setFeatureProbability("pine", 0.2f);
 
-            int tundraId = registerBiome("Tundra");
-            setBiomeTemperatureRange(tundraId, 0.0f, 0.1f);
-            setBiomeHumidityRange(tundraId, 0.0f, 1.0f);
-            setVoxelProbability(tundraId, "6", 0.9f); // Snow
+            std::shared_ptr<Biome> tundra = registerBiome("Tundra");
+            tundra->setBiomeTemperatureRange(0.0f, 0.1f);
+            tundra->setBiomeHumidityRange(0.0f, 1.0f);
+            tundra->setVoxelProbability("6", 0.9f); // Snow
 
             // Mountains can appear in any climate
-            int mountainsId = registerBiome("Mountains");
-            setBiomeElevationRange(mountainsId, 0.7f, 1.0f);
-            setVoxelProbability(mountainsId, "5", 1.0f); // Stone
+            std::shared_ptr<Biome> mountains = registerBiome("Mountains");
+            mountains->setBiomeElevationRange(0.7f, 1.0f);
+            mountains->setVoxelProbability("5", 1.0f); // Stone
 
             // Ocean biome
-            int oceanId = registerBiome("Ocean");
-            setBiomeElevationRange(oceanId, 0.0f, 0.4f);
-            setVoxelProbability(oceanId, "2", 1.0f); // Sand/Gravel
+            std::shared_ptr<Biome> ocean = registerBiome("Ocean");
+            ocean->setBiomeElevationRange(0.0f, 0.4f);
+            ocean->setVoxelProbability("2", 1.0f); // Sand/Gravel
 
             return true;
         }
@@ -633,138 +459,119 @@ namespace PixelCraft::Voxel
             m_biomeNameToId.clear();
 
             // Create fantasy biomes
-            int magicForestId = registerBiome("MagicForest");
-            setVoxelProbability(magicForestId, "8", 0.9f); // Custom block type
-            setFeatureProbability(magicForestId, "crystal", 0.2f);
+            std::shared_ptr<Biome> magicForest = registerBiome("MagicForest");
+            magicForest->setVoxelProbability("8", 0.9f); // Custom block type
+            magicForest->setFeatureProbability("crystal", 0.2f);
 
-            int lavaLandsId = registerBiome("LavaLands");
-            setVoxelProbability(lavaLandsId, "9", 0.8f); // Custom block type
-            setFeatureProbability(lavaLandsId, "lava_vent", 0.1f);
+            std::shared_ptr<Biome> lavaLands = registerBiome("LavaLands");
+            lavaLands->setVoxelProbability("9", 0.8f); // Custom block type
+            lavaLands->setFeatureProbability("lava_vent", 0.1f);
 
-            int crystalForestsId = registerBiome("CrystalForests");
-            setVoxelProbability(crystalForestsId, "10", 0.7f); // Custom block type
-            setFeatureProbability(crystalForestsId, "crystal_formation", 0.3f);
+            std::shared_ptr<Biome> crystalForests = registerBiome("CrystalForests");
+            crystalForests->setVoxelProbability("10", 0.7f); // Custom block type
+            crystalForests->setFeatureProbability("crystal_formation", 0.3f);
 
-            int cloudRealmId = registerBiome("CloudRealm");
-            setVoxelProbability(cloudRealmId, "11", 1.0f); // Custom block type
-            setFeatureProbability(cloudRealmId, "cloud_pillar", 0.15f);
+            std::shared_ptr<Biome> cloudRealm = registerBiome("CloudRealm");
+            cloudRealm->setVoxelProbability("11", 1.0f); // Custom block type
+            cloudRealm->setFeatureProbability("cloud_pillar", 0.15f);
 
-            int abyssId = registerBiome("Abyss");
-            setVoxelProbability(abyssId, "12", 0.95f); // Custom block type
-            setFeatureProbability(abyssId, "void_tear", 0.05f);
+            std::shared_ptr<Biome> abyss = registerBiome("Abyss");
+            abyss->setVoxelProbability("12", 0.95f); // Custom block type
+            abyss->setFeatureProbability("void_tear", 0.05f);
 
             return true;
         }
 
         // Preset not found
-        Log::warn("Biome preset '" + presetName + "' not found");
+        Core::warn("Biome preset '" + presetName + "' not found");
         return false;
     }
 
-    void BiomeManager::serialize(ECS::Serializer& serializer) const
+    Utility::Serialization::SerializationResult BiomeManager::serialize(Utility::Serialization::Serializer& serializer) const
     {
+        // Begin serializing the biome manager
+        auto result = serializer.beginObject(getTypeName());
+        if (!result) return result;
+
         // Serialize basic properties
-        serializer.write(m_blendDistance);
-        serializer.writeString(m_temperatureNoiseLayer);
-        serializer.writeString(m_humidityNoiseLayer);
+        result = serializer.writeField("blendDistance", m_blendDistance);
+        if (!result) return result;
+
+        result = serializer.writeField("temperatureNoiseLayer", m_temperatureNoiseLayer);
+        if (!result) return result;
+
+        result = serializer.writeField("humidityNoiseLayer", m_humidityNoiseLayer);
+        if (!result) return result;
 
         // Serialize biomes
-        serializer.beginArray("biomes", m_biomes.size());
-        for (const auto& [biomeId, biomeInfo] : m_biomes)
+        result = serializer.beginArray("biomes", m_biomes.size());
+        if (!result) return result;
+
+        for (const auto& [biomeId, biome] : m_biomes)
         {
-            serializer.write(biomeInfo.id);
-            serializer.writeString(biomeInfo.name);
-            serializer.writeString(biomeInfo.noiseLayerId);
-            serializer.write(biomeInfo.threshold);
-            serializer.write(biomeInfo.weight);
-            serializer.write(biomeInfo.enabled);
-            serializer.writeVec2(biomeInfo.temperatureRange);
-            serializer.writeVec2(biomeInfo.humidityRange);
-            serializer.writeVec2(biomeInfo.elevationRange);
-
-            // Serialize voxel probabilities
-            serializer.beginArray("voxelProbabilities", biomeInfo.voxelProbabilities.size());
-            for (const auto& [voxelType, probability] : biomeInfo.voxelProbabilities)
-            {
-                serializer.writeString(voxelType);
-                serializer.write(probability);
-            }
-            serializer.endArray();
-
-            // Serialize feature probabilities
-            serializer.beginArray("featureProbabilities", biomeInfo.featureProbabilities.size());
-            for (const auto& [featureType, probability] : biomeInfo.featureProbabilities)
-            {
-                serializer.writeString(featureType);
-                serializer.write(probability);
-            }
-            serializer.endArray();
+            result = biome->serialize(serializer);
+            if (!result) return result;
         }
-        serializer.endArray();
+
+        result = serializer.endArray();
+        if (!result) return result;
+
+        return serializer.endObject();
     }
 
-    void BiomeManager::deserialize(ECS::Deserializer& deserializer)
+    Utility::Serialization::SerializationResult BiomeManager::deserialize(Utility::Serialization::Deserializer& deserializer)
     {
         // Clear existing data
         m_biomes.clear();
         m_biomeNameToId.clear();
 
-        // Deserialize basic properties
-        deserializer.read(m_blendDistance);
-        deserializer.readString(m_temperatureNoiseLayer);
-        deserializer.readString(m_humidityNoiseLayer);
+        // Begin deserializing the biome manager
+        auto result = deserializer.beginObject(getTypeName());
+        if (!result) return result;
+
+        // Serialize basic properties
+        result = deserializer.readField("blendDistance", m_blendDistance);
+        if (!result) return result;
+
+        result = deserializer.readField("temperatureNoiseLayer", m_temperatureNoiseLayer);
+        if (!result) return result;
+
+        result = deserializer.readField("humidityNoiseLayer", m_humidityNoiseLayer);
+        if (!result) return result;
 
         // Serialize biomes
         size_t biomesSize;
-        deserializer.beginArray("biomes", biomesSize);
-        for (int i = 0; i < biomesSize; i++)
+        result = deserializer.beginArray("biomes", biomesSize);
+        if (!result) return result;
+
+        for (size_t i = 0; i < biomesSize; i++)
         {
-            BiomeInfo biomeInfo;
-
-            deserializer.read(biomeInfo.id);
-            deserializer.readString(biomeInfo.name);
-            deserializer.readString(biomeInfo.noiseLayerId);
-            deserializer.read(biomeInfo.threshold);
-            deserializer.read(biomeInfo.weight);
-            deserializer.read(biomeInfo.enabled);
-            deserializer.readVec2(biomeInfo.temperatureRange);
-            deserializer.readVec2(biomeInfo.humidityRange);
-            deserializer.readVec2(biomeInfo.elevationRange);
-
-            // Serialize voxel probabilities
-            size_t arraySize;
-            deserializer.beginArray("voxelProbabilities", arraySize);
-            for (int i = 0; i < arraySize; i++)
-            {
-                std::string voxelType;
-                deserializer.readString(voxelType);
-
-                float voxelProbability;
-                deserializer.read(voxelProbability);
-
-                biomeInfo.voxelProbabilities[voxelType] = voxelProbability;
-            }
-            deserializer.endArray();
-
-            // Serialize feature probabilities
-            deserializer.beginArray("featureProbabilities", arraySize);
-            for (int i = 0; i < arraySize; i++)
-            {
-                std::string featureType;
-                deserializer.readString(featureType);
-
-                float featureProbability;
-                deserializer.read(featureProbability);
-
-                biomeInfo.featureProbabilities[featureType] = featureProbability;
-            }
-            deserializer.endArray();
+            std::shared_ptr<Biome> biome;
+            result = biome->deserialize(deserializer);
+            if (!result) return result;
 
             // Register the biome
-            m_biomes[biomeInfo.id] = biomeInfo;
-            m_biomeNameToId[biomeInfo.name] = biomeInfo.id;
+            m_biomes[biome->getBiomeId()] = biome;
+            m_biomeNameToId[biome->getBiomeName()] = biome->getBiomeId();
         }
-        deserializer.endArray();
+
+        result = deserializer.endArray();
+        if (!result) return result;
+
+        return deserializer.endObject();
+    }
+
+    void BiomeManager::defineSchema(Utility::Serialization::Schema& schema)
+    {
+        schema.addField("blendDistance", Utility::Serialization::ValueType::Float, true);
+        schema.addField("temperatureNoiseLayer", Utility::Serialization::ValueType::String, true);
+        schema.addField("humidityNoiseLayer", Utility::Serialization::ValueType::String, true);
+        schema.addArrayField("biomes", Utility::Serialization::ValueType::Object, true);
+    }
+
+    std::string BiomeManager::getTypeName()
+    {
+        return "BiomeManager";
     }
 
     // Private helper methods
@@ -786,12 +593,12 @@ namespace PixelCraft::Voxel
                                                 const GenerationContext& context) const
     {
         auto it = m_biomes.find(biomeId);
-        if (it == m_biomes.end() || !it->second.enabled)
+        if (it == m_biomes.end() || !it->second->isBiomeEnabled())
         {
             return 0.0f;
         }
 
-        const auto& biomeInfo = it->second;
+        const auto& biome = it->second;
 
         // Calculate weight from temperature, humidity, and elevation
         float tempWeight = 1.0f;
@@ -799,17 +606,17 @@ namespace PixelCraft::Voxel
         float elevationWeight = 1.0f;
 
         // Check temperature range
-        if (temperature < biomeInfo.temperatureRange.x || temperature > biomeInfo.temperatureRange.y)
+        if (temperature < biome->getBiomeTemperatureRange().x || temperature > biome->getBiomeTemperatureRange().y)
         {
             // Outside range, calculate falloff
             float distToRange = 0.0f;
-            if (temperature < biomeInfo.temperatureRange.x)
+            if (temperature < biome->getBiomeTemperatureRange().x)
             {
-                distToRange = biomeInfo.temperatureRange.x - temperature;
+                distToRange = biome->getBiomeTemperatureRange().x - temperature;
             }
             else
             {
-                distToRange = temperature - biomeInfo.temperatureRange.y;
+                distToRange = temperature - biome->getBiomeTemperatureRange().y;
             }
 
             // Apply falloff
@@ -817,17 +624,17 @@ namespace PixelCraft::Voxel
         }
 
         // Check humidity range
-        if (humidity < biomeInfo.humidityRange.x || humidity > biomeInfo.humidityRange.y)
+        if (humidity < biome->getBiomeTemperatureRange().x || humidity > biome->getBiomeTemperatureRange().y)
         {
             // Outside range, calculate falloff
             float distToRange = 0.0f;
-            if (humidity < biomeInfo.humidityRange.x)
+            if (humidity < biome->getBiomeHumidityRange().x)
             {
-                distToRange = biomeInfo.humidityRange.x - humidity;
+                distToRange = biome->getBiomeHumidityRange().x - humidity;
             }
             else
             {
-                distToRange = humidity - biomeInfo.humidityRange.y;
+                distToRange = humidity - biome->getBiomeHumidityRange().y;
             }
 
             // Apply falloff
@@ -835,17 +642,17 @@ namespace PixelCraft::Voxel
         }
 
         // Check elevation range
-        if (elevation < biomeInfo.elevationRange.x || elevation > biomeInfo.elevationRange.y)
+        if (elevation < biome->getBiomeElevationRange().x || elevation > biome->getBiomeElevationRange().y)
         {
             // Outside range, calculate falloff
             float distToRange = 0.0f;
-            if (elevation < biomeInfo.elevationRange.x)
+            if (elevation < biome->getBiomeElevationRange().x)
             {
-                distToRange = biomeInfo.elevationRange.x - elevation;
+                distToRange = biome->getBiomeElevationRange().x - elevation;
             }
             else
             {
-                distToRange = elevation - biomeInfo.elevationRange.y;
+                distToRange = elevation - biome->getBiomeElevationRange().y;
             }
 
             // Apply falloff
@@ -856,10 +663,13 @@ namespace PixelCraft::Voxel
         float combinedWeight = tempWeight * humidityWeight * elevationWeight;
 
         // Apply biome weight
-        combinedWeight *= biomeInfo.weight;
+        combinedWeight *= biome->getBiomeWeight();
 
         // Apply noise factor if specified
-        if (!biomeInfo.noiseLayerId.empty() && context.noiseGenerator)
+        std::string noiseLayerId;
+        float threshold;
+        biome->getBiomeNoise(noiseLayerId, threshold);
+        if (!noiseLayerId.empty() && context.noiseGenerator)
         {
             float noise = context.noiseGenerator->generate(position);
 
@@ -867,10 +677,10 @@ namespace PixelCraft::Voxel
             noise = noise * 0.5f + 0.5f;
 
             // Apply threshold
-            if (noise < biomeInfo.threshold)
+            if (noise < threshold)
             {
                 // Below threshold, calculate falloff
-                float falloff = noise / biomeInfo.threshold;
+                float falloff = noise / threshold;
                 combinedWeight *= falloff;
             }
         }

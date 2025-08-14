@@ -13,7 +13,6 @@
 #include <chrono>
 
 using StringUtils = PixelCraft::Utility::StringUtils;
-namespace Log = PixelCraft::Core;
 
 namespace PixelCraft::Voxel
 {
@@ -99,11 +98,11 @@ namespace PixelCraft::Voxel
     {
         if (m_initialized)
         {
-            Log::warn("StreamingManager already initialized");
+            Core::warn("StreamingManager already initialized");
             return true;
         }
 
-        Log::info("Initializing StreamingManager subsystem");
+        Core::info("Initializing StreamingManager subsystem");
 
         // Get dependencies
         auto app = Core::Application::getInstance();
@@ -112,13 +111,13 @@ namespace PixelCraft::Voxel
 
         if (m_chunkManager.expired())
         {
-            Log::error("StreamingManager initialization failed: ChunkManager not found");
+            Core::error("StreamingManager initialization failed: ChunkManager not found");
             return false;
         }
 
         if (m_resourceManager.expired())
         {
-            Log::error("StreamingManager initialization failed: ResourceManager not found");
+            Core::error("StreamingManager initialization failed: ResourceManager not found");
             return false;
         }
 
@@ -181,7 +180,7 @@ namespace PixelCraft::Voxel
             return;
         }
 
-        Log::info("Shutting down StreamingManager subsystem");
+        Core::info("Shutting down StreamingManager subsystem");
 
         // Stop all worker threads
         stopWorkerThreads();
@@ -200,10 +199,7 @@ namespace PixelCraft::Voxel
 
     std::vector<std::string> StreamingManager::getDependencies() const
     {
-        return {
-            "ChunkManager",
-            "ResourceManager"
-        };
+        return {"MemoryManager", "ChunkManager", "ResourceManager"};
     }
 
     bool StreamingManager::requestChunk(const ChunkCoord& coord, Priority priority)
@@ -383,7 +379,7 @@ namespace PixelCraft::Voxel
         m_memoryBudget.reserveMemory = reserveMemory;
 
         // Log current memory usage vs budget
-        Log::info(StringUtils::format("StreamingManager memory budget set: Chunk={} MB, Mesh={} MB, Reserved={} MB",
+        Core::info(StringUtils::format("StreamingManager memory budget set: Chunk={} MB, Mesh={} MB, Reserved={} MB",
                                       chunkMemory / (1024 * 1024), meshMemory / (1024 * 1024), reserveMemory / (1024 * 1024)));
     }
 
@@ -443,7 +439,7 @@ namespace PixelCraft::Voxel
 
     void StreamingManager::workerThread(int threadIndex)
     {
-        Log::debug("StreamingManager worker thread " + std::to_string(threadIndex) + " started");
+        Core::debug("StreamingManager worker thread " + std::to_string(threadIndex) + " started");
 
         while (!m_shutdownThreads)
         {
@@ -503,7 +499,7 @@ namespace PixelCraft::Voxel
 
             if (hasTask)
             {
-                // Process the task outside the lokc
+                // Process the task outside the lock
                 std::string operationName;
                 switch (task.operation)
                 {
@@ -527,7 +523,7 @@ namespace PixelCraft::Voxel
             }
         }
 
-        Log::debug("StreamingManager worker thread " + std::to_string(threadIndex) + " stopped");
+        Core::debug("StreamingManager worker thread " + std::to_string(threadIndex) + " stopped");
     }
 
     void StreamingManager::updateChunkRequests()
@@ -640,7 +636,7 @@ namespace PixelCraft::Voxel
         auto chunk = chunkManager->createChunk(coord);
         if (!chunk)
         {
-            Log::error(StringUtils::format("Failed to generate chunk at {},{},{}", coord.x, coord.y, coord.z));
+            Core::error(StringUtils::format("Failed to generate chunk at {},{},{}", coord.x, coord.y, coord.z));
             return false;
         }
 
@@ -682,13 +678,13 @@ namespace PixelCraft::Voxel
         auto chunk = chunkManager->loadChunk(coord);
         if (!chunk)
         {
-            Log::error(StringUtils::format("Failed to load chunk at {},{},{}", coord.x, coord.y, coord.z));
+            Core::error(StringUtils::format("Failed to load chunk at {},{},{}", coord.x, coord.y, coord.z));
 
             // If loading failed but chunk should exist, try generating instead
             auto chunkStorage = chunkManager->getChunkStorage().get();
             if (chunkStorage && chunkStorage->chunkExists(coord))
             {
-                Log::warn("Chunk file exists but failed to load, attempting generation");
+                Core::warn("Chunk file exists but failed to load, attempting generation");
                 return generateChunk(coord, task);
             }
 
@@ -721,7 +717,7 @@ namespace PixelCraft::Voxel
         auto chunk = chunkManager->getChunk(coord);
         if (!chunk)
         {
-            Log::debug(StringUtils::format("Cannot generate mesh for unloaded chunk at {},{},{}", coord.x, coord.y, coord.z));
+            Core::debug(StringUtils::format("Cannot generate mesh for unloaded chunk at {},{},{}", coord.x, coord.y, coord.z));
             return false;
         }
 
@@ -766,7 +762,7 @@ namespace PixelCraft::Voxel
         auto chunk = chunkManager->getChunk(coord);
         if (!chunk)
         {
-            Log::debug(StringUtils::format("Cannot save unloaded chunk at {},{},{}", coord.x, coord.y, coord.z));
+            Core::debug(StringUtils::format("Cannot save unloaded chunk at {},{},{}", coord.x, coord.y, coord.z));
             return false;
         }
 
@@ -868,7 +864,7 @@ namespace PixelCraft::Voxel
         // Update current usage
         if (chunkDelta > 0)
         {
-            m_memoryBudget.currentChunkMemory += chunkDelta;
+            m_memoryBudget.currentChunkMemory += static_cast<size_t>(chunkDelta);
         }
         else
         {
@@ -877,7 +873,7 @@ namespace PixelCraft::Voxel
 
         if (meshDelta > 0)
         {
-            m_memoryBudget.currentMeshMemory += meshDelta;
+            m_memoryBudget.currentMeshMemory += static_cast<size_t>(meshDelta);
         }
         else
         {
@@ -906,6 +902,7 @@ namespace PixelCraft::Voxel
     {
         // In a real implementation, this might consider chunk contents or terrain complexity
         // For simplicity, we use a constant estimation
+        (void)coord;  // Currently unused
         return ESTIMATED_CHUNK_MEMORY;
     }
 
@@ -913,6 +910,7 @@ namespace PixelCraft::Voxel
     {
         // In a real implementation, this might vary based on chunk contents
         // For simplicity, we use a constant estimation
+        (void)coord;  // Currently unused
         return ESTIMATED_CHUNK_MESH_MEMORY;
     }
 
@@ -975,7 +973,7 @@ namespace PixelCraft::Voxel
             m_workerThreads.emplace_back(&StreamingManager::workerThread, this, i);
         }
 
-        Log::info("StreamingManager started " + std::to_string(numThreads) + " worker threads");
+        Core::info("StreamingManager started " + std::to_string(numThreads) + " worker threads");
     }
 
     void StreamingManager::stopWorkerThreads()
@@ -994,7 +992,7 @@ namespace PixelCraft::Voxel
         }
 
         m_workerThreads.clear();
-        Log::info("StreamingManager stopped all worker threads");
+        Core::info("StreamingManager stopped all worker threads");
     }
 
 } // namespace PixelCraft::Voxel

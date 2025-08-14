@@ -2,62 +2,293 @@
 // RenderPipeline.cpp
 // -------------------------------------------------------------------------
 #include "Rendering/RenderPipeline.h"
+#include "Core/Application.h"
+#include "Core/Window.h"
 #include "Core/Logger.h"
-#include "Core/Serialization/JsonSerializer.h"
-#include "Utility/DebugDraw.h"
-#include <unordered_set>
+#include "Utility/Serialization/SerializationUtility.h"
+#include "Utility/FileSystem.h"
 
-namespace Log = PixelCraft::Core;
+// Stages
+#include "Rendering/Stages/ClusterUpdateStage.h"
+#include "Rendering/Stages/DepthPrepassStage.h"
+#include "Rendering/Stages/ShadowStage.h"
+#include "Rendering/Stages/GeometryStage.h"
+#include "Rendering/Stages/TransparencyStage.h"
+#include "Rendering/Stages/PostProcessStage.h"
+#include "Rendering/Stages/SkyboxStage.h"
+#include "Rendering/Stages/VelocityStage.h"
+#include "Rendering/Stages/UIStage.h"
 
+// Additional includes for pipeline configuration
+#include "Rendering/ShaderManager.h"
+#include "Rendering/ForwardPlusShaderManager.h"
+#include "Rendering/RenderSystem.h"
+#include "ECS/World.h"
+
+#include <fstream>
+
+// In namespace PixelCraft
 namespace PixelCraft::Rendering
 {
 
-    RenderPipeline::RenderPipeline(const std::string& name)
-        : m_name(name)
-        , m_initialized(false)
+    // -------------------------------------------------------------------------
+    // PipelineConfig Implementation
+    // -------------------------------------------------------------------------
+
+    Utility::Serialization::SerializationResult PipelineConfig::serialize(Utility::Serialization::Serializer& serializer) const
     {
+        auto result = serializer.beginObject("PipelineConfig");
+        if (!result) return result;
+
+        result = serializer.beginArray("stageTypes", stageTypes.size());
+        if (!result) return result;
+
+        for (const auto& type : stageTypes)
+        {
+            result = serializer.writeField("stageType", type);
+            if (!result) return result;
+        }
+
+        result = serializer.endArray();
+        if (!result) return result;
+
+        result = serializer.beginArray("connections", connections.size());
+        if (!result) return result;
+
+        for (const auto& [input, output] : connections)
+        {
+            result = serializer.writeField("connectionInput", input);
+            if (!result) return result;
+
+            result = serializer.writeField("connectionOutput", output);
+            if (!result) return result;
+        }
+
+        result = serializer.endArray();
+        if (!result) return result;
+
+        result = serializer.beginArray("globalParameters", globalParameters.size());
+        if (!result) return result;
+
+        for (const auto& [paramName, paramValue] : globalParameters)
+        {
+            result = serializer.writeField("parameterName", paramName);
+            if (!result) return result;
+
+            result = paramValue.serialize(serializer);
+            if (!result) return result;
+        }
+
+        result = serializer.endArray();
+        if (!result) return result;
+
+        return serializer.endObject();
+    }
+
+    Utility::Serialization::SerializationResult PipelineConfig::deserialize(Utility::Serialization::Deserializer& deserializer)
+    {
+        auto result = deserializer.beginObject("PipelineConfig");
+        if (!result) return result;
+
+        size_t arraySize;
+        result = deserializer.beginArray("stageTypes", arraySize);
+        if (!result) return result;
+
+        stageTypes.clear();
+        for (size_t i = 0; i < arraySize; i++)
+        {
+            std::string stageType;
+            result = deserializer.readField("stageType", stageType);
+            if (!result) return result;
+
+            stageTypes.push_back(stageType);
+        }
+
+        result = deserializer.endArray();
+        if (!result) return result;
+
+        result = deserializer.beginArray("connections", arraySize);
+        if (!result) return result;
+
+        connections.clear();
+        for (size_t i = 0; i < arraySize; i++)
+        {
+            std::string input, output;
+            result = deserializer.readField("connectionInput", input);
+            if (!result) break;
+
+            result = deserializer.readField("connectionOutput", output);
+            if (!result) return result;
+
+            connections[input] = output;
+        }
+
+        result = deserializer.endArray();
+        if (!result) return result;
+
+        result = deserializer.beginArray("globalParameters", arraySize);
+        if (!result) return result;
+
+        globalParameters.clear();
+        for (size_t i = 0; i < arraySize; i++)
+        {
+            std::string paramName;
+            result = deserializer.readField("parameterName", paramName);
+            if (!result) break;
+
+            Utility::Serialization::ParameterValue paramValue;
+            result = paramValue.deserialize(deserializer);
+            if (!result) return result;
+
+            globalParameters[paramName] = paramValue;
+        }
+
+        result = deserializer.endArray();
+        if (!result) return result;
+
+        return deserializer.endObject();
+    }
+
+    void PipelineConfig::defineSchema(Utility::Serialization::Schema& schema)
+    {
+        schema.addArrayField("stageTypes", Utility::Serialization::ValueType::String);
+        schema.addArrayField("connections", Utility::Serialization::ValueType::String);
+        schema.addArrayField("globalParameters", Utility::Serialization::ValueType::String);
+    }
+
+    // -------------------------------------------------------------------------
+    // RenderPipeline Implementation
+    // -------------------------------------------------------------------------
+
+    RenderPipeline::RenderPipeline()
+        : m_frameNumber(0)
+    {
+        auto& registry = Utility::Serialization::SchemaRegistry::getInstance();
+        if (!registry.hasSchema(getTypeName()))
+        {
+            auto schema = std::make_shared<Utility::Serialization::Schema>(getTypeName(), getVersion());
+            defineSchema(*schema);
+            registry.registerSchema(schema);
+        }
+
+        // Set debugger instance
+        m_debugger = std::make_shared<RenderPipelineDebugger>();
     }
 
     RenderPipeline::~RenderPipeline()
     {
-        if (m_initialized)
-        {
-            shutdown();
-        }
+        shutdown();
     }
 
     bool RenderPipeline::initialize()
     {
         if (m_initialized)
         {
-            Log::warn("RenderPipeline " + m_name + " already initialized");
             return true;
         }
 
-        Log::info("Initializing RenderPipeline " + m_name);
+        // Initialize debugger
+        if (!m_debugger->initialize())
+        {
+            Core::warn("Failed to initialize pipeline debugger");
+        }
+
+        // Get window to determine dimensions
+        auto window = Core::Application::getInstance()->getSubsystem<Core::Window>();
+        if (!window)
+        {
+            Core::error("Window not found");
+            return false;
+        }
+
+        int windowWidth, windowHeight;
+        window->getSize(windowWidth, windowHeight);
+
+        // Create shared depth texture for forward+ early-Z optimization
+        // OpenGL 4.3+ supports depth textures, which this engine requires
+        auto sharedDepth = createSharedDepthTexture("ForwardPlusDepth", windowWidth, windowHeight,
+                                                    TextureFormat::Depth24);
+        
+        if (sharedDepth)
+        {
+            Core::info("RenderPipeline: Created shared depth texture for forward+ early-Z optimization");
+            Core::info("  - Texture ID: " + std::to_string(sharedDepth->getID()));
+            Core::info("  - Dimensions: " + std::to_string(sharedDepth->getWidth()) + "x" + std::to_string(sharedDepth->getHeight()));
+            Core::info("  - Format: Depth24 (GL_DEPTH_COMPONENT24)");
+        }
+        else
+        {
+            Core::error("RenderPipeline: Failed to create shared depth texture - forward+ optimization disabled");
+        }
+
+        // Create depth-only buffer for Z-prepass using shared depth if available
+        IntermediateTargetConfig depthConfig;
+        depthConfig.width = windowWidth;
+        depthConfig.height = windowHeight;
+        depthConfig.createColor = false;                // Depth-only target
+        depthConfig.createDepth = true;
+        depthConfig.sharedDepthTexture = sharedDepth;   // Use shared depth if available
+        
+        Core::debug("Creating DepthBuffer intermediate target with shared depth: " + 
+                   (sharedDepth ? "YES (ID: " + std::to_string(sharedDepth->getID()) + ")" : "NO"));
+        
+        auto depthBufferTarget = createIntermediateTarget("DepthBuffer", depthConfig);
+        if (!depthBufferTarget)
+        {
+            Core::error("CRITICAL: Failed to create DepthBuffer intermediate target!");
+        }
+        else
+        {
+            Core::info("DepthBuffer intermediate target created successfully (ID: " + 
+                      std::to_string(depthBufferTarget->getFramebufferID()) + ")");
+        }
+
+        // Create main scene color using the SAME shared depth if available
+        IntermediateTargetConfig sceneConfig;
+        sceneConfig.width = windowWidth;
+        sceneConfig.height = windowHeight;
+        sceneConfig.colorFormat = TextureFormat::RGBA16F;
+        sceneConfig.createColor = true;
+        sceneConfig.createDepth = true;
+        sceneConfig.sharedDepthTexture = sharedDepth;   // Share the same depth if available
+        createIntermediateTarget("SceneColor", sceneConfig);
+        
+        // Other targets created with simpler method
+        createIntermediateTarget("SceneColorFinal", windowWidth, windowHeight,
+                                TextureFormat::RGBA8, false, false);
+
+        createIntermediateTarget("PostProcessTemp", windowWidth, windowHeight, 
+                            TextureFormat::RGBA16F, false, false);
+        
+        createIntermediateTarget("FinalColor", windowWidth, windowHeight, 
+                            TextureFormat::RGBA8, false, false);
+
+        Core::info("Created intermediate targets for forward+ pipeline with shared depth optimization");
+
+        // Create default forward+ stages in optimal order
+        createDefaultStages();
 
         // Initialize all stages
         for (auto& stage : m_stages)
         {
             if (!stage->initialize())
             {
-                Log::error("Failed to initialize stage " + stage->getName() +
-                           " in pipeline " + m_name);
+                Core::error("Failed to initialize stage: " + stage->getName());
                 return false;
             }
         }
 
-        // Setup connections between stages
+        // Set up fixed stage connections optimized for forward+ rendering
         setupStageConnections();
 
-        // Validate the pipeline configuration
         if (!validate())
         {
-            Log::error("Pipeline " + m_name + " validation failed");
+            Core::error("Pipeline validation failed");
             return false;
         }
 
         m_initialized = true;
+        Core::info("Initialized forward+ render pipeline");
         return true;
     }
 
@@ -68,34 +299,149 @@ namespace PixelCraft::Rendering
             return;
         }
 
-        Log::info("Shutting down RenderPipeline " + m_name);
-
-        // Shutdown in reverse order
-        for (auto it = m_stages.rbegin(); it != m_stages.rend(); ++it)
+        if (m_debugger)
         {
-            (*it)->shutdown();
+            m_debugger->shutdown();
         }
 
-        // Clear all intermediate targets
-        m_intermediateTargets.clear();
+        for (auto& stage : m_stages)
+        {
+            stage->shutdown();
+        }
 
+        m_intermediateTargets.clear();
+        m_sharedTextures.clear();
+        m_output.reset();
         m_initialized = false;
+        Core::info("Shutdown render pipeline");
     }
 
-    void RenderPipeline::render(const RenderContext& context)
+    void RenderPipeline::update(float deltaTime)
+    {
+        // Nothing to update currently
+        (void)deltaTime;
+    }
+
+    void RenderPipeline::render(const std::shared_ptr<RenderContext> context)
     {
         if (!m_initialized)
         {
-            Log::warn("Attempting to render with uninitialized pipeline " + m_name);
+            Core::error("Cannot render - pipeline not initialized");
             return;
         }
 
-        // Execute each stage in order
+        // Increment frame counter for debugging
+        m_frameNumber++;
+
+        // Execute stages with debugging - each stage binds its own output target
         for (auto& stage : m_stages)
         {
-            if (stage->isEnabled())
+            if (stage && stage->isEnabled() && stage->isInitialized())
             {
+                Core::debug("Executing stage: " + stage->getName());
+
+                // Execute the stage
                 stage->execute(context);
+
+                // Capture debug output if debugging is enabled
+                if (m_debugger && m_debugger->isEnabled())
+                {
+                    m_debugger->captureStage(stage, m_frameNumber, context->getNearPlane(), context->getFarPlane());
+                }
+            }
+        }
+
+        // After all stages complete, handle final output
+        bool renderingToScreen = (m_output == nullptr);
+
+        if (renderingToScreen)
+        {
+            // Find the final render target from the last enabled stage
+            std::shared_ptr<RenderTarget> finalTarget = nullptr;
+
+            // Work backwards to find the last stage with output
+            for (auto it = m_stages.rbegin(); it != m_stages.rend(); it++)
+            {
+                auto& stage = *it;
+                if (stage && stage->isEnabled() && stage->isInitialized() && stage->getOutput())
+                {
+                    finalTarget = stage->getOutput();
+                    break;
+                }
+            }
+
+            // Debug the final output before blitting to screen
+            if (m_debugger && m_debugger->isEnabled() && finalTarget)
+            {
+                m_debugger->captureRenderTarget(finalTarget, "FinalOutput", m_frameNumber,
+                                                context->getNearPlane(), context->getFarPlane());
+            }
+
+            // If we found a final target, blit it to screen
+            if (finalTarget)
+            {
+                // Bind screen as draw target, final render target as read target
+                glBindFramebuffer(GL_READ_FRAMEBUFFER, finalTarget->getFramebufferID());
+                glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0); // Default framebuffer (screen)
+
+                // Get viewport dimensions
+                int viewportWidth = context->getViewport().z;
+                int viewportHeight = context->getViewport().w;
+
+                // Blit the final result to screen
+                glBlitFramebuffer(
+                    0, 0, finalTarget->getWidth(), finalTarget->getHeight(),
+                    0, 0, viewportWidth, viewportHeight,
+                    GL_COLOR_BUFFER_BIT,
+                    GL_NEAREST
+                );
+
+                // Unbind framebuffers
+                glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+                glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+
+                Core::debug("RenderPipeline: Blitted final result to screen from " +
+                            std::to_string(finalTarget->getWidth()) + "x" +
+                            std::to_string(finalTarget->getHeight()) + " to " +
+                            std::to_string(viewportWidth) + "x" +
+                            std::to_string(viewportHeight));
+            }
+            else
+            {
+                Core::warn("No final render target found - nothing to display");
+
+                // Debug: Check what stages are actually enabled and have outputs
+                Core::warn("Stage status check:");
+                for (const auto& stage : m_stages)
+                {
+                    if (stage)
+                    {
+                        Core::warn("  " + stage->getName() + ": enabled=" +
+                                   (stage->isEnabled() ? "true" : "false") +
+                                   ", initialized=" + (stage->isInitialized() ? "true" : "false") +
+                                   ", hasOutput=" + (stage->getOutput() ? "true" : "false"));
+                    }
+                }
+            }
+        }
+        else
+        {
+            // Custom output target specified - copy to it
+            std::shared_ptr<RenderTarget> lastStageOutput = nullptr;
+            for (auto it = m_stages.rbegin(); it != m_stages.rend(); it++)
+            {
+                auto& stage = *it;
+                if (stage && stage->isEnabled() && stage->isInitialized() && stage->getOutput())
+                {
+                    lastStageOutput = stage->getOutput();
+                    break;
+                }
+            }
+
+            if (lastStageOutput && m_output)
+            {
+                // Blit from last stage to custom output
+                lastStageOutput->blit(m_output, true, true, false);
             }
         }
     }
@@ -104,692 +450,786 @@ namespace PixelCraft::Rendering
     {
         if (!stage)
         {
-            Log::error("Attempted to add null stage to pipeline " + m_name);
+            Core::error("Attempted to add null stage to pipeline");
             return;
         }
 
-        // Check for duplicate stage names
-        for (auto& existingStage : m_stages)
-        {
-            if (existingStage->getName() == stage->getName())
-            {
-                Log::warn("Stage with name " + stage->getName() +
-                          " already exists in pipeline " + m_name);
-                return;
-            }
-        }
-
         m_stages.push_back(stage);
-
-        // If already initialized, initialize the new stage and update connections
-        if (m_initialized)
-        {
-            if (!stage->initialize())
-            {
-                Log::error("Failed to initialize newly added stage " + stage->getName() +
-                           " in pipeline " + m_name);
-                m_stages.pop_back();
-                return;
-            }
-
-            setupStageConnections();
-        }
+        Core::debug("Added stage of type '" + stage->getTypeName() + "' to pipeline");
     }
 
-    void RenderPipeline::removeStage(const std::string& stageName)
+    void RenderPipeline::removeStage(const std::string& stageType)
     {
         auto it = std::find_if(m_stages.begin(), m_stages.end(),
-                               [&stageName](const std::shared_ptr<RenderStage>& stage) {
-                                   return stage->getName() == stageName;
-                               });
+                               [&stageType](const auto& stage) { return stage->getTypeName() == stageType; });
 
         if (it != m_stages.end())
         {
-            // If initialized, shut down the stage before removing
-            if (m_initialized)
-            {
-                (*it)->shutdown();
-            }
-
             m_stages.erase(it);
-
-            // Update connections if initialized
-            if (m_initialized)
-            {
-                setupStageConnections();
-            }
+            Core::debug("Removed stage of type '" + stageType + "' from pipeline");
         }
     }
 
     void RenderPipeline::clearStages()
     {
-        // If initialized, shut down all stages before clearing
-        if (m_initialized)
-        {
-            for (auto& stage : m_stages)
-            {
-                stage->shutdown();
-            }
-        }
-
         m_stages.clear();
-    }
-
-    std::shared_ptr<RenderStage> RenderPipeline::getStageByName(const std::string& stageName)
-    {
-        auto it = std::find_if(m_stages.begin(), m_stages.end(),
-                               [&stageName](const std::shared_ptr<RenderStage>& stage) {
-                                   return stage->getName() == stageName;
-                               });
-
-        if (it != m_stages.end())
-        {
-            return *it;
-        }
-
-        return nullptr;
-    }
-
-    const std::vector<std::shared_ptr<RenderStage>>& RenderPipeline::getStages() const
-    {
-        return m_stages;
+        Core::debug("Cleared all stages from pipeline");
     }
 
     void RenderPipeline::setOutput(std::shared_ptr<RenderTarget> target)
     {
         m_output = target;
-
-        // Update the final stage's output if we have stages
-        if (!m_stages.empty())
-        {
-            m_stages.back()->setOutput(target);
-        }
-    }
-
-    std::shared_ptr<RenderTarget> RenderPipeline::getOutput() const
-    {
-        return m_output;
     }
 
     std::shared_ptr<RenderTarget> RenderPipeline::createIntermediateTarget(
         const std::string& name,
-        int width,
-        int height,
-        TextureFormat colorFormat,
-        bool createDepth,
-        bool multisampled)
+        const IntermediateTargetConfig& config)
     {
-
-        // Check if a target with this name already exists
-        auto it = m_intermediateTargets.find(name);
-        if (it != m_intermediateTargets.end())
-        {
-            Log::warn("Intermediate target " + name + " already exists in pipeline " + m_name);
-            return it->second;
-        }
-
-        // Create a new render target
-        auto target = std::make_shared<RenderTarget>(name, width, height, colorFormat, createDepth, multisampled);
+        auto target = std::make_shared<RenderTarget>(config.width, config.height, config.multisampled);
         if (!target->initialize())
         {
-            Log::error("Failed to initialize intermediate target " + name + " in pipeline " + m_name);
+            Core::error("Failed to initialize intermediate target: " + name);
+            return nullptr;
+        }
+        
+        // Handle color attachment
+        if (config.createColor)
+        {
+            if (config.sharedColorTexture)
+            {
+                // Use shared color texture
+                glBindFramebuffer(GL_FRAMEBUFFER, target->getFramebufferID());
+                glFramebufferTexture2D(GL_FRAMEBUFFER,
+                                       GL_COLOR_ATTACHMENT0 + config.colorAttachmentIndex,
+                                       config.multisampled ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D,
+                                       config.sharedColorTexture->getID(), 0);
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+                Core::info("Target '" + name + "': Using shared color texture");
+            }
+            else
+            {
+                // Create new color attachment
+                target->addColorAttachment(config.colorFormat, config.colorAttachmentIndex);
+            }
+        }
+
+        // Handle depth attachment
+        if (config.createDepth)
+        {
+            if (config.sharedDepthTexture)
+            {
+                // Use shared depth texture - this is the key feature for forward+ optimization
+                glBindFramebuffer(GL_FRAMEBUFFER, target->getFramebufferID());
+                
+                // Debug: Check framebuffer status before attaching depth
+                GLenum fbStatusBefore = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+                Core::debug("  - Framebuffer status BEFORE depth attachment: 0x" + 
+                           std::to_string(fbStatusBefore) + (fbStatusBefore == GL_FRAMEBUFFER_COMPLETE ? " (COMPLETE)" : " (INCOMPLETE)"));
+                
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                                       GL_TEXTURE_2D, config.sharedDepthTexture->getID(), 0);
+                
+                // Debug: Check for OpenGL errors after attachment
+                GLenum glError = glGetError();
+                if (glError != GL_NO_ERROR)
+                {
+                    Core::error("  - OpenGL error during depth attachment: 0x" + std::to_string(glError));
+                }
+                
+                // Debug: Check framebuffer status after attaching depth
+                GLenum fbStatusAfter = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+                Core::debug("  - Framebuffer status AFTER depth attachment: 0x" + 
+                           std::to_string(fbStatusAfter) + (fbStatusAfter == GL_FRAMEBUFFER_COMPLETE ? " (COMPLETE)" : " (INCOMPLETE)"));
+                
+                // Update RenderTarget's depth texture reference so getDepthTexture() works
+                target->setSharedDepthTexture(config.sharedDepthTexture);
+
+                // Special handling for depth-only targets - configure BEFORE unbinding
+                if (!config.createColor && config.createDepth)
+                {
+                    Core::debug("Configuring depth-only framebuffer (no color attachments)");
+                    // For depth-only framebuffers, we need to explicitly disable color operations
+                    // This tells OpenGL we're not writing to any color buffer
+                    glDrawBuffer(GL_NONE);
+                    glReadBuffer(GL_NONE);
+                    
+                    // Check if this fixes the framebuffer completeness
+                    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+                    Core::debug("Depth-only framebuffer status: 0x" + std::to_string(status) + 
+                               (status == GL_FRAMEBUFFER_COMPLETE ? " (COMPLETE)" : " (INCOMPLETE)"));
+                }
+                
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+                Core::info("Target '" + name + "': Using shared depth texture for early-Z optimization");
+                Core::info("  - Shared depth texture ID: " + std::to_string(config.sharedDepthTexture->getID()));
+            }
+            else
+            {
+                // Create new depth attachment using depth texture (OpenGL 4.3+ supports this)
+                target->setDepthAttachment(config.depthFormat);
+                
+                // Special handling for depth-only targets - configure AFTER depth attachment
+                if (!config.createColor && config.createDepth)
+                {
+                    Core::debug("Configuring depth-only framebuffer (no color attachments) for new depth attachment");
+                    glBindFramebuffer(GL_FRAMEBUFFER, target->getFramebufferID());
+                    
+                    // For depth-only framebuffers, we need to explicitly disable color operations
+                    // This tells OpenGL we're not writing to any color buffer
+                    glDrawBuffer(GL_NONE);
+                    glReadBuffer(GL_NONE);
+                    
+                    // Check if this fixes the framebuffer completeness
+                    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+                    Core::debug("Depth-only framebuffer status: 0x" + std::to_string(status) + 
+                               (status == GL_FRAMEBUFFER_COMPLETE ? " (COMPLETE)" : " (INCOMPLETE)"));
+                    
+                    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                }
+            }
+        }
+
+        if (!target->validate())
+        {
+            Core::error("Failed to validate intermediate target: " + name);
             return nullptr;
         }
 
         m_intermediateTargets[name] = target;
+        Core::info("Created intermediate target: " + name + " (" + 
+                   std::to_string(config.width) + "x" + std::to_string(config.height) + ")");
         return target;
+    }
+
+    std::shared_ptr<RenderTarget> RenderPipeline::createIntermediateTarget(
+        const std::string& name, int width, int height,
+        TextureFormat colorFormat, bool createDepth, bool multisampled)
+    {
+        IntermediateTargetConfig config;
+        config.width = width;
+        config.height = height;
+        config.colorFormat = colorFormat;
+        config.createColor = (colorFormat != TextureFormat::Depth16 && 
+                            colorFormat != TextureFormat::Depth24 && 
+                            colorFormat != TextureFormat::Depth32F);
+        config.createDepth = createDepth || !config.createColor; // Depth-only targets always need depth
+        config.multisampled = multisampled;
+        
+        return createIntermediateTarget(name, config);
     }
 
     std::shared_ptr<RenderTarget> RenderPipeline::getIntermediateTarget(const std::string& name)
     {
         auto it = m_intermediateTargets.find(name);
-        if (it != m_intermediateTargets.end())
-        {
-            return it->second;
-        }
-
-        return nullptr;
+        return (it != m_intermediateTargets.end()) ? it->second : nullptr;
     }
 
-    bool RenderPipeline::validate()
+    /**
+     * @brief Create a shared depth texture for use between multiple targets
+     * @param name Name for the shared texture
+     * @param width Width in pixels
+     * @param height Height in pixels
+     * @param format Depth texture format
+     * @return The created shared depth texture
+     */
+    std::shared_ptr<Texture> RenderPipeline::createSharedDepthTexture(
+        const std::string& name, int width, int height,
+        TextureFormat format)
     {
-        // Check if output is set
-        if (!m_output)
-        {
-            Log::error("Pipeline " + m_name + " has no output target");
-            return false;
-        }
+        auto sharedDepth = Core::makeShared<Texture>(name);
 
-        // Check if we have any stages
-        if (m_stages.empty())
-        {
-            Log::error("Pipeline " + m_name + " has no stages");
-            return false;
-        }
+        sharedDepth->initialize(width, height, format);
 
-        // Check if all stages have outputs set
-        for (auto& stage : m_stages)
-        {
-            if (!stage->getOutput())
-            {
-                Log::error("Stage " + stage->getName() + " in pipeline " + m_name + " has no output target");
-                return false;
-            }
-        }
+        // Store reference to shared texture for cleanup
+        m_sharedTextures[name] = sharedDepth;
 
-        // Validate stage dependencies
-        if (!validateStageDependencies())
-        {
-            return false;
-        }
-
-        return true;
+        Core::info("Created shared depth texture: " + name + " (" +
+                   std::to_string(width) + "x" + std::to_string(height) + ")");
+        return sharedDepth;
     }
 
-    void RenderPipeline::saveToFile(const std::string& filepath)
+    std::shared_ptr<Texture> RenderPipeline::getSharedTexture(const std::string& name)
     {
-        Core::Serialization::JsonSerializer serializer;
-
-        // Create root node
-        auto root = std::make_shared<Core::Serialization::DataNode>("RenderPipeline");
-
-        // Save basic pipeline info
-        root->addChild("name")->set(m_name);
-
-        // Save stages
-        auto stagesNode = root->addChild("stages");
-        for (size_t i = 0; i < m_stages.size(); ++i)
-        {
-            auto stageNode = stagesNode->addChild("stage");
-            auto stage = m_stages[i];
-
-            stageNode->addChild("name")->set(stage->getName());
-            stageNode->addChild("type")->set(stage->getTypeName());
-            stageNode->addChild("enabled")->set(stage->isEnabled());
-
-            // Let the stage serialize its own parameters
-            auto paramsNode = stageNode->addChild("parameters");
-            stage->serialize(paramsNode);
-        }
-
-        // Save intermediate targets
-        auto targetsNode = root->addChild("intermediateTargets");
-        for (const auto& [name, target] : m_intermediateTargets)
-        {
-            auto targetNode = targetsNode->addChild("target");
-            targetNode->addChild("name")->set(name);
-            targetNode->addChild("width")->set(target->getWidth());
-            targetNode->addChild("height")->set(target->getHeight());
-            targetNode->addChild("colorFormat")->set(static_cast<int>(target->getColorFormat()));
-            targetNode->addChild("hasDepth")->set(target->hasDepth());
-            targetNode->addChild("multisampled")->set(target->isMultisampled());
-        }
-
-        // Save stage connections
-        auto connectionsNode = root->addChild("connections");
-        for (size_t i = 0; i < m_stages.size(); ++i)
-        {
-            auto stage = m_stages[i];
-            auto connectionNode = connectionsNode->addChild("connection");
-
-            connectionNode->addChild("stageName")->set(stage->getName());
-
-            // Save inputs
-            auto inputsNode = connectionNode->addChild("inputs");
-            for (size_t j = 0; j < stage->getInputs().size(); ++j)
-            {
-                auto input = stage->getInputs()[j];
-                if (input)
-                {
-                    inputsNode->addChild("input")->set(input->getName());
-                }
-                else
-                {
-                    inputsNode->addChild("input")->set("null");
-                }
-            }
-
-            // Save output
-            auto output = stage->getOutput();
-            if (output)
-            {
-                connectionNode->addChild("output")->set(output->getName());
-            }
-            else
-            {
-                connectionNode->addChild("output")->set("null");
-            }
-        }
-
-        // Write to file
-        if (!serializer.writeToFile(root, filepath))
-        {
-            Log::error("Failed to save pipeline configuration to " + filepath);
-        }
-        else
-        {
-            Log::info("Saved pipeline configuration to " + filepath);
-        }
+        auto it = m_sharedTextures.find(name);
+        return (it != m_sharedTextures.end()) ? it->second : nullptr;
     }
 
-    bool RenderPipeline::loadFromFile(const std::string& filepath)
+    void RenderPipeline::resize(int width, int height)
     {
-        Core::Serialization::JsonSerializer serializer;
-
-        // Clear existing pipeline
-        shutdown();
-        clearStages();
-        m_intermediateTargets.clear();
-
-        // Read from file
-        auto root = serializer.readFromFile(filepath);
-        if (!root)
+        // Resize shared textures first
+        for (auto& [name, texture] : m_sharedTextures)
         {
-            Log::error("Failed to load pipeline configuration from " + filepath);
-            return false;
+            texture->resize(width, height);
         }
 
-        // Load basic pipeline info
-        if (root->hasChild("name"))
-        {
-            m_name = root->getChild("name")->as<std::string>();
-        }
-
-        // Load intermediate targets
-        if (root->hasChild("intermediateTargets"))
-        {
-            auto targetsNode = root->getChild("intermediateTargets");
-            for (auto& targetNode : targetsNode->getChildren())
-            {
-                std::string name = targetNode->getChild("name")->as<std::string>();
-                int width = targetNode->getChild("width")->as<int>();
-                int height = targetNode->getChild("height")->as<int>();
-                TextureFormat colorFormat = static_cast<TextureFormat>(targetNode->getChild("colorFormat")->as<int>());
-                bool hasDepth = targetNode->getChild("hasDepth")->as<bool>();
-                bool multisampled = targetNode->getChild("multisampled")->as<bool>();
-
-                createIntermediateTarget(name, width, height, colorFormat, hasDepth, multisampled);
-            }
-        }
-
-        // Load stages (this requires a factory system to create the right stage types)
-        // This is simplified for the example
-        if (root->hasChild("stages"))
-        {
-            auto stagesNode = root->getChild("stages");
-            for (auto& stageNode : stagesNode->getChildren())
-            {
-                std::string name = stageNode->getChild("name")->as<std::string>();
-                std::string type = stageNode->getChild("type")->as<std::string>();
-                bool enabled = stageNode->getChild("enabled")->as<bool>();
-
-                // Create stage based on type
-                std::shared_ptr<RenderStage> stage;
-
-                // In a real implementation, we'd use a factory to create the right stage type
-                // For now, we'll assume a hypothetical StageFactory
-                stage = RenderStageFactory::createStage(type, name);
-
-                if (!stage)
-                {
-                    Log::error("Failed to create stage of type " + type + " with name " + name);
-                    continue;
-                }
-
-                stage->setEnabled(enabled);
-
-                // Deserialize parameters
-                if (stageNode->hasChild("parameters"))
-                {
-                    stage->deserialize(stageNode->getChild("parameters"));
-                }
-
-                addStage(stage);
-            }
-        }
-
-        // Setup connections
-        if (root->hasChild("connections"))
-        {
-            auto connectionsNode = root->getChild("connections");
-            for (auto& connectionNode : connectionsNode->getChildren())
-            {
-                std::string stageName = connectionNode->getChild("stageName")->as<std::string>();
-
-                auto stage = getStageByName(stageName);
-                if (!stage)
-                {
-                    Log::error("Failed to find stage " + stageName + " for connection setup");
-                    continue;
-                }
-
-                // Set inputs
-                if (connectionNode->hasChild("inputs"))
-                {
-                    auto inputsNode = connectionNode->getChild("inputs");
-                    auto inputs = inputsNode->getChildren();
-
-                    for (size_t i = 0; i < inputs.size(); ++i)
-                    {
-                        std::string inputName = inputs[i]->as<std::string>();
-
-                        if (inputName != "null")
-                        {
-                            std::shared_ptr<RenderTarget> target = getIntermediateTarget(inputName);
-                            if (!target && m_output && m_output->getName() == inputName)
-                            {
-                                target = m_output;
-                            }
-
-                            if (target)
-                            {
-                                stage->setInput(target, i);
-                            }
-                            else
-                            {
-                                Log::error("Failed to find render target " + inputName + " for stage " + stageName);
-                            }
-                        }
-                    }
-                }
-
-                // Set output
-                if (connectionNode->hasChild("output"))
-                {
-                    std::string outputName = connectionNode->getChild("output")->as<std::string>();
-
-                    if (outputName != "null")
-                    {
-                        std::shared_ptr<RenderTarget> target = getIntermediateTarget(outputName);
-                        if (!target && m_output && m_output->getName() == outputName)
-                        {
-                            target = m_output;
-                        }
-
-                        if (target)
-                        {
-                            stage->setOutput(target);
-                        }
-                        else
-                        {
-                            Log::error("Failed to find render target " + outputName + " for stage " + stageName);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Initialize the pipeline
-        return initialize();
-    }
-
-    void RenderPipeline::debugDrawPipeline(const glm::vec2& position, float scale)
-    {
-        if (!m_initialized)
-        {
-            return;
-        }
-
-        Utility::DebugDraw::begin2D();
-
-        const float nodeWidth = 150.0f * scale;
-        const float nodeHeight = 40.0f * scale;
-        const float nodeSpacing = 20.0f * scale;
-        const float connectionOffset = 10.0f * scale;
-        const float levelSpacing = 100.0f * scale;
-
-        // Draw nodes for render targets
-        std::unordered_map<std::string, glm::vec2> targetPositions;
-        float targetY = position.y;
-
-        // Draw output target first
-        if (m_output)
-        {
-            glm::vec2 pos = position + glm::vec2(0.0f, targetY);
-            Utility::DebugDraw::drawRect(pos, glm::vec2(nodeWidth, nodeHeight), glm::vec4(0.2f, 0.6f, 0.8f, 1.0f));
-            Utility::DebugDraw::drawText(pos + glm::vec2(5.0f, 5.0f), m_output->getName(), glm::vec4(1.0f));
-            targetPositions[m_output->getName()] = pos;
-            targetY += nodeHeight + nodeSpacing;
-        }
-
-        // Draw intermediate targets
-        for (const auto& [name, target] : m_intermediateTargets)
-        {
-            glm::vec2 pos = position + glm::vec2(0.0f, targetY);
-            Utility::DebugDraw::drawRect(pos, glm::vec2(nodeWidth, nodeHeight), glm::vec4(0.1f, 0.5f, 0.7f, 1.0f));
-            Utility::DebugDraw::drawText(pos + glm::vec2(5.0f, 5.0f), name, glm::vec4(1.0f));
-            targetPositions[name] = pos;
-            targetY += nodeHeight + nodeSpacing;
-        }
-
-        // Draw nodes for render stages
-        std::unordered_map<std::string, glm::vec2> stagePositions;
-        float stageX = position.x + nodeWidth + levelSpacing;
-        float stageY = position.y;
-
-        for (auto& stage : m_stages)
-        {
-            glm::vec2 pos = glm::vec2(stageX, stageY);
-            glm::vec4 color = stage->isEnabled() ? glm::vec4(0.3f, 0.7f, 0.3f, 1.0f) : glm::vec4(0.7f, 0.3f, 0.3f, 1.0f);
-
-            Utility::DebugDraw::drawRect(pos, glm::vec2(nodeWidth, nodeHeight), color);
-            Utility::DebugDraw::drawText(pos + glm::vec2(5.0f, 5.0f), stage->getName(), glm::vec4(1.0f));
-
-            stagePositions[stage->getName()] = pos;
-            stageY += nodeHeight + nodeSpacing;
-        }
-
-        // Draw connections
-        for (auto& stage : m_stages)
-        {
-            // Draw input connections
-            for (size_t i = 0; i < stage->getInputs().size(); ++i)
-            {
-                auto input = stage->getInputs()[i];
-                if (input)
-                {
-                    glm::vec2 stagePos = stagePositions[stage->getName()];
-                    glm::vec2 targetPos = targetPositions[input->getName()];
-
-                    glm::vec2 start = targetPos + glm::vec2(nodeWidth, nodeHeight / 2.0f + i * connectionOffset);
-                    glm::vec2 end = stagePos + glm::vec2(0.0f, nodeHeight / 2.0f);
-
-                    Utility::DebugDraw::drawLine(start, end, glm::vec4(0.8f, 0.8f, 0.2f, 1.0f));
-                    Utility::DebugDraw::drawRect(start - glm::vec2(3.0f), glm::vec2(6.0f), glm::vec4(0.8f, 0.8f, 0.2f, 1.0f));
-                    Utility::DebugDraw::drawRect(end - glm::vec2(3.0f), glm::vec2(6.0f), glm::vec4(0.8f, 0.8f, 0.2f, 1.0f));
-                }
-            }
-
-            // Draw output connection
-            auto output = stage->getOutput();
-            if (output)
-            {
-                glm::vec2 stagePos = stagePositions[stage->getName()];
-                glm::vec2 targetPos = targetPositions[output->getName()];
-
-                glm::vec2 start = stagePos + glm::vec2(nodeWidth, nodeHeight / 2.0f);
-                glm::vec2 end = targetPos + glm::vec2(0.0f, nodeHeight / 2.0f);
-
-                Utility::DebugDraw::drawLine(start, end, glm::vec4(0.2f, 0.8f, 0.8f, 1.0f));
-                Utility::DebugDraw::drawRect(start - glm::vec2(3.0f), glm::vec2(6.0f), glm::vec4(0.2f, 0.8f, 0.8f, 1.0f));
-                Utility::DebugDraw::drawRect(end - glm::vec2(3.0f), glm::vec2(6.0f), glm::vec4(0.2f, 0.8f, 0.8f, 1.0f));
-            }
-        }
-
-        Utility::DebugDraw::end2D();
-    }
-
-    const std::string& RenderPipeline::getName() const
-    {
-        return m_name;
-    }
-
-    void RenderPipeline::setupStageConnections()
-    {
-        // If no stages, nothing to do
-        if (m_stages.empty())
-        {
-            return;
-        }
-
-        // For simple linear pipeline, connect stages in sequence
-        for (size_t i = 0; i < m_stages.size() - 1; ++i)
-        {
-            // Create an intermediate target if needed
-            std::string targetName = m_stages[i]->getName() + "Output";
-            std::shared_ptr<RenderTarget> output = getIntermediateTarget(targetName);
-
-            if (!output)
-            {
-                // Create a new target matching the output dimensions
-                int width = 0;
-                int height = 0;
-
-                if (m_output)
-                {
-                    width = m_output->getWidth();
-                    height = m_output->getHeight();
-                }
-                else
-                {
-                    // Default to some reasonable size
-                    width = 1920;
-                    height = 1080;
-                }
-
-                output = createIntermediateTarget(targetName, width, height);
-            }
-
-            // Set output of current stage
-            m_stages[i]->setOutput(output);
-
-            // Set input of next stage
-            m_stages[i + 1]->setInput(output);
-        }
-
-        // Set output of last stage to pipeline output
-        if (m_output)
-        {
-            m_stages.back()->setOutput(m_output);
-        }
-    }
-
-    void RenderPipeline::resizeIntermediateTargets(int width, int height)
-    {
+        // Then resize render targets (they'll use the resized shared textures)
         for (auto& [name, target] : m_intermediateTargets)
         {
             target->resize(width, height);
         }
     }
 
-    bool RenderPipeline::validateStageDependencies()
+    std::shared_ptr<RenderPipelineDebugger> RenderPipeline::getDebugger() const
     {
-        // Check for output target existence
-        if (!m_output)
+        return m_debugger;
+    }
+
+    void RenderPipeline::setDebuggingEnabled(bool enabled)
+    {
+        if (m_debugger)
         {
-            Log::error("Pipeline " + m_name + " has no output target");
+            m_debugger->setEnabled(enabled);
+
+            if (enabled)
+            {
+                Core::info("RenderPipeline: Debugging enabled");
+            }
+            else
+            {
+                Core::info("RenderPipeline: Debugging disabled");
+            }
+        }
+    }
+
+    void RenderPipeline::enableStageDebugging(const std::string& stageName, bool captureColor, bool captureDepth)
+    {
+        if (m_debugger)
+        {
+            m_debugger->enableStage(stageName, captureColor, captureDepth);
+            Core::info("RenderPipeline: Enabled debugging for stage: " + stageName);
+        }
+    }
+
+    void RenderPipeline::disableStageDebugging(const std::string& stageName)
+    {
+        if (m_debugger)
+        {
+            m_debugger->disableStage(stageName);
+            Core::info("RenderPipeline: Disabled debugging for stage: " + stageName);
+        }
+    }
+
+    bool RenderPipeline::validate()
+    {
+        if (!validateStageDependencies())
+        {
             return false;
         }
 
-        // Check for cyclic dependencies - simplified version
-        // In a real implementation, we'd do a proper graph traversal
-
-        // For now, just check that all inputs exist before they're used
-        std::unordered_set<std::string> availableTargets;
-
-        // Add all intermediate targets
-        for (const auto& [name, target] : m_intermediateTargets)
+        for (const auto& stage : m_stages)
         {
-            availableTargets.insert(name);
-        }
-
-        // Add output target
-        if (m_output)
-        {
-            availableTargets.insert(m_output->getName());
-        }
-
-        // Check each stage
-        for (auto& stage : m_stages)
-        {
-            // Check inputs
-            for (auto& input : stage->getInputs())
+            if (!stage)
             {
-                if (input && availableTargets.find(input->getName()) == availableTargets.end())
-                {
-                    Log::error("Stage " + stage->getName() + " in pipeline " + m_name +
-                               " uses input target " + input->getName() + " that doesn't exist yet");
-                    return false;
-                }
-            }
-
-            // Add its output to available targets
-            auto output = stage->getOutput();
-            if (output)
-            {
-                availableTargets.insert(output->getName());
+                Core::error("Found null stage in pipeline");
+                return false;
             }
         }
 
         return true;
     }
 
-    // ForwardRenderPipeline implementation
-    ForwardRenderPipeline::ForwardRenderPipeline()
-        : RenderPipeline("ForwardPipeline")
+    Utility::Serialization::SerializationResult RenderPipeline::serialize(Utility::Serialization::Serializer& serializer) const
     {
+        auto result = serializer.beginObject("RenderPipeline");
+        if (!result) return result;
+
+        auto version = getVersion();
+        result = serializer.writeField("version_major", static_cast<uint32_t>(version.major));
+        if (!result) return result;
+
+        result = serializer.writeField("version_minor", static_cast<uint32_t>(version.minor));
+        if (!result) return result;
+
+        result = serializer.writeField("version_patch", static_cast<uint32_t>(version.patch));
+        if (!result) return result;
+
+        PipelineConfig config;
+
+        for (const auto& stage : m_stages)
+        {
+            config.stageTypes.push_back(stage->getTypeName());
+        }
+
+        for (const auto& [name, value] : m_globalParameters)
+        {
+            config.globalParameters[name] = value;
+        }
+
+        result = config.serialize(serializer);
+        if (!result) return result;
+
+        result = serializer.beginArray("stages", m_stages.size());
+        if (!result) return result;
+
+        for (const auto& stage : m_stages)
+        {
+            result = stage->serialize(serializer);
+            if (!result) return result;
+        }
+
+        result = serializer.endArray();
+        if (!result) return result;
+
+        return serializer.endObject();
     }
 
-    ForwardRenderPipeline::~ForwardRenderPipeline()
+    Utility::Serialization::SerializationResult RenderPipeline::deserialize(Utility::Serialization::Deserializer& deserializer)
     {
-    }
+        auto result = deserializer.beginObject("RenderPipeline");
+        if (!result) return result;
 
-    bool ForwardRenderPipeline::initialize()
-    {
-        // Create default stages before initializing
-        createDefaultStages();
+        uint32_t major, minor, patch;
+        result = deserializer.readField("version_major", major);
+        if (!result) return result;
 
-        return RenderPipeline::initialize();
-    }
+        result = deserializer.readField("version_minor", minor);
+        if (!result) return result;
 
-    void ForwardRenderPipeline::createDefaultStages()
-    {
-        // Clear any existing stages
+        result = deserializer.readField("version_patch", patch);
+        if (!result) return result;
+
+        Utility::Serialization::VersionInfo fileVersion{major, minor, patch};
+        auto currentVersion = getVersion();
+
+        if (fileVersion.major != currentVersion.major)
+        {
+            Core::error("Incompatible pipeline version: " + std::to_string(fileVersion.major) +
+                       " vs " + std::to_string(currentVersion.major));
+            return Utility::Serialization::SerializationResult("Version mismatch");
+        }
+
+        PipelineConfig config;
+        result = config.deserialize(deserializer);
+        if (!result) return result;
+
+        m_globalParameters = config.globalParameters;
+
         clearStages();
 
-        // Create the standard stages for forward rendering
+        size_t stageCount;
+        result = deserializer.beginArray("stages", stageCount);
+        if (!result) return result;
 
-        // 1. Shadow Map Stage
-        auto shadowStage = std::make_shared<ShadowMapRenderStage>("ShadowPass");
-        addStage(shadowStage);
+        for (size_t i = 0; i < stageCount; ++i)
+        {
+            auto stage = createStageFromType(config.stageTypes[i], config.globalParameters);
+            if (stage)
+            {
+                result = stage->deserialize(deserializer);
+                if (!result) return result;
+                addStage(stage);
+            }
+        }
 
-        // 2. Depth Prepass Stage
-        auto depthStage = std::make_shared<DepthPrepassRenderStage>("DepthPrepass");
-        addStage(depthStage);
+        result = deserializer.endArray();
+        if (!result) return result;
 
-        // 3. Skybox Stage
-        auto skyboxStage = std::make_shared<SkyboxRenderStage>("SkyboxPass");
-        addStage(skyboxStage);
+        return deserializer.endObject();
+    }
 
-        // 4. Opaque Geometry Stage
-        auto opaqueStage = std::make_shared<OpaqueRenderStage>("OpaquePass");
-        addStage(opaqueStage);
+    bool RenderPipeline::saveToFile(const std::string& filepath, Utility::Serialization::SerializationFormat format)
+    {
+        std::ofstream file(filepath, std::ios::binary);
+        if (!file.is_open())
+        {
+            Core::error("Failed to open file for writing: " + filepath);
+            return false;
+        }
 
-        // 5. Transparent Geometry Stage
-        auto transparentStage = std::make_shared<TransparentRenderStage>("TransparentPass");
-        addStage(transparentStage);
+        using SerializationFormat = Utility::Serialization::SerializationFormat;
+        
+        switch (format)
+        {
+            case SerializationFormat::Binary:
+            {
+                Utility::Serialization::BinarySerializer serializer(file);
+                auto result = serialize(serializer);
+                if (!result.success)
+                {
+                    Core::error("Failed to serialize pipeline: " + result.error);
+                    return false;
+                }
+                break;
+            }
+            default:
+                Core::error("Unsupported serialization format");
+                return false;
+        }
 
-        // 6. Post-Processing Stage
-        auto postProcessStage = std::make_shared<PostProcessRenderStage>("PostProcess");
-        addStage(postProcessStage);
+        Core::info("Saved pipeline to: " + filepath);
+        return true;
+    }
 
-        // 7. UI Stage
-        auto uiStage = std::make_shared<UIRenderStage>("UIPass");
-        addStage(uiStage);
+    bool RenderPipeline::loadFromFile(const std::string& filepath)
+    {
+        if (!Utility::FileSystem::fileExists(filepath))
+        {
+            Core::error("Pipeline file not found: " + filepath);
+            return false;
+        }
 
-        // 8. Debug Stage
-        auto debugStage = std::make_shared<DebugRenderStage>("DebugPass");
-        addStage(debugStage);
+        std::ifstream file(filepath, std::ios::binary);
+        if (!file.is_open())
+        {
+            Core::error("Failed to open file for reading: " + filepath);
+            return false;
+        }
+
+        Utility::Serialization::BinaryDeserializer deserializer(file);
+        auto result = deserialize(deserializer);
+        if (!result.success)
+        {
+            Core::error("Failed to deserialize pipeline: " + result.error);
+            return false;
+        }
+
+        Core::info("Loaded pipeline from: " + filepath);
+        return true;
+    }
+
+    std::shared_ptr<RenderPipeline> RenderPipeline::createFromFile(const std::string& filepath)
+    {
+        auto pipeline = std::make_shared<RenderPipeline>();
+
+        if (!pipeline->loadFromFile(filepath))
+        {
+            return nullptr;
+        }
+
+        return pipeline;
+    }
+
+    Utility::Serialization::VersionInfo RenderPipeline::getVersion() const
+    {
+        return {1, 0, 0};
+    }
+
+    void RenderPipeline::defineSchema(Utility::Serialization::Schema& schema)
+    {
+        schema.addField("version_major", Utility::Serialization::ValueType::UInt32, true);
+        schema.addField("version_minor", Utility::Serialization::ValueType::UInt32, true);
+        schema.addField("version_patch", Utility::Serialization::ValueType::UInt32, true);
+        schema.addComplexField("config", PipelineConfig::getTypeName(), true);
+        schema.addComplexArrayField("stages", "RenderStage", true);
+    }
+
+    void RenderPipeline::createDefaultStages()
+    {
+        // Get required subsystems from the application
+        auto app = Core::Application::getInstance();
+        if (!app)
+        {
+            Core::error("Cannot get Application instance for pipeline configuration");
+            return;
+        }
+
+        auto shaderManager = app->getSubsystem<ShaderManager>();
+        auto forwardPlusShaderManager = app->getSubsystem<ForwardPlusShaderManager>();
+        auto renderSystem = app->getSubsystem<RenderSystem>();
+        auto world = app->getSubsystem<ECS::World>();
+
+        if (!shaderManager || !forwardPlusShaderManager || !renderSystem)
+        {
+            Core::error("Required shader managers not available for pipeline configuration");
+            return;
+        }
+        
+        std::shared_ptr<ECS::Registry> registry = nullptr;
+        if (world)
+        {
+            registry = world->getRegistry();
+        }
+
+        // Get light manager and clustered light culler from render system
+        auto& lightManager = renderSystem->getLightManager();
+        auto lightManagerPtr = std::shared_ptr<LightManager>(&lightManager, [](LightManager*) {});
+
+        auto& clusteredLightCuller = renderSystem->getClusteredLightCuller();
+        auto clusteredLightCullerPtr = std::shared_ptr<ClusteredLightCuller>(&clusteredLightCuller, [](ClusteredLightCuller*) {});
+
+        // Get all required forward+ shaders
+        auto voxelShader = forwardPlusShaderManager->getForwardPlusShader("voxel_basic");
+        auto transparencyShader = forwardPlusShaderManager->getForwardPlusShader("transparency");
+
+        // Get all required standard shaders
+        auto depthShader = shaderManager->getShader("voxel_depth");
+        auto skyboxShader = shaderManager->getShader("skybox");
+        auto shadowShader = shaderManager->getShader("shadow_mapping");
+        auto velocityShader = shaderManager->getShader("velocity");
+        auto uiShader = shaderManager->getShader("ui");
+
+        // Get post-processing shaders
+        auto toneMappingShader = shaderManager->getShader("postprocess_tonemap");
+        auto paletteMappingShader = shaderManager->getShader("postprocess_palette");
+        auto ditheringShader = shaderManager->getShader("postprocess_dither");
+        auto bloomShader = shaderManager->getShader("postprocess_bloom");
+        auto fxaaShader = shaderManager->getShader("postprocess_fxaa");
+        auto pixelPerfectShader = shaderManager->getShader("postprocess_pixelperfect");
+
+        // OPTIMAL FORWARD+ STAGE ORDER:
+        // 1. ClusterUpdate -> 2. DepthPrepass -> 3. Shadow -> 4. Geometry -> 5. Transparency -> 6. PostProcess
+
+        // 1. Add cluster update stage FIRST (required for forward+ lighting in geometry pass)
+        if (lightManagerPtr && clusteredLightCullerPtr)
+        {
+            auto clusterUpdateStage = std::make_shared<Stages::ClusterUpdateStage>();
+            clusterUpdateStage->setClusterDimensions(clusteredLightCullerPtr->getClusterData().dimensions);
+            clusterUpdateStage->setForwardPlusShaderManager(forwardPlusShaderManager);
+            clusterUpdateStage->setLightManager(lightManagerPtr);
+            
+            addStage(clusterUpdateStage);
+            Core::info("Added ClusterUpdateStage to forward+ pipeline (FIRST for optimal ordering)");
+        }
+        else
+        {
+            Core::warn("LightManager or ClusteredLightCuller not available for cluster update stage");
+        }
+
+        // 2. Add depth prepass stage
+        if (depthShader)
+        {
+            auto depthStage = std::make_shared<Stages::DepthPrepassStage>();
+            depthStage->setDepthShader(depthShader);
+            depthStage->setRenderSystem(renderSystem);
+            depthStage->setRegistry(registry);
+            depthStage->setOpaqueOnly(true);  // Only depth test opaque voxels
+            depthStage->setDepthBias(0.0f);   // No bias needed for voxels
+            
+            addStage(depthStage);
+            Core::info("Added DepthPrepassStage to forward+ pipeline");
+        }
+        else
+        {
+            Core::warn("Depth shader not available, skipping depth prepass stage");
+        }
+
+        // 3. Add shadow mapping stage (before geometry)
+        if (shadowShader && lightManagerPtr)
+        {
+            auto shadowStage = std::make_shared<Stages::ShadowStage>();
+            shadowStage->setShadowShader(shadowShader);
+            shadowStage->setLightManager(lightManagerPtr);
+            shadowStage->setRegistry(registry);
+            shadowStage->setShadowMapResolution(1024);
+            shadowStage->setShadowBias(0.005f);
+            shadowStage->setCascadeCount(3);
+            shadowStage->setSoftShadowsEnabled(false); // Keep it simple for voxels
+            
+            addStage(shadowStage);
+            Core::info("Added ShadowStage to forward+ pipeline");
+        }
+        else
+        {
+            Core::warn("Shadow shader or LightManager not available for shadow stage");
+        }
+
+        // 4. Configure geometry stage for forward+ voxel rendering with lighting
+        if (voxelShader)
+        {
+            auto geometryStage = std::make_shared<Stages::GeometryStage>();
+            geometryStage->setForwardPlusShaderManager(forwardPlusShaderManager);
+            geometryStage->setRegistry(registry);
+            geometryStage->setRenderOpaque(true);                 // Render opaque voxels
+            geometryStage->setRenderTransparent(false);           // Not transparent pass
+            geometryStage->setDepthTest(true);                    // Enable depth testing
+            geometryStage->setDepthWrite(true);                   // Write depth values
+            geometryStage->setSortObjects(true);                  // Sort for efficiency
+            geometryStage->setUseInstancing(true);                // Enable instancing for voxels
+            
+            addStage(geometryStage);
+            Core::info("Added configured GeometryStage with forward+ voxel rendering to pipeline");
+        }
+        else
+        {
+            Core::error("Voxel shader not available, cannot configure geometry stage");
+        }
+
+        // 5. Add transparency stage for transparent objects
+        if (transparencyShader)
+        {
+            auto transparencyStage = std::make_shared<Stages::TransparencyStage>();
+            transparencyStage->setTransparencyShader(transparencyShader);
+            transparencyStage->setForwardPlusShaderManager(forwardPlusShaderManager);
+            transparencyStage->setRegistry(registry);
+            transparencyStage->setTransparencyTechnique(Stages::TransparencyStage::TransparencyTechnique::AlphaBlending);
+            transparencyStage->setAlphaToCoverageEnabled(false);
+            transparencyStage->setAlphaDiscardThreshold(0.1f);
+            transparencyStage->setSoftParticlesEnabled(false);
+            
+            addStage(transparencyStage);
+            Core::info("Added TransparencyStage to forward+ pipeline");
+        }
+        else
+        {
+            Core::warn("Transparency shader not available for transparency stage");
+        }
+
+        // 6. Add post-processing stage
+        if (toneMappingShader)
+        {
+            auto postProcessStage = std::make_shared<Stages::PostProcessStage>();
+            postProcessStage->setToneMappingShader(toneMappingShader);
+            postProcessStage->enableEffect(Stages::PostProcessStage::EffectType::ToneMapping);
+            postProcessStage->setExposure(1.0f);
+            
+            // Configure additional post-processing effects
+            if (paletteMappingShader) postProcessStage->setPaletteMappingShader(paletteMappingShader);
+            if (ditheringShader) 
+            {
+                postProcessStage->setDitheringShader(ditheringShader);
+                postProcessStage->setDitheringStrength(0.3f);
+            }
+            if (bloomShader) 
+            {
+                postProcessStage->setBloomShader(bloomShader);
+                postProcessStage->setBloomThreshold(1.0f);
+                postProcessStage->setBloomIntensity(0.8f);
+            }
+            if (fxaaShader) postProcessStage->setFXAAShader(fxaaShader);
+            if (pixelPerfectShader) 
+            {
+                postProcessStage->setPixelPerfectShader(pixelPerfectShader);
+                postProcessStage->setPixelScale(2);
+            }
+            
+            addStage(postProcessStage);
+            Core::info("Added PostProcessStage to forward+ pipeline");
+        }
+        else
+        {
+            Core::warn("Tone mapping shader not available for post-processing stage");
+        }
+
+        Core::info("Forward+ rendering pipeline configured with " + std::to_string(getStages().size()) + " stages in optimal order");
+    }
+
+    void RenderPipeline::setupStageConnections()
+    {
+        if (m_stages.empty())
+        {
+            Core::warn("No stages to connect in pipeline");
+            return;
+        }
+
+        Core::info("Setting up forward+ stage connections");
+
+        // Get intermediate targets
+        auto depthBuffer = getIntermediateTarget("DepthBuffer");
+        auto sceneColor = getIntermediateTarget("SceneColor");
+        auto sceneColorFinal = getIntermediateTarget("SceneColorFinal");
+        auto postProcessTemp = getIntermediateTarget("PostProcessTemp");
+        auto finalColor = getIntermediateTarget("FinalColor");
+        
+        Core::debug("Stage connections - Retrieved intermediate targets:");
+        Core::debug("  - DepthBuffer: " + std::string(depthBuffer ? "FOUND" : "MISSING"));
+        Core::debug("  - SceneColor: " + std::string(sceneColor ? "FOUND" : "MISSING"));
+        Core::debug("  - SceneColorFinal: " + std::string(sceneColorFinal ? "FOUND" : "MISSING"));
+        Core::debug("  - PostProcessTemp: " + std::string(postProcessTemp ? "FOUND" : "MISSING"));
+        Core::debug("  - FinalColor: " + std::string(finalColor ? "FOUND" : "MISSING"));
+
+        for (auto& stage : m_stages)
+        {
+            std::string stageType = stage->getName();
+
+            if (stageType == "ClusterUpdateStage")
+            {
+                // No render targets needed - updates GPU buffers
+                Core::info("ClusterUpdateStage configured (no render targets)");
+            }
+            else if (stageType == "DepthPrepassStage")
+            {
+                stage->setOutput(depthBuffer);
+                Core::info("DepthPrepassStage output -> DepthBuffer");
+            }
+            else if (stageType == "ShadowStage")
+            {
+                // Shadow stage manages its own targets
+                Core::info("ShadowStage configured (manages own targets)");
+            }
+            else if (stageType == "GeometryStage")
+            {
+                stage->setInput(depthBuffer, 0);    // Read depth buffer
+                stage->setOutput(sceneColor);       // Write color + depth
+                Core::info("GeometryStage: DepthBuffer -> SceneColor");
+            }
+            else if (stageType == "TransparencyStage")
+            {
+                stage->setInput(sceneColor, 0);     // Read opaque scene
+                stage->setOutput(sceneColorFinal);  // Write to different buffer
+                Core::info("TransparencyStage: SceneColor -> SceneColorFinal");
+            }
+            else if (stageType == "PostProcessStage")
+            {
+                stage->setInput(sceneColorFinal, 0);  // Read final scene
+                stage->setOutput(finalColor);    // Write to final color since final stage
+                Core::info("PostProcessStage: SceneColorFinal -> FinalColor");
+            }
+        }
+
+        Core::info("Completed fixed forward+ stage connections for pipeline");
+    }
+
+    bool RenderPipeline::validateStageDependencies()
+    {
+        // Fixed forward+ pipeline has predetermined dependencies - always valid
+        return true;
+    }
+
+    std::shared_ptr<RenderStage> RenderPipeline::createStageFromType(const std::string& typeName,
+        const std::unordered_map<std::string, Utility::Serialization::ParameterValue>& config)
+    {
+        (void)config;  // Currently unused
+
+        // Create stage instances for forward+ pipeline
+        if (typeName == "ClusterUpdateStage")
+        {
+            return std::make_shared<Stages::ClusterUpdateStage>();
+        }
+
+        if (typeName == "GeometryStage")
+        {
+            return std::make_shared<Stages::GeometryStage>();
+        }
+
+        if (typeName == "DepthPrepassStage")
+        {
+            return std::make_shared<Stages::DepthPrepassStage>();
+        }
+
+        if (typeName == "PostProcessStage")
+        {
+            return std::make_shared<Stages::PostProcessStage>();
+        }
+        
+        if (typeName == "ShadowStage")
+        {
+            return std::make_shared<Stages::ShadowStage>();
+        }
+
+        if (typeName == "TransparencyStage")
+        {
+            return std::make_shared<Stages::TransparencyStage>();
+        }
+        
+        if (typeName == "SkyboxStage")
+        {
+            return std::make_shared<Stages::SkyboxStage>();
+        }
+        
+        if (typeName == "VelocityStage")
+        {
+            return std::make_shared<Stages::VelocityStage>();
+        }
+        
+        if (typeName == "UIStage")
+        {
+            return std::make_shared<Stages::UIStage>();
+        }
+
+        Core::warn("Unknown stage type: " + typeName);
+        return nullptr;
     }
 
 } // namespace PixelCraft::Rendering

@@ -8,6 +8,8 @@
 #include <ostream>
 #include <stack>
 #include <unordered_map>
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 namespace PixelCraft::Utility::Serialization
 {
@@ -114,6 +116,69 @@ namespace PixelCraft::Utility::Serialization
         SerializationResult writeString(const std::string& value) override;
 
         /**
+         * @brief Write a glm::vec2 value
+         * @param value glm::vec2 value
+         * @return Result of the operation
+         */
+        SerializationResult writeVec2(const glm::vec2& value);
+
+        /**
+         * @brief Write a glm::ivec2 value
+         * @param value glm::ivec2 value
+         * @return Result of the operation
+         */
+        SerializationResult writeIVec2(const glm::ivec2& value);
+
+        /**
+         * @brief Write a glm::vec3 value
+         * @param value glm::vec3 value
+         * @return Result of the operation
+         */
+        SerializationResult writeVec3(const glm::vec3& value);
+
+        /**
+         * @brief Write a glm::ivec3 value
+         * @param value glm::ivec3 value
+         * @return Result of the operation
+         */
+        SerializationResult writeIVec3(const glm::ivec3& value);
+
+        /**
+         * @brief Write a glm::vec4 value
+         * @param value glm::vec4 value
+         * @return Result of the operation
+         */
+        SerializationResult writeVec4(const glm::vec4& value);
+
+        /**
+         * @brief Write a glm::ivec4 value
+         * @param value glm::ivec4 value
+         * @return Result of the operation
+         */
+        SerializationResult writeIVec4(const glm::ivec4& value);
+        
+        /**
+         * @brief Write a glm::mat3 value
+         * @param value glm::mat3 value
+         * @return Result of the operation
+         */
+        SerializationResult writeMat3(const glm::mat3& value);
+
+        /**
+         * @brief Write a glm::mat4 value
+         * @param value glm::mat4 value
+         * @return Result of the operation
+         */
+        SerializationResult writeMat4(const glm::mat4& value);
+
+        /**
+         * @brief Write a glm::quat value
+         * @param value glm::quat value
+         * @return Result of the operation
+         */
+        SerializationResult writeQuat(const glm::quat& value);
+
+        /**
          * @brief Write binary data
          * @param data Binary data
          * @param size Size of data in bytes
@@ -126,7 +191,7 @@ namespace PixelCraft::Utility::Serialization
          * @param entityId Entity ID
          * @return Result of the operation
          */
-        SerializationResult writeEntityRef(uint64_t entityId) override;
+        SerializationResult writeEntityRef(uint32_t entityId) override;
 
         /**
          * @brief Write a resource reference

@@ -5,8 +5,6 @@
 #include "Rendering/Shader.h"
 #include "Core/Logger.h"
 
-namespace Log = PixelCraft::Core;
-
 namespace PixelCraft::Rendering
 {
 
@@ -20,6 +18,8 @@ namespace PixelCraft::Rendering
         , m_renderSize(1, 1)
         , m_matricesDirty(true)
         , m_frustumDirty(true)
+        , m_nearPlane(0.1f)
+        , m_farPlane(1000.0f)
     {
         // Default initialization
     }
@@ -93,6 +93,16 @@ namespace PixelCraft::Rendering
         m_viewport = glm::ivec4(x, y, width, height);
     }
 
+    void RenderContext::setNearPlane(float near)
+    {
+        m_nearPlane = near;
+    }
+
+    void RenderContext::setFarPlane(float far)
+    {
+        m_farPlane = far;
+    }
+
     void RenderContext::setRenderSize(int width, int height)
     {
         m_renderSize = glm::ivec2(width, height);
@@ -101,6 +111,24 @@ namespace PixelCraft::Rendering
     const glm::ivec4& RenderContext::getViewport() const
     {
         return m_viewport;
+    }
+
+    const void RenderContext::getViewport(int& x, int& y, int& width, int& height) const
+    {
+        x = m_viewport.x;
+        y = m_viewport.y;
+        width = m_viewport.z;
+        height = m_viewport.w;
+    }
+
+    float RenderContext::getNearPlane() const
+    {
+        return m_nearPlane;
+    }
+
+    float RenderContext::getFarPlane() const
+    {
+        return m_farPlane;
     }
 
     const glm::ivec2& RenderContext::getRenderSize() const
@@ -134,7 +162,7 @@ namespace PixelCraft::Rendering
     {  
        if (!shader)  
        {  
-           Log::warn("RenderContext::bindShaderUniforms - Null shader provided");  
+           Core::warn("RenderContext::bindShaderUniforms - Null shader provided");  
            return;  
        }  
 
@@ -144,18 +172,35 @@ namespace PixelCraft::Rendering
            updateMatrices();  
        }  
 
-       // Bind common matrices  
-       shader->setUniform("viewMatrix", m_viewMatrix);  
-       shader->setUniform("projMatrix", m_projMatrix);  
-       shader->setUniform("viewProjMatrix", m_viewProjMatrix);  
+       // Only bind uniforms that actually exist in the shader
+       // This prevents warnings for uniforms that don't exist in specific shaders
+       
+       // Bind common matrices - only if they exist in the shader
+       if (shader->hasUniform("viewMatrix")) {
+           shader->setUniform("viewMatrix", m_viewMatrix);
+       }
+       if (shader->hasUniform("projMatrix")) {
+           shader->setUniform("projMatrix", m_projMatrix);
+       }
+       if (shader->hasUniform("viewProjMatrix")) {
+           shader->setUniform("viewProjMatrix", m_viewProjMatrix);
+       }
 
-       // Bind camera information  
-       shader->setUniform("cameraPosition", m_cameraPosition);  
-       shader->setUniform("cameraDirection", m_cameraDirection);  
+       // Bind camera information - only if they exist in the shader
+       if (shader->hasUniform("cameraPosition")) {
+           shader->setUniform("cameraPosition", m_cameraPosition);
+       }
+       if (shader->hasUniform("cameraDirection")) {
+           shader->setUniform("cameraDirection", m_cameraDirection);
+       }
 
-       // Bind viewport and render size information  
-       shader->setUniform("viewport", m_viewport);  
-       shader->setUniform("renderSize", m_renderSize);  
+       // Bind viewport and render size information - only if they exist in the shader
+       if (shader->hasUniform("viewport")) {
+           shader->setUniform("viewport", glm::vec2(m_viewport.z, m_viewport.w)); // width/height as vec2
+       }
+       if (shader->hasUniform("renderSize")) {
+           shader->setUniform("renderSize", glm::vec2(m_renderSize));
+       }
     }
 
     glm::vec3 RenderContext::worldToViewSpace(const glm::vec3& worldPos) const

@@ -2,6 +2,9 @@
 // UUID.cpp
 // -------------------------------------------------------------------------
 #include "ECS/UUID.h"
+#include "Utility/Serialization/Serializer.h"
+#include "Utility/Serialization/Deserializer.h"
+#include "Core/Logger.h"
 
 #include <random>
 #include <iomanip>
@@ -11,12 +14,8 @@
 #include <mutex>
 #include <chrono>
 
-#include "Core/Logger.h"
-#include "ECS/Serializer.h"
-#include "ECS/Deserializer.h"
-
 // SHA-1 implementation for name-based UUIDs
-#include "crypto/sha.h"
+#include <openssl/evp.h>
 
 namespace
 {
@@ -66,9 +65,6 @@ namespace
 
 namespace PixelCraft::ECS
 {
-
-    // Use a short alias for the Logger to improve readability
-    namespace Log = PixelCraft::Core;
 
     UUID::UUID()
     {
@@ -142,16 +138,39 @@ namespace PixelCraft::ECS
         );
     }
 
-    void UUID::serialize(Serializer& serializer)
+    Utility::Serialization::SerializationResult UUID::serialize(Utility::Serialization::Serializer& serializer) const
     {
-        // Write the 16 bytes of raw UUID data
-        serializer.writeBytes(m_data.data(), m_data.size());
+        auto result = serializer.beginObject("UUID");
+        if (!result) return result;
+
+        result = serializer.writeField("data", bytesToString(m_data));
+        if (!result) return result;
+
+        return serializer.endObject();
     }
 
-    void UUID::deserialize(Deserializer& deserializer)
+    Utility::Serialization::SerializationResult UUID::deserialize(Utility::Serialization::Deserializer& deserializer)
     {
-        // Read the 16 bytes of raw UUID data
-        deserializer.readBytes(m_data.data(), m_data.size());
+        auto result = deserializer.beginObject("UUID");
+        if (!result) return result;
+
+        std::string dataString;
+        result = deserializer.readField("data", dataString);
+        if (!result) return result;
+
+        stringToBytes(dataString, m_data);
+
+        return deserializer.endObject();
+    }
+
+    void UUID::defineSchema(Utility::Serialization::Schema& schema)
+    {
+        schema.addField("data", Utility::Serialization::ValueType::String);
+    }
+
+    std::string UUID::getTypeName()
+    {
+        return "UUID";
     }
 
     UUID UUID::createRandom()
@@ -182,14 +201,24 @@ namespace PixelCraft::ECS
         // Version 5 UUIDs are created by hashing a namespace UUID and a name
         std::array<uint8_t, 16> result;
 
-        // Create a SHA-1 hash of the namespace concatenated with the name
-        SHA_CTX ctx;
-        SHA1_Init(&ctx);
-        SHA1_Update(&ctx, DNS_NAMESPACE.data(), DNS_NAMESPACE.size());
-        SHA1_Update(&ctx, reinterpret_cast<const uint8_t*>(name.data()), name.size());
-
+        // Create a SHA-1 hash of the namespace concatenated with the name using EVP interface
         std::array<uint8_t, 20> hash;
-        SHA1_Final(hash.data(), &ctx);
+        EVP_MD_CTX* mdctx = EVP_MD_CTX_new();
+        if (mdctx == nullptr) {
+            Core::error("Failed to create EVP_MD_CTX for SHA-1.");
+            std::fill(result.begin(), result.end(), 0);
+            return UUID(result);
+        }
+        if (EVP_DigestInit_ex(mdctx, EVP_sha1(), nullptr) != 1 ||
+            EVP_DigestUpdate(mdctx, DNS_NAMESPACE.data(), DNS_NAMESPACE.size()) != 1 ||
+            EVP_DigestUpdate(mdctx, reinterpret_cast<const uint8_t*>(name.data()), name.size()) != 1 ||
+            EVP_DigestFinal_ex(mdctx, hash.data(), nullptr) != 1) {
+            Core::error("SHA-1 digest failed in UUID::createFromName.");
+            EVP_MD_CTX_free(mdctx);
+            std::fill(result.begin(), result.end(), 0);
+            return UUID(result);
+        }
+        EVP_MD_CTX_free(mdctx);
 
         // Use the first 16 bytes of the hash for the UUID
         std::copy(hash.begin(), hash.begin() + 16, result.begin());
@@ -221,7 +250,7 @@ namespace PixelCraft::ECS
             str[8] != '-' || str[13] != '-' ||
             str[18] != '-' || str[23] != '-')
         {
-            Log::error("Invalid UUID format: " + str + ". Expected xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
+            Core::error("Invalid UUID format: " + str + ". Expected xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
             return;
         }
 
@@ -244,7 +273,7 @@ namespace PixelCraft::ECS
         }
         catch (const std::exception& e)
         {
-            Log::error("Failed to parse UUID: " + str + " - " + e.what());
+            Core::error("Failed to parse UUID: " + str + " - " + e.what());
             // Reset to null UUID on failure
             std::fill(bytes.begin(), bytes.end(), 0);
         }

@@ -12,11 +12,12 @@
 
 namespace PixelCraft::Rendering
 {
+    class ForwardPlusShaderManager;
 
     /**
      * @brief Manages shader resources, provides caching and utility methods
      */
-    class ShaderManager : public Core::Subsystem
+    class ShaderManager : public Core::Subsystem, public std::enable_shared_from_this<ShaderManager>
     {
     public:
         /**
@@ -94,6 +95,19 @@ namespace PixelCraft::Rendering
         );
 
         /**
+         * @brief Create a standard shader with direct vertex and fragment sources
+         * @param name The shader name
+         * @param vertexSource Path to vertex shader
+         * @param fragmentSource Path to fragment shader
+         * @return Shared pointer to the created shader
+         */
+        std::shared_ptr<Shader> createShaderFromSource(
+            const std::string& name,
+            const std::string& vertexSource,
+            const std::string& fragmentSource
+        );
+
+        /**
          * @brief Create a compute shader
          * @param name The shader name
          * @param computePath Path to compute shader
@@ -135,7 +149,7 @@ namespace PixelCraft::Rendering
 
     private:
         std::unordered_map<std::string, std::shared_ptr<Shader>> m_shaders;
-        std::unordered_map<std::string, std::filesystem::file_time_type> m_fileTimestamps;
+        std::unordered_map<std::string, time_t> m_fileTimestamps;
         bool m_initialized;
         bool m_hotReloadingEnabled;
         float m_hotReloadCheckTimer;

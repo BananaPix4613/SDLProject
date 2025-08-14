@@ -3,20 +3,30 @@
 // -------------------------------------------------------------------------
 #pragma once
 
-#include <memory>
-#include <vector>
-#include <map>
-#include <typeindex>
-#include <string>
-#include <thread>
-#include <atomic>
-#include <mutex>
-#include <shared_mutex>
-#include <condition_variable>
-
+#include "Core/Subsystem.h"
+#include "ECS/ComponentTypes.h"
 #include "Utility/ThreadSafeQueue.h"
 #include "Voxel/Chunk.h"
-#include "ECS/Types.h"
+
+#include <algorithm>
+#include <atomic>
+#include <condition_variable>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <shared_mutex>
+#include <string>
+#include <thread>
+#include <typeindex>
+#include <vector>
+
+namespace PixelCraft::Utility::Serialization
+{
+    class Serializer;
+    class Deserializer;
+    struct SerializationResult;
+    class Schema;
+}
 
 namespace PixelCraft::ECS
 {
@@ -26,8 +36,6 @@ namespace PixelCraft::ECS
     class System;
     class Scene;
     class Entity;
-    class Serializer;
-    class Deserializer;
 
     /**
      * @brief Serialization task structure for background saving
@@ -64,7 +72,7 @@ namespace PixelCraft::ECS
      * - Scene loading/unloading is never concurrent with world updates
      * - Entity operations delegate thread safety to Registry
      */
-    class World : public std::enable_shared_from_this<World>
+    class World : public Core::Subsystem, public std::enable_shared_from_this<World>
     {
     public:
         /**
@@ -75,27 +83,47 @@ namespace PixelCraft::ECS
         /**
          * @brief Destructor, ensures proper cleanup of background threads
          */
-        ~World();
+        ~World() override;
 
         /**
          * @brief Initialize the World and its systems
          * @return True if initialization was successful
          * @thread_safety Thread-safe, acquires world lock
          */
-        bool initialize();
+        bool initialize() override;
 
         /**
          * @brief Update all systems
          * @param deltaTime Time elapsed since last update
          * @thread_safety Thread-safe, acquires system execution lock
          */
-        void update(float deltaTime);
+        void update(float deltaTime) override;
 
         /**
          * @brief Call render on all rendering-related systems
          * @thread_safety Thread-safe, acquires system execution lock
          */
-        void render();
+        void render() override;
+
+        /**
+         * @brief Shutdown the world and cleanup resources
+         */
+        void shutdown() override;
+
+        /**
+         * @brief Get the name of the subsystem
+         * @return The subsystem name as a string
+         */
+        std::string getName() const override
+        {
+            return "World";
+        }
+
+        /**
+         * @brief Get the dependencies of this subsystem
+         * @return Vector of the subsystem names that this subsystem depends on
+         */
+        std::vector<std::string> getDependencies() const override;
 
         /**
          * @brief Create a new entity in the world
@@ -103,7 +131,7 @@ namespace PixelCraft::ECS
          * @return ID of the created entity
          * @thread_safety Thread-safe, delegates to Registry
          */
-        EntityID createEntity(const std::string& name = "");
+        EntityID createEntity(const std::string &name = "");
 
         /**
          * @brief Destroy an entity and all its components
@@ -126,8 +154,7 @@ namespace PixelCraft::ECS
          * @return Shared pointer to the system, or nullptr if not found
          * @thread_safety Thread-safe, acquires shared world lock
          */
-        template<typename T>
-        std::shared_ptr<T> getSystem()
+        template <typename T> std::shared_ptr<T> getSystem()
         {
             std::shared_lock lock(m_worldMutex);
 
@@ -155,7 +182,7 @@ namespace PixelCraft::ECS
          * @return Shared pointer to the loaded scene, or nullptr on failure
          * @thread_safety Thread-safe, acquires world lock
          */
-        std::shared_ptr<Scene> loadScene(const std::string& path);
+        std::shared_ptr<Scene> loadScene(const std::string &path);
 
         /**
          * @brief Save the current scene to a file
@@ -163,21 +190,35 @@ namespace PixelCraft::ECS
          * @return True if saving was successful
          * @thread_safety Thread-safe, acquires shared world lock
          */
-        bool saveScene(const std::string& path);
+        bool saveScene(const std::string &path);
 
         /**
-         * @brief Serialize the world state to a serializer
-         * @param serializer Serializer to use
+         * @brief Serialize the world to the given serializer
+         * @param serializer The serializer to use
+         * @return SerializationResult with success/failure status
          * @thread_safety Thread-safe, acquires shared world lock
          */
-        void serializeWorld(Serializer& serializer);
+        Utility::Serialization::SerializationResult serialize(Utility::Serialization::Serializer &serializer) const;
 
         /**
-         * @brief Deserialize world state from a deserializer
-         * @param deserializer Deserializer to use
+         * @brief Deserialize the world from the given deserializer
+         * @param deserializer The deserializer to use
+         * @return SerializationResult with success/failure status
          * @thread_safety Thread-safe, acquires world lock
          */
-        void deserializeWorld(Deserializer& deserializer);
+        Utility::Serialization::SerializationResult deserialize(Utility::Serialization::Deserializer &deserializer);
+
+        /**
+         * @brief Define the schema for World serialization
+         * @param schema The schema to define
+         */
+        static void defineSchema(Utility::Serialization::Schema &schema);
+
+        /**
+         * @brief Get the type name for serialization
+         * @return The type name string
+         */
+        static std::string getTypeName();
 
         /**
          * @brief Get the registry that stores components
@@ -247,21 +288,22 @@ namespace PixelCraft::ECS
 
     private:
         // Core ECS data
-        std::shared_ptr<Registry> m_registry;                         ///< Registry for storing components
-        std::vector<std::shared_ptr<System>> m_systems;               ///< List of registered systems
+        std::shared_ptr<Registry> m_registry;                             ///< Registry for storing components
+        std::vector<std::shared_ptr<System>> m_systems;                   ///< List of registered systems
         std::map<std::type_index, std::weak_ptr<System>> m_systemsByType; ///< Map of systems by type
-        std::shared_ptr<Scene> m_activeScene;                         ///< Currently active scene
+        std::shared_ptr<Scene> m_activeScene;                             ///< Currently active scene
+        uint32_t m_version;                                               ///< World version for serialization
 
         // Background saving
-        bool m_savingEnabled{false};                                  ///< Flag for background saving
-        Utility::ThreadSafeQueue<SerializationTask> m_saveQueue;      ///< Queue for serialization tasks
-        std::thread m_saveThread;                                     ///< Background thread for saving
-        std::atomic<bool> m_threadRunning{false};                     ///< Flag for thread running state
+        bool m_savingEnabled{false};                             ///< Flag for background saving
+        Utility::ThreadSafeQueue<SerializationTask> m_saveQueue; ///< Queue for serialization tasks
+        std::thread m_saveThread;                                ///< Background thread for saving
+        std::atomic<bool> m_threadRunning{false};                ///< Flag for thread running state
 
         // Synchronization
-        mutable std::shared_mutex m_worldMutex;                       ///< Mutex for world state access
-        std::mutex m_systemExecutionMutex;                            ///< Mutex for system execution
-        std::atomic<bool> m_paused{false};                            ///< Flag for paused state
+        mutable std::shared_mutex m_worldMutex; ///< Mutex for world state access
+        std::mutex m_systemExecutionMutex;      ///< Mutex for system execution
+        std::atomic<bool> m_paused{false};      ///< Flag for paused state
 
         /**
          * @brief Background thread function for processing save tasks
@@ -286,7 +328,7 @@ namespace PixelCraft::ECS
          * @param eventName Name of the event to broadcast
          * @thread_safety Thread-safe, acquires shared world lock
          */
-        void notifySystems(const std::string& eventName);
+        void notifySystems(const std::string &eventName);
     };
 
 } // namespace PixelCraft::ECS

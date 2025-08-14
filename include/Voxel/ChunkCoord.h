@@ -39,6 +39,14 @@ namespace PixelCraft::Voxel
         }
 
         /**
+         * @brief Constructor with vec3
+         * @param coordinate 3D vector
+         */
+        ChunkCoord(const glm::ivec3 coordinate) : x(coordinate.x), y(coordinate.y), z(coordinate.z)
+        {
+        }
+
+        /**
          * @brief Equality operation
          * @param other Coordinate to compare with
          * @return True if coordinates are equal
@@ -56,6 +64,18 @@ namespace PixelCraft::Voxel
         bool operator!=(const ChunkCoord& other) const
         {
             return !(*this == other);
+        }
+
+        /**
+         * @brief Less than operator for lexicographical ordering
+         * @param other Coordinate to compare with
+         * @return True if this coordinate is lexicographically less than other
+         */
+        bool operator<(const ChunkCoord& other) const
+        {
+            if (x != other.x) return x < other.x;
+            if (y != other.y) return y < other.y;
+            return z < other.z;
         }
 
         /**
@@ -183,21 +203,18 @@ namespace PixelCraft::Voxel
         }
     };
 
-} // namespace PixelCraft::Voxel
-
-// Hash function for ChunkCoord to use in unordered_map/set
-namespace std
-{
-    template<>
-    struct hash<PixelCraft::Voxel::ChunkCoord>
+    /**
+     * @brief Hash function for ChunkCoord
+     */
+    struct ChunkCoordHash
     {
-        size_t operator()(const PixelCraft::Voxel::ChunkCoord& coord) const
+        size_t operator()(const ChunkCoord& coord) const noexcept
         {
-            // Simple hash combining the three coordinates
             size_t h1 = std::hash<int>()(coord.x);
             size_t h2 = std::hash<int>()(coord.y);
             size_t h3 = std::hash<int>()(coord.z);
             return h1 ^ (h2 << 1) ^ (h3 << 2);
         }
     };
-}
+
+} // namespace PixelCraft::Voxel

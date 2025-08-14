@@ -1,0 +1,7 @@
+{
+  "useFixedTimestep": false,
+  "fixedTimestep": 0.0166667,
+  "maxFrameTime": 0.25,
+  "limitFrameRate": false,
+  "targetFPS": 60.0
+}

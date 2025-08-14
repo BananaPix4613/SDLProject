@@ -23,7 +23,6 @@
 #define PATH_SEPARATOR "/"
 #endif
 
-namespace Log = PixelCraft::Core;
 namespace fs = std::filesystem;
 
 namespace PixelCraft::Utility
@@ -42,11 +41,11 @@ namespace PixelCraft::Utility
     {
         if (s_initialized)
         {
-            Log::warn("FileSystem already initialized");
+            Core::warn("FileSystem already initialized");
             return true;
         }
 
-        Log::info("Initializing FileSystem utility");
+        Core::info("Initializing FileSystem utility");
 
         // Initialize mount points with default paths
         s_mountPoints["assets"] = "assets";
@@ -68,7 +67,7 @@ namespace PixelCraft::Utility
             return;
         }
 
-        Log::info("Shutting down FileSystem utility");
+        Core::info("Shutting down FileSystem utility");
 
         // Stop file watcher thread
         s_watcherRunning = false;
@@ -96,7 +95,7 @@ namespace PixelCraft::Utility
             std::string resolvedPath = resolvePathInternal(path);
 
             // Check if file exists and is accessible
-            FileResult accessResult = checkFileAccess(resolvedPath, FileMode::Read);
+            FileResult accessResult = checkFileAccessInternal(resolvedPath, FileMode::Read);
             if (accessResult != FileResult::Success)
             {
                 return accessResult;
@@ -106,7 +105,7 @@ namespace PixelCraft::Utility
             std::ifstream file(resolvedPath);
             if (!file.is_open())
             {
-                Log::error("Failed to open file for reading: " + resolvedPath);
+                Core::error("Failed to open file for reading: " + resolvedPath);
                 return FileResult::AccessDenied;
             }
 
@@ -119,7 +118,7 @@ namespace PixelCraft::Utility
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception in readFile: " + std::string(e.what()));
+            Core::error("Exception in readFile: " + std::string(e.what()));
             return FileResult::Unknown;
         }
     }
@@ -134,14 +133,14 @@ namespace PixelCraft::Utility
             std::string resolvedPath = resolvePathInternal(path);
 
             // Check if file exists and is accessible
-            FileResult accessResult = checkFileAccess(resolvedPath, FileMode::ReadBinary);
+            FileResult accessResult = checkFileAccessInternal(resolvedPath, FileMode::ReadBinary);
             if (accessResult != FileResult::Success)
             {
                 return accessResult;
             }
 
             // Get file size
-            size_t fileSize = getFileSize(resolvedPath);
+            size_t fileSize = getFileSizeInternal(resolvedPath);
             if (fileSize == 0)
             {
                 // Empty file, return success with empty vector
@@ -156,7 +155,7 @@ namespace PixelCraft::Utility
             std::ifstream file(resolvedPath, std::ios::binary);
             if (!file.is_open())
             {
-                Log::error("Failed to open file for binary reading: " + resolvedPath);
+                Core::error("Failed to open file for binary reading: " + resolvedPath);
                 return FileResult::AccessDenied;
             }
 
@@ -164,7 +163,7 @@ namespace PixelCraft::Utility
 
             if (file.fail() && !file.eof())
             {
-                Log::error("Failed to read binary file: " + resolvedPath);
+                Core::error("Failed to read binary file: " + resolvedPath);
                 return FileResult::Unknown;
             }
 
@@ -172,7 +171,7 @@ namespace PixelCraft::Utility
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception in readFileBinary: " + std::string(e.what()));
+            Core::error("Exception in readFileBinary: " + std::string(e.what()));
             return FileResult::Unknown;
         }
     }
@@ -188,10 +187,10 @@ namespace PixelCraft::Utility
             std::string resolvedPath = resolvePathInternal(path);
 
             // Ensure directory exists
-            std::string directory = getDirectoryPath(resolvedPath);
-            if (!ensureDirectoryExists(directory))
+            std::string directory = getDirectoryPathInternal(resolvedPath);
+            if (!ensureDirectoryExistsInternal(directory))
             {
-                Log::error("Failed to create directory for file: " + resolvedPath);
+                Core::error("Failed to create directory for file: " + resolvedPath);
                 return FileResult::InvalidPath;
             }
 
@@ -199,7 +198,7 @@ namespace PixelCraft::Utility
             std::ofstream file(resolvedPath);
             if (!file.is_open())
             {
-                Log::error("Failed to open file for writing: " + resolvedPath);
+                Core::error("Failed to open file for writing: " + resolvedPath);
                 return FileResult::AccessDenied;
             }
 
@@ -208,7 +207,7 @@ namespace PixelCraft::Utility
 
             if (file.fail())
             {
-                Log::error("Failed to write to file: " + resolvedPath);
+                Core::error("Failed to write to file: " + resolvedPath);
                 return FileResult::Unknown;
             }
 
@@ -216,7 +215,7 @@ namespace PixelCraft::Utility
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception in writeFile: " + std::string(e.what()));
+            Core::error("Exception in writeFile: " + std::string(e.what()));
             return FileResult::Unknown;
         }
     }
@@ -231,10 +230,10 @@ namespace PixelCraft::Utility
             std::string resolvedPath = resolvePathInternal(path);
 
             // Ensure directory exists
-            std::string directory = getDirectoryPath(resolvedPath);
-            if (!ensureDirectoryExists(directory))
+            std::string directory = getDirectoryPathInternal(resolvedPath);
+            if (!ensureDirectoryExistsInternal(directory))
             {
-                Log::error("Failed to create directory for file: " + resolvedPath);
+                Core::error("Failed to create directory for file: " + resolvedPath);
                 return FileResult::InvalidPath;
             }
 
@@ -242,7 +241,7 @@ namespace PixelCraft::Utility
             std::ofstream file(resolvedPath, std::ios::binary);
             if (!file.is_open())
             {
-                Log::error("Failed to open file for binary writing: " + resolvedPath);
+                Core::error("Failed to open file for binary writing: " + resolvedPath);
                 return FileResult::AccessDenied;
             }
 
@@ -254,7 +253,7 @@ namespace PixelCraft::Utility
 
             if (file.fail())
             {
-                Log::error("Failed to write binary data to file: " + resolvedPath);
+                Core::error("Failed to write binary data to file: " + resolvedPath);
                 return FileResult::Unknown;
             }
 
@@ -262,7 +261,7 @@ namespace PixelCraft::Utility
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception in writeFileBinary: " + std::string(e.what()));
+            Core::error("Exception in writeFileBinary: " + std::string(e.what()));
             return FileResult::Unknown;
         }
     }
@@ -277,10 +276,10 @@ namespace PixelCraft::Utility
             std::string resolvedPath = resolvePathInternal(path);
 
             // Ensure directory exists
-            std::string directory = getDirectoryPath(resolvedPath);
-            if (!ensureDirectoryExists(directory))
+            std::string directory = getDirectoryPathInternal(resolvedPath);
+            if (!ensureDirectoryExistsInternal(directory))
             {
-                Log::error("Failed to create directory for file: " + resolvedPath);
+                Core::error("Failed to create directory for file: " + resolvedPath);
                 return FileResult::InvalidPath;
             }
 
@@ -288,7 +287,7 @@ namespace PixelCraft::Utility
             std::ofstream file(resolvedPath, std::ios::app);
             if (!file.is_open())
             {
-                Log::error("Failed to open file for appending: " + resolvedPath);
+                Core::error("Failed to open file for appending: " + resolvedPath);
                 return FileResult::AccessDenied;
             }
 
@@ -297,7 +296,7 @@ namespace PixelCraft::Utility
 
             if (file.fail())
             {
-                Log::error("Failed to append to file: " + resolvedPath);
+                Core::error("Failed to append to file: " + resolvedPath);
                 return FileResult::Unknown;
             }
 
@@ -305,7 +304,7 @@ namespace PixelCraft::Utility
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception in appendFile: " + std::string(e.what()));
+            Core::error("Exception in appendFile: " + std::string(e.what()));
             return FileResult::Unknown;
         }
     }
@@ -320,10 +319,10 @@ namespace PixelCraft::Utility
             std::string resolvedPath = resolvePathInternal(path);
 
             // Ensure directory exists
-            std::string directory = getDirectoryPath(resolvedPath);
-            if (!ensureDirectoryExists(directory))
+            std::string directory = getDirectoryPathInternal(resolvedPath);
+            if (!ensureDirectoryExistsInternal(directory))
             {
-                Log::error("Failed to create directory for file: " + resolvedPath);
+                Core::error("Failed to create directory for file: " + resolvedPath);
                 return FileResult::InvalidPath;
             }
 
@@ -331,7 +330,7 @@ namespace PixelCraft::Utility
             std::ofstream file(resolvedPath, std::ios::binary | std::ios::app);
             if (!file.is_open())
             {
-                Log::error("Failed to open file for binary appending: " + resolvedPath);
+                Core::error("Failed to open file for binary appending: " + resolvedPath);
                 return FileResult::AccessDenied;
             }
 
@@ -343,7 +342,7 @@ namespace PixelCraft::Utility
 
             if (file.fail())
             {
-                Log::error("Failed to append binary data to file: " + resolvedPath);
+                Core::error("Failed to append binary data to file: " + resolvedPath);
                 return FileResult::Unknown;
             }
 
@@ -351,7 +350,7 @@ namespace PixelCraft::Utility
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception in appendFileBinary: " + std::string(e.what()));
+            Core::error("Exception in appendFileBinary: " + std::string(e.what()));
             return FileResult::Unknown;
         }
     }
@@ -362,15 +361,11 @@ namespace PixelCraft::Utility
         try
         {
             std::lock_guard<std::mutex> lock(s_fileSystemMutex);
-
-            // Resolve virtual path if needed
-            std::string resolvedPath = resolvePathInternal(path);
-
-            return fs::exists(resolvedPath) && fs::is_regular_file(resolvedPath);
+            return fileExistsInternal(path);
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception in fileExists: " + std::string(e.what()));
+            Core::error("Exception in fileExists: " + std::string(e.what()));
             return false;
         }
     }
@@ -384,9 +379,9 @@ namespace PixelCraft::Utility
             // Resolve virtual path if needed
             std::string resolvedPath = resolvePathInternal(path);
 
-            if (!fileExists(resolvedPath))
+            if (!fileExistsInternal(resolvedPath))
             {
-                Log::warn("Cannot delete file, it doesn't exist: " + resolvedPath);
+                Core::warn("Cannot delete file, it doesn't exist: " + resolvedPath);
                 return false;
             }
 
@@ -394,7 +389,7 @@ namespace PixelCraft::Utility
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception in deleteFile: " + std::string(e.what()));
+            Core::error("Exception in deleteFile: " + std::string(e.what()));
             return false;
         }
     }
@@ -409,24 +404,24 @@ namespace PixelCraft::Utility
             std::string resolvedSource = resolvePathInternal(source);
             std::string resolvedDestination = resolvePathInternal(destination);
 
-            if (!fileExists(resolvedSource))
+            if (!fileExistsInternal(resolvedSource))
             {
-                Log::error("Source file does not exist: " + resolvedSource);
+                Core::error("Source file does not exist: " + resolvedSource);
                 return false;
             }
 
             // Check if destination exists and we're not overwriting
-            if (fileExists(resolvedDestination) && !overwrite)
+            if (fileExistsInternal(resolvedDestination) && !overwrite)
             {
-                Log::error("Destination file already exists and overwrite is false: " + resolvedDestination);
+                Core::error("Destination file already exists and overwrite is false: " + resolvedDestination);
                 return false;
             }
 
             // Ensure destination directory exists
-            std::string destDir = getDirectoryPath(resolvedDestination);
-            if (!ensureDirectoryExists(destDir))
+            std::string destDir = getDirectoryPathInternal(resolvedDestination);
+            if (!ensureDirectoryExistsInternal(destDir))
             {
-                Log::error("Failed to create destination directory: " + destDir);
+                Core::error("Failed to create destination directory: " + destDir);
                 return false;
             }
 
@@ -438,7 +433,7 @@ namespace PixelCraft::Utility
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception in copyFile: " + std::string(e.what()));
+            Core::error("Exception in copyFile: " + std::string(e.what()));
             return false;
         }
     }
@@ -453,33 +448,33 @@ namespace PixelCraft::Utility
             std::string resolvedSource = resolvePathInternal(source);
             std::string resolvedDestination = resolvePathInternal(destination);
 
-            if (!fileExists(resolvedSource))
+            if (!fileExistsInternal(resolvedSource))
             {
-                Log::error("Source file does not exist: " + resolvedSource);
+                Core::error("Source file does not exist: " + resolvedSource);
                 return false;
             }
 
             // Check if destination exists and we're not overwriting
-            if (fileExists(resolvedDestination) && !overwrite)
+            if (fileExistsInternal(resolvedDestination) && !overwrite)
             {
-                Log::error("Destination file already exists and overwrite is false: " + resolvedDestination);
+                Core::error("Destination file already exists and overwrite is false: " + resolvedDestination);
                 return false;
             }
 
             // Ensure destination directory exists
-            std::string destDir = getDirectoryPath(resolvedDestination);
-            if (!ensureDirectoryExists(destDir))
+            std::string destDir = getDirectoryPathInternal(resolvedDestination);
+            if (!ensureDirectoryExistsInternal(destDir))
             {
-                Log::error("Failed to create destination directory: " + destDir);
+                Core::error("Failed to create destination directory: " + destDir);
                 return false;
             }
 
             // If destination exists and overwrite is true, delete destination first
-            if (fileExists(resolvedDestination) && overwrite)
+            if (fileExistsInternal(resolvedDestination) && overwrite)
             {
-                if (!deleteFile(resolvedDestination))
+                if (!fs::remove(resolvedDestination))
                 {
-                    Log::error("Failed to delete existing destination file: " + resolvedDestination);
+                    Core::error("Failed to delete existing destination file: " + resolvedDestination);
                     return false;
                 }
             }
@@ -491,7 +486,7 @@ namespace PixelCraft::Utility
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception in moveFile: " + std::string(e.what()));
+            Core::error("Exception in moveFile: " + std::string(e.what()));
             return false;
         }
     }
@@ -501,20 +496,11 @@ namespace PixelCraft::Utility
         try
         {
             std::lock_guard<std::mutex> lock(s_fileSystemMutex);
-
-            // Resolve virtual path if needed
-            std::string resolvedPath = resolvePathInternal(path);
-
-            if (!fileExists(resolvedPath))
-            {
-                return 0;
-            }
-
-            return static_cast<size_t>(fs::file_size(resolvedPath));
+            return getFileSizeInternal(path);
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception in getFileSize: " + std::string(e.what()));
+            Core::error("Exception in getFileSize: " + std::string(e.what()));
             return 0;
         }
     }
@@ -524,24 +510,11 @@ namespace PixelCraft::Utility
         try
         {
             std::lock_guard<std::mutex> lock(s_fileSystemMutex);
-
-            // Resolve virtual path if needed
-            std::string resolvedPath = resolvePathInternal(path);
-
-            if (!fileExists(resolvedPath))
-            {
-                return 0;
-            }
-
-            auto lastWriteTime = fs::last_write_time(resolvedPath);
-            auto systemTime = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-                lastWriteTime - fs::file_time_type::clock::now() + std::chrono::system_clock::now());
-
-            return std::chrono::system_clock::to_time_t(systemTime);
+            return getFileModificationTimeInternal(path);
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception in getFileModificationTime: " + std::string(e.what()));
+            Core::error("Exception in getFileModificationTime: " + std::string(e.what()));
             return 0;
         }
     }
@@ -552,21 +525,11 @@ namespace PixelCraft::Utility
         try
         {
             std::lock_guard<std::mutex> lock(s_fileSystemMutex);
-
-            // Resolve virtual path if needed
-            std::string resolvedPath = resolvePathInternal(path);
-
-            // If directory already exists, return true
-            if (directoryExists(resolvedPath))
-            {
-                return true;
-            }
-
-            return fs::create_directories(resolvedPath);
+            return createDirectoryInternal(path);
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception in createDirectory: " + std::string(e.what()));
+            Core::error("Exception in createDirectory: " + std::string(e.what()));
             return false;
         }
     }
@@ -580,9 +543,9 @@ namespace PixelCraft::Utility
             // Resolve virtual path if needed
             std::string resolvedPath = resolvePathInternal(path);
 
-            if (!directoryExists(resolvedPath))
+            if (!directoryExistsInternal(resolvedPath))
             {
-                Log::warn("Cannot delete directory, it doesn't exist: " + resolvedPath);
+                Core::warn("Cannot delete directory, it doesn't exist: " + resolvedPath);
                 return false;
             }
 
@@ -596,7 +559,7 @@ namespace PixelCraft::Utility
                 // Check if directory is empty
                 if (!fs::is_empty(resolvedPath))
                 {
-                    Log::error("Cannot delete non-empty directory without recursive flag: " + resolvedPath);
+                    Core::error("Cannot delete non-empty directory without recursive flag: " + resolvedPath);
                     return false;
                 }
 
@@ -605,7 +568,7 @@ namespace PixelCraft::Utility
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception in deleteDirectory: " + std::string(e.what()));
+            Core::error("Exception in deleteDirectory: " + std::string(e.what()));
             return false;
         }
     }
@@ -615,15 +578,11 @@ namespace PixelCraft::Utility
         try
         {
             std::lock_guard<std::mutex> lock(s_fileSystemMutex);
-
-            // Resolve virtual path if needed
-            std::string resolvedPath = resolvePathInternal(path);
-
-            return fs::exists(resolvedPath) && fs::is_directory(resolvedPath);
+            return directoryExistsInternal(path);
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception in directoryExists: " + std::string(e.what()));
+            Core::error("Exception in directoryExists: " + std::string(e.what()));
             return false;
         }
     }
@@ -639,9 +598,9 @@ namespace PixelCraft::Utility
             // Resolve virtual path if needed
             std::string resolvedPath = resolvePathInternal(directory);
 
-            if (!directoryExists(resolvedPath))
+            if (!directoryExistsInternal(resolvedPath))
             {
-                Log::error("Directory does not exist: " + resolvedPath);
+                Core::error("Directory does not exist: " + resolvedPath);
                 return result;
             }
 
@@ -712,7 +671,7 @@ namespace PixelCraft::Utility
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception in listFiles: " + std::string(e.what()));
+            Core::error("Exception in listFiles: " + std::string(e.what()));
         }
 
         return result;
@@ -729,9 +688,9 @@ namespace PixelCraft::Utility
             // Resolve virtual path if needed
             std::string resolvedPath = resolvePathInternal(directory);
 
-            if (!directoryExists(resolvedPath))
+            if (!directoryExistsInternal(resolvedPath))
             {
-                Log::error("Directory does not exist: " + resolvedPath);
+                Core::error("Directory does not exist: " + resolvedPath);
                 return result;
             }
 
@@ -760,7 +719,7 @@ namespace PixelCraft::Utility
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception in listDirectories: " + std::string(e.what()));
+            Core::error("Exception in listDirectories: " + std::string(e.what()));
         }
 
         return result;
@@ -776,7 +735,7 @@ namespace PixelCraft::Utility
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception in getPathExtension: " + std::string(e.what()));
+            Core::error("Exception in getPathExtension: " + std::string(e.what()));
             return "";
         }
     }
@@ -790,7 +749,7 @@ namespace PixelCraft::Utility
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception in getFileName: " + std::string(e.what()));
+            Core::error("Exception in getFileName: " + std::string(e.what()));
             return "";
         }
     }
@@ -812,7 +771,7 @@ namespace PixelCraft::Utility
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception in getFileNameWithoutExtension: " + std::string(e.what()));
+            Core::error("Exception in getFileNameWithoutExtension: " + std::string(e.what()));
             return "";
         }
     }
@@ -821,12 +780,12 @@ namespace PixelCraft::Utility
     {
         try
         {
-            fs::path fsPath(normalizePath(path));
-            return fsPath.parent_path().string();
+            std::lock_guard<std::mutex> lock(s_fileSystemMutex);
+            return getDirectoryPathInternal(path);
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception in getDirectoryPath: " + std::string(e.what()));
+            Core::error("Exception in getDirectoryPath: " + std::string(e.what()));
             return "";
         }
     }
@@ -852,7 +811,7 @@ namespace PixelCraft::Utility
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception in normalizePath: " + std::string(e.what()));
+            Core::error("Exception in normalizePath: " + std::string(e.what()));
             return path;
         }
     }
@@ -867,7 +826,7 @@ namespace PixelCraft::Utility
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception in combinePaths: " + std::string(e.what()));
+            Core::error("Exception in combinePaths: " + std::string(e.what()));
             return path1 + PATH_SEPARATOR + path2;
         }
     }
@@ -879,7 +838,7 @@ namespace PixelCraft::Utility
 
         if (!s_initialized)
         {
-            Log::error("FileSystem not initialized, cannot add file watcher");
+            Core::error("FileSystem not initialized, cannot add file watcher");
             return 0;
         }
 
@@ -887,9 +846,9 @@ namespace PixelCraft::Utility
         std::string resolvedPath = resolvePathInternal(path);
 
         // Check if file exists
-        if (!fileExists(resolvedPath) && !directoryExists(resolvedPath))
+        if (!fileExistsInternal(resolvedPath) && !directoryExistsInternal(resolvedPath))
         {
-            Log::error("Cannot watch non-existent path: " + resolvedPath);
+            Core::error("Cannot watch non-existent path: " + resolvedPath);
             return 0;
         }
 
@@ -899,7 +858,7 @@ namespace PixelCraft::Utility
         // Add to watchers map
         s_fileWatchers[watcherId] = std::make_pair(resolvedPath, callback);
 
-        Log::info("Added file watcher for: " + resolvedPath);
+        Core::info("Added file watcher for: " + resolvedPath);
         return watcherId;
     }
 
@@ -910,7 +869,7 @@ namespace PixelCraft::Utility
         auto it = s_fileWatchers.find(watcherId);
         if (it != s_fileWatchers.end())
         {
-            Log::info("Removed file watcher for: " + it->second.first);
+            Core::info("Removed file watcher for: " + it->second.first);
             s_fileWatchers.erase(it);
         }
     }
@@ -922,7 +881,7 @@ namespace PixelCraft::Utility
             return;
         }
 
-        Log::info("File watcher thread started");
+        Core::info("File watcher thread started");
 
         std::unordered_map<std::string, time_t> lastModifiedTimes;
 
@@ -931,9 +890,9 @@ namespace PixelCraft::Utility
             std::lock_guard<std::mutex> lock(s_fileSystemMutex);
             for (const auto& watcher : s_fileWatchers)
             {
-                if (fileExists(watcher.second.first))
+                if (fileExistsInternal(watcher.second.first))
                 {
-                    lastModifiedTimes[watcher.second.first] = getFileModificationTime(watcher.second.first);
+                    lastModifiedTimes[watcher.second.first] = getFileModificationTimeInternal(watcher.second.first);
                 }
             }
         }
@@ -949,9 +908,9 @@ namespace PixelCraft::Utility
                 {
                     const std::string& path = watcher.second.first;
 
-                    if (fileExists(path))
+                    if (fileExistsInternal(path))
                     {
-                        time_t currentModifiedTime = getFileModificationTime(path);
+                        time_t currentModifiedTime = getFileModificationTimeInternal(path);
 
                         // Check if we have a previous time recorded
                         auto it = lastModifiedTimes.find(path);
@@ -983,7 +942,7 @@ namespace PixelCraft::Utility
                 }
                 catch (const std::exception& e)
                 {
-                    Log::error("Exception in file watcher callback: " + std::string(e.what()));
+                    Core::error("Exception in file watcher callback: " + std::string(e.what()));
                 }
             }
 
@@ -991,7 +950,7 @@ namespace PixelCraft::Utility
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
 
-        Log::info("File watcher thread stopped");
+        Core::info("File watcher thread stopped");
     }
 
     // Virtual File System Functions
@@ -1006,18 +965,18 @@ namespace PixelCraft::Utility
         // Check if real path exists
         if (!directoryExists(normalizedRealPath))
         {
-            Log::warn("Cannot mount non-existent directory: " + normalizedRealPath);
+            Core::warn("Cannot mount non-existent directory: " + normalizedRealPath);
             // Try to create the directory
             if (!createDirectory(normalizedRealPath))
             {
-                Log::error("Failed to create mount point directory: " + normalizedRealPath);
+                Core::error("Failed to create mount point directory: " + normalizedRealPath);
                 return;
             }
         }
 
         // Add/update mount point
         s_mountPoints[normalizedVirtualPath] = normalizedRealPath;
-        Log::info("Mounted directory: " + normalizedVirtualPath + " -> " + normalizedRealPath);
+        Core::info("Mounted directory: " + normalizedVirtualPath + " -> " + normalizedRealPath);
     }
 
     void FileSystem::unmountDirectory(const std::string& virtualPath)
@@ -1031,12 +990,12 @@ namespace PixelCraft::Utility
         auto it = s_mountPoints.find(normalizedVirtualPath);
         if (it != s_mountPoints.end())
         {
-            Log::info("Unmounted directory: " + normalizedVirtualPath);
+            Core::info("Unmounted directory: " + normalizedVirtualPath);
             s_mountPoints.erase(it);
         }
         else
         {
-            Log::warn("Cannot unmount non-existent mount point: " + normalizedVirtualPath);
+            Core::warn("Cannot unmount non-existent mount point: " + normalizedVirtualPath);
         }
     }
 
@@ -1101,7 +1060,7 @@ namespace PixelCraft::Utility
                 }
 
                 // Mount point not found
-                Log::error("Virtual path mount point not found: " + normalizedPath);
+                Core::error("Virtual path mount point not found: " + normalizedPath);
                 return normalizedPath;
             }
 
@@ -1118,19 +1077,95 @@ namespace PixelCraft::Utility
             }
 
             // Mount point not found
-            Log::error("Virtual path mount point not found: " + mountPoint);
+            Core::error("Virtual path mount point not found: " + mountPoint);
             return normalizedPath;
         }
 
         return normalizedPath;
     }
 
-    FileResult FileSystem::checkFileAccess(const std::string& path, FileMode mode)
+    // Internal versions that assume mutex is already locked
+    bool FileSystem::fileExistsInternal(const std::string& path)
+    {
+        // Resolve virtual path if needed
+        std::string resolvedPath = resolvePathInternal(path);
+        return fs::exists(resolvedPath) && fs::is_regular_file(resolvedPath);
+    }
+
+    bool FileSystem::directoryExistsInternal(const std::string& path)
+    {
+        // Resolve virtual path if needed
+        std::string resolvedPath = resolvePathInternal(path);
+        return fs::exists(resolvedPath) && fs::is_directory(resolvedPath);
+    }
+
+    bool FileSystem::createDirectoryInternal(const std::string& path)
+    {
+        // Resolve virtual path if needed
+        std::string resolvedPath = resolvePathInternal(path);
+
+        // If directory already exists, return true
+        if (directoryExistsInternal(resolvedPath))
+        {
+            return true;
+        }
+
+        return fs::create_directories(resolvedPath);
+    }
+
+    std::string FileSystem::getDirectoryPathInternal(const std::string& path)
+    {
+        fs::path fsPath(normalizePath(path));
+        return fsPath.parent_path().string();
+    }
+
+    size_t FileSystem::getFileSizeInternal(const std::string& path)
+    {
+        // Resolve virtual path if needed
+        std::string resolvedPath = resolvePathInternal(path);
+
+        if (!fileExistsInternal(resolvedPath))
+        {
+            return 0;
+        }
+
+        return static_cast<size_t>(fs::file_size(resolvedPath));
+    }
+
+    time_t FileSystem::getFileModificationTimeInternal(const std::string& path)
+    {
+        // Resolve virtual path if needed
+        std::string resolvedPath = resolvePathInternal(path);
+
+        if (!fileExistsInternal(resolvedPath))
+        {
+            return 0;
+        }
+
+        auto lastWriteTime = fs::last_write_time(resolvedPath);
+        auto systemTime = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+            lastWriteTime - fs::file_time_type::clock::now() + std::chrono::system_clock::now());
+
+        return std::chrono::system_clock::to_time_t(systemTime);
+    }
+
+    bool FileSystem::ensureDirectoryExistsInternal(const std::string& path)
+    {
+        // If directory already exists, return true
+        if (directoryExistsInternal(path))
+        {
+            return true;
+        }
+
+        return createDirectoryInternal(path);
+    }
+
+    FileResult FileSystem::checkFileAccessInternal(const std::string& path, FileMode mode)
     {
         // Check if file exists
-        if (!fileExists(path))
+        if (!fileExistsInternal(path))
         {
-            Log::error("File does not exist: " + path);
+            Core::error("File does not exist: " + path);
             return FileResult::NotFound;
         }
 
@@ -1156,7 +1191,7 @@ namespace PixelCraft::Utility
         }
         catch (const std::exception& e)
         {
-            Log::error("Exception checking file permissions: " + std::string(e.what()));
+            Core::error("Exception checking file permissions: " + std::string(e.what()));
             return FileResult::Unknown;
         }
 
@@ -1167,7 +1202,7 @@ namespace PixelCraft::Utility
             case FileMode::ReadBinary:
                 if (!readable)
                 {
-                    Log::error("No read permission for file: " + path);
+                    Core::error("No read permission for file: " + path);
                     return FileResult::AccessDenied;
                 }
                 break;
@@ -1178,7 +1213,69 @@ namespace PixelCraft::Utility
             case FileMode::AppendBinary:
                 if (!writable)
                 {
-                    Log::error("No write permission for file: " + path);
+                    Core::error("No write permission for file: " + path);
+                    return FileResult::AccessDenied;
+                }
+                break;
+        }
+
+        return FileResult::Success;
+    }
+
+    FileResult FileSystem::checkFileAccess(const std::string& path, FileMode mode)
+    {
+        // Check if file exists
+        if (!fileExists(path))
+        {
+            Core::error("File does not exist: " + path);
+            return FileResult::NotFound;
+        }
+
+        // Check access rights based on mode
+        bool readable = false;
+        bool writable = false;
+
+        try
+        {
+            // Use filesystem permissions to check access
+            fs::perms permissions = fs::status(path).permissions();
+
+            // Check owner permissions (assuming running as owner)
+            if ((permissions & fs::perms::owner_read) != fs::perms::none)
+            {
+                readable = true;
+            }
+
+            if ((permissions & fs::perms::owner_write) != fs::perms::none)
+            {
+                writable = true;
+            }
+        }
+        catch (const std::exception& e)
+        {
+            Core::error("Exception checking file permissions: " + std::string(e.what()));
+            return FileResult::Unknown;
+        }
+
+        // Check based on mode
+        switch (mode)
+        {
+            case FileMode::Read:
+            case FileMode::ReadBinary:
+                if (!readable)
+                {
+                    Core::error("No read permission for file: " + path);
+                    return FileResult::AccessDenied;
+                }
+                break;
+
+            case FileMode::Write:
+            case FileMode::WriteBinary:
+            case FileMode::Append:
+            case FileMode::AppendBinary:
+                if (!writable)
+                {
+                    Core::error("No write permission for file: " + path);
                     return FileResult::AccessDenied;
                 }
                 break;
@@ -1283,3 +1380,4 @@ namespace PixelCraft::Utility
     }
 
 } // namespace PixelCraft::Utility
+

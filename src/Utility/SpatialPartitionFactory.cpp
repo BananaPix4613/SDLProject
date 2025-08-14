@@ -5,8 +5,6 @@
 #include "Core/Application.h"
 #include "Core/Logger.h"
 
-namespace Log = PixelCraft::Core;
-
 namespace PixelCraft::Utility
 {
 
@@ -28,11 +26,11 @@ namespace PixelCraft::Utility
     {
         if (m_initialized)
         {
-            Log::warn("SpatialPartitionFactory already initialized");
+            Core::warn("SpatialPartitionFactory already initialized");
             return true;
         }
 
-        Log::info("Initializing SpatialPartitionFactory subsystem");
+        Core::info("Initializing SpatialPartitionFactory subsystem");
 
         m_initialized = true;
         return true;
@@ -40,6 +38,8 @@ namespace PixelCraft::Utility
 
     void SpatialPartitionFactory::update(float deltaTime)
     {
+        (void)deltaTime;  // Currently unused
+
         if (!m_initialized)
         {
             return;
@@ -65,7 +65,7 @@ namespace PixelCraft::Utility
             return;
         }
 
-        Log::info("Shutting down SpatialPartitionFactory subsystem");
+        Core::info("Shutting down SpatialPartitionFactory subsystem");
 
         m_initialized = false;
     }
@@ -88,7 +88,7 @@ namespace PixelCraft::Utility
             case PartitionType::Quadtree:
                 return createQuadtree(worldBounds, config);
             default:
-                Log::error("Unknown partition type");
+                Core::error("Unknown partition type");
                 return nullptr;
         }
     }
@@ -118,7 +118,7 @@ namespace PixelCraft::Utility
         const SpatialPartitionConfig& config)
     {
 
-        // For terrain, quadtrees are often more efficient since terrrain is usually
+        // For terrain, quadtrees are often more efficient since terrain is usually
         // height-mapped and thus primarily varies in X and Z dimensions
 
         // Create a specialized config for terrain

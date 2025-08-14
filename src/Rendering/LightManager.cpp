@@ -2,228 +2,26 @@
 // LightManager.cpp
 // -------------------------------------------------------------------------
 #include "Rendering/LightManager.h"
-#include "Core/Logger.h"
 #include "Core/Application.h"
+#include "Core/Logger.h"
+#include "Rendering/ForwardPlusShaderManager.h"
+#include "Rendering/RenderSystem.h"
 #include "Rendering/Shader.h"
 #include "Utility/Math.h"
-#include "glm/glm.hpp"
-#include "gtx/transform.hpp"
+#include "Utility/AABB.h"
+#include "Utility/GraphicsCapabilities.h"
 
-namespace Log = PixelCraft::Core;
+#include <glm/glm.hpp>
+#include <glm/gtx/transform.hpp>
+#include <cmath>
 
 namespace PixelCraft::Rendering
 {
 
-    //-------------------------------------------------------------------------
-    // Light implementation
-    //-------------------------------------------------------------------------
-
-    Light::Light(LightType type)
-        : m_type(type)
-        , m_position(0.0f, 0.0f, 0.0f)
-        , m_direction(0.0f, -1.0f, 0.0f)
-        , m_color(1.0f, 1.0f, 1.0f)
-        , m_intensity(1.0f)
-        , m_range(10.0f)
-        , m_castShadows(false)
-        , m_spotInnerAngle(glm::radians(30.0f))
-        , m_spotOuterAngle(glm::radians(45.0f))
-        , m_areaSize(1.0f, 1.0f)
-        , m_shadowBias(0.005f)
-        , m_shadowResolution(1024)
-    {
-        // Normalize the direction vector
-        if (glm::length(m_direction) > 0.0f)
-        {
-            m_direction = glm::normalize(m_direction);
-        }
-    }
-
-    Light::~Light()
-    {
-        // No special cleanup needed
-    }
-
-    void Light::setPosition(const glm::vec3& position)
-    {
-        m_position = position;
-    }
-
-    void Light::setDirection(const glm::vec3& direction)
-    {
-        m_direction = glm::normalize(direction);
-    }
-
-    void Light::setColor(const glm::vec3& color)
-    {
-        m_color = color;
-    }
-
-    void Light::setIntensity(float intensity)
-    {
-        m_intensity = glm::max(0.0f, intensity);
-    }
-
-    void Light::setRange(float range)
-    {
-        m_range = glm::max(0.1f, range);
-    }
-
-    void Light::setCastShadows(bool castShadows)
-    {
-        m_castShadows = castShadows;
-    }
-
-    void Light::setSpotAngle(float innerAngle, float outerAngle)
-    {
-        m_spotInnerAngle = glm::clamp(innerAngle, 0.0f, glm::radians(175.0f));
-        m_spotOuterAngle = glm::clamp(outerAngle, m_spotInnerAngle, glm::radians(175.0f));
-    }
-
-    void Light::setAreaSize(const glm::vec2& size)
-    {
-        m_areaSize = glm::max(size, glm::vec2(0.01f));
-    }
-
-    LightType Light::getType() const
-    {
-        return m_type;
-    }
-
-    const glm::vec3& Light::getPosition() const
-    {
-        return m_position;
-    }
-
-    const glm::vec3& Light::getDirection() const
-    {
-        return m_direction;
-    }
-
-    const glm::vec3& Light::getColor() const
-    {
-        return m_color;
-    }
-
-    float Light::getIntensity() const
-    {
-        return m_intensity;
-    }
-
-    float Light::getRange() const
-    {
-        return m_range;
-    }
-
-    bool Light::getCastShadows() const
-    {
-        return m_castShadows;
-    }
-
-    void Light::setShadowBias(float bias)
-    {
-        m_shadowBias = glm::clamp(bias, 0.0f, 0.1f);
-    }
-
-    void Light::setShadowResolution(int resolution)
-    {
-        // Ensure resolution is a power of two
-        int powerOfTwo = 1;
-        while (powerOfTwo < resolution && powerOfTwo < 8192)
-        {
-            powerOfTwo *= 2;
-        }
-        m_shadowResolution = powerOfTwo;
-    }
-
-    glm::mat4 Light::getViewMatrix() const
-    {
-        switch (m_type)
-        {
-            case LightType::Directional:
-            {
-                // For directional lights, create a view matrix looking in the light direction
-                const glm::vec3 up = glm::abs(m_direction.y) > 0.999f ? glm::vec3(1.0f, 0.0f, 0.0f) : glm::vec3(0.0f, 1.0f, 0.0f);
-                return glm::lookAt(glm::vec3(0.0f), m_direction, up);
-            }
-            case LightType::Point:
-            case LightType::Spot:
-            {
-                // For point and spot lights, create a view matrix from the light position
-                const glm::vec3 target = m_position + m_direction;
-                const glm::vec3 up = glm::abs(m_direction.y) > 0.999f ? glm::vec3(0.0f, 0.0f, 1.0f) : glm::vec3(0.0f, 1.0f, 0.0f);
-                return glm::lookAt(m_position, target, up);
-            }
-            case LightType::Area:
-            {
-                // For area lights, create a view matrix from the light position
-                const glm::vec3 target = m_position + m_direction;
-                const glm::vec3 up = glm::abs(m_direction.y) > 0.999f ? glm::vec3(0.0f, 0.0f, 1.0f) : glm::vec3(0.0f, 1.0f, 0.0f);
-                return glm::lookAt(m_position, target, up);
-            }
-            default:
-                return glm::mat4(1.0f);
-        }
-    }
-
-    glm::mat4 Light::getProjectionMatrix() const
-    {
-        switch (m_type)
-        {
-            case LightType::Directional:
-                // Orthographic projection for directional lights
-                return glm::ortho(-20.0f, 20.0f, -20.0f, 20.0f, 0.1f, 100.0f);
-
-            case LightType::Point:
-                // For point lights, we would typically use cubemap projections
-                // This is a placeholder - actual implementation would handle all six faces
-                return glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, m_range);
-
-            case LightType::Spot:
-            {
-                // For spot lights, use a perspective projection
-                float aspectRatio = 1.0f;
-                float fovY = 2.0f * m_spotOuterAngle;
-                return glm::perspective(fovY, aspectRatio, 0.1f, m_range);
-            }
-
-            case LightType::Area:
-                // For area lights, use an orthographic projection
-                return glm::ortho(-m_areaSize.x * 0.5f, m_areaSize.x * 0.5f,
-                                  -m_areaSize.y * 0.5f, m_areaSize.y * 0.5f,
-                                  0.1f, 50.0f);
-
-            default:
-                return glm::mat4(1.0f);
-        }
-    }
-
-    LightData Light::packLightData() const
-    {
-        LightData data;
-        data.position = m_position;
-        data.range = m_range;
-        data.color = m_color;
-        data.intensity = m_intensity;
-        data.direction = m_direction;
-        data.spotAngle = m_type == LightType::Spot ? cos(m_spotOuterAngle) : -1.0f;
-        data.areaSize = m_areaSize;
-        data.shadowIndex = 0; // Will be set by LightManager
-        data.type = m_type;
-        data.castShadows = m_castShadows;
-        return data;
-    }
-
-    //-------------------------------------------------------------------------
-    // LightManager implementation
-    //-------------------------------------------------------------------------
-
     LightManager::LightManager()
-        : m_clustersDirty(true)
+        : m_clusteringEnabled(false)
         , m_cascadeCount(4)
         , m_cascadeSplitLambda(0.5f)
-        , m_lightDataBuffer(0)
-        , m_clusterDataBuffer(0)
         , m_initialized(false)
     {
     }
@@ -240,29 +38,75 @@ namespace PixelCraft::Rendering
     {
         if (m_initialized)
         {
-            Log::warn("LightManager already initialized");
+            Core::warn("LightManager already initialized");
             return true;
         }
 
-        Log::info("Initializing LightManager subsystem");
+        Core::info("Initializing LightManager subsystem");
 
-        // Initialize the cluster data with default values
-        m_clusterData.dimensions = glm::ivec3(16, 8, 24); // Default cluster grid size
-        m_clusterData.minBounds = glm::vec3(-50.0f, -50.0f, -50.0f);
-        m_clusterData.maxBounds = glm::vec3(50.0f, 50.0f, 50.0f);
+        // Initialize the clustered light culler with default configuration
+        m_clusterCuller = std::make_unique<ClusteredLightCuller>();
+        if (!m_clusterCuller->initialize())
+        {
+            Core::error("Failed to initialize ClusteredLightCuller");
+            return false;
+        }
+        m_clusteringEnabled = true;
 
-        // Allocate space for the light grid and indices
-        const int totalClusters = m_clusterData.dimensions.x * m_clusterData.dimensions.y * m_clusterData.dimensions.z;
-        m_clusterData.lightGrid.resize(totalClusters, 0);
-        m_clusterData.lightIndices.reserve(1024); // Reserve space for light indices
-
-        // Create GPU buffers for light data and cluster data
-        // In a real implementation, these would be created using the graphics API
-        m_lightDataBuffer = 1; // Placeholder
-        m_clusterDataBuffer = 2; // Placeholder
+        // Get ForwardPlusShaderManager for buffer coordination
+        m_forwardPlusShaderManager = Core::Application::getInstance()->getSubsystem<Rendering::ForwardPlusShaderManager>();
+        if (m_forwardPlusShaderManager)
+        {
+            // Set up integration with ForwardPlusShaderManager
+            m_forwardPlusShaderManager->setClusteredLightCuller(m_clusterCuller);
+            Core::info("LightManager: Integrated with ForwardPlusShaderManager");
+        }
+        else
+        {
+            Core::warn("LightManager: ForwardPlusShaderManager not found - GPU buffer management will be limited");
+        }
 
         m_initialized = true;
+
+        Core::info("LightManager initialized successfully with clustering enabled");
         return true;
+    }
+
+    std::vector<std::string> LightManager::getDependencies() const
+    {
+        return {"MemoryManager", "ForwardPlusShaderManager"};
+    }
+
+    void LightManager::update(float deltaTime)
+    {
+        (void)deltaTime;  // Currently unused
+
+        // Update light clusters if clustering is enabled
+        if (m_clusteringEnabled && m_clusterCuller)
+        {
+            auto renderSystem = Core::Application::getInstance()->getSubsystem<Rendering::RenderSystem>();
+            if (renderSystem)
+            {
+                updateClusters(std::make_shared<RenderContext>(renderSystem->getRenderContext()));
+            }
+        }
+
+        // Update shadow maps for all shadow-casting lights
+        for (const auto &light : m_lights)
+        {
+            if (light->getCastShadows())
+            {
+                createShadowMapForLight(light);
+            }
+        }
+
+        // Update GPU buffers with current light data
+        updateGPUBuffers();
+    }
+
+    void LightManager::render()
+    {
+        // Render debug visualization of lights, light volumes, etc.
     }
 
     void LightManager::shutdown()
@@ -272,7 +116,15 @@ namespace PixelCraft::Rendering
             return;
         }
 
-        Log::info("Shutting down LightManager subsystem");
+        Core::info("Shutting down LightManager subsystem");
+
+        // Shutdown cluster culler
+        if (m_clusterCuller)
+        {
+            m_clusterCuller->shutdown();
+            m_clusterCuller.reset();
+        }
+        m_clusteringEnabled = false;
 
         // Clear all lights
         m_lights.clear();
@@ -286,10 +138,8 @@ namespace PixelCraft::Rendering
         m_shadowMaps.clear();
         m_lightShadowIndices.clear();
 
-        // Release GPU buffers
-        // In a real implementation, these would be deleted using the graphics API
-        m_lightDataBuffer = 0;
-        m_clusterDataBuffer = 0;
+        // Release ForwardPlusShaderManager reference
+        m_forwardPlusShaderManager.reset();
 
         m_initialized = false;
     }
@@ -303,24 +153,41 @@ namespace PixelCraft::Rendering
 
         switch (type)
         {
-            case LightType::Directional:
-                m_directionalLights.push_back(light);
-                break;
-            case LightType::Point:
-                m_pointLights.push_back(light);
-                break;
-            case LightType::Spot:
-                m_spotLights.push_back(light);
-                break;
-            case LightType::Area:
-                m_areaLights.push_back(light);
-                break;
+        case LightType::Directional:
+            m_directionalLights.push_back(light);
+            break;
+        case LightType::Point:
+            m_pointLights.push_back(light);
+            break;
+        case LightType::Spot:
+            m_spotLights.push_back(light);
+            break;
+        case LightType::Area:
+            m_areaLights.push_back(light);
+            break;
         }
 
-        // Mark clusters as dirty
-        m_clustersDirty = true;
-
         return light;
+    }
+
+    std::shared_ptr<Light> LightManager::createDirectionalLight()
+    {
+        return createLight(LightType::Directional);
+    }
+
+    std::shared_ptr<Light> LightManager::createPointLight()
+    {
+        return createLight(LightType::Point);
+    }
+
+    std::shared_ptr<Light> LightManager::createSpotLight()
+    {
+        return createLight(LightType::Spot);
+    }
+
+    std::shared_ptr<Light> LightManager::createAreaLight()
+    {
+        return createLight(LightType::Area);
     }
 
     void LightManager::removeLight(std::shared_ptr<Light> light)
@@ -340,7 +207,7 @@ namespace PixelCraft::Rendering
         // Remove from the appropriate type-specific list
         switch (light->getType())
         {
-            case LightType::Directional:
+        case LightType::Directional:
             {
                 auto it = std::find(m_directionalLights.begin(), m_directionalLights.end(), light);
                 if (it != m_directionalLights.end())
@@ -349,7 +216,7 @@ namespace PixelCraft::Rendering
                 }
                 break;
             }
-            case LightType::Point:
+        case LightType::Point:
             {
                 auto it = std::find(m_pointLights.begin(), m_pointLights.end(), light);
                 if (it != m_pointLights.end())
@@ -358,7 +225,7 @@ namespace PixelCraft::Rendering
                 }
                 break;
             }
-            case LightType::Spot:
+        case LightType::Spot:
             {
                 auto it = std::find(m_spotLights.begin(), m_spotLights.end(), light);
                 if (it != m_spotLights.end())
@@ -367,7 +234,7 @@ namespace PixelCraft::Rendering
                 }
                 break;
             }
-            case LightType::Area:
+        case LightType::Area:
             {
                 auto it = std::find(m_areaLights.begin(), m_areaLights.end(), light);
                 if (it != m_areaLights.end())
@@ -391,80 +258,97 @@ namespace PixelCraft::Rendering
         {
             m_lights.erase(it);
         }
-
-        // Mark clusters as dirty
-        m_clustersDirty = true;
     }
 
-    const std::vector<std::shared_ptr<Light>>& LightManager::getLights() const
+    const std::vector<std::shared_ptr<Light>> &LightManager::getLights() const
     {
         return m_lights;
     }
 
-    const std::vector<std::shared_ptr<Light>>& LightManager::getVisibleLights() const
+    const std::vector<std::shared_ptr<Light>> &LightManager::getVisibleLights() const
     {
         return m_visibleLights;
     }
 
-    void LightManager::setupClusters(const glm::ivec3& dimensions)
+    size_t LightManager::getLightCount() const
     {
-        m_clusterData.dimensions = glm::max(dimensions, glm::ivec3(1));
-
-        // Resize the light grid for the new dimensions
-        const int totalClusters = m_clusterData.dimensions.x * m_clusterData.dimensions.y * m_clusterData.dimensions.z;
-        m_clusterData.lightGrid.resize(totalClusters, 0);
-
-        // Mark clusters as dirty to trigger a rebuild
-        m_clustersDirty = true;
+        return m_lights.size();
     }
 
-    void LightManager::updateClusters(const RenderContext& context)
+    void LightManager::updateLightData()
     {
-        if (!m_clustersDirty && !m_visibleLights.empty())
+        if (!m_initialized)
+        {
+            Core::warn("LightManager not initialized - cannot update light data");
+            return;
+        }
+
+        Core::debug("LightManager: Forcing light data update with " + std::to_string(m_lights.size()) + " total lights, " +
+                    std::to_string(m_visibleLights.size()) + " visible");
+
+        // Force an immediate GPU buffer update
+        updateGPUBuffers();
+
+        Core::debug("LightManager: Light data update complete");
+    }
+
+    void LightManager::configureClusterCuller(const ClusterConfig &config)
+    {
+        if (!m_clusterCuller)
+        {
+            Core::error("ClusterCuller not initialized - cannot configure");
+            return;
+        }
+
+        m_clusterCuller->configureGrid(config);
+        Core::info("ClusterCuller configured with " + std::to_string(config.clusterCountX) + "x" +
+                std::to_string(config.clusterCountY) + "x" + std::to_string(config.clusterCountZ) + " dimensions");
+    }
+
+    void LightManager::updateClusters(const std::shared_ptr<RenderContext> context)
+    {
+        if (!m_clusteringEnabled || !m_clusterCuller || !context)
         {
             return;
         }
 
-        // Update the cluster bounds based on the view frustum
-        // For simplicity, we'll use the camera frustum corners to determine bounds
-        const auto& frustum = context.getFrustum();
-        const auto& corners = frustum.getCorners();
+        // Update the cluster culler with current context and visible lights
+        m_clusterCuller->update(*context, m_visibleLights);
 
-        // Calculate min/max bounds from the frustum corners
-        glm::vec3 minBounds = glm::vec3(std::numeric_limits<float>::max());
-        glm::vec3 maxBounds = glm::vec3(std::numeric_limits<float>::lowest());
+        // Update GPU buffers through ForwardPlusShaderManager
+        updateGPUBuffers();
+    }
 
-        for (const auto& corner : corners)
+    const ClusterData &LightManager::getClusterData() const
+    {
+        if (!m_clusterCuller)
         {
-            minBounds = glm::min(minBounds, corner);
-            maxBounds = glm::max(maxBounds, corner);
+            // Return a default/empty cluster data if culler is not available
+            static ClusterData emptyData;
+            return emptyData;
         }
 
-        m_clusterData.minBounds = minBounds;
-        m_clusterData.maxBounds = maxBounds;
-
-        // Clear existing light assignments
-        std::fill(m_clusterData.lightGrid.begin(), m_clusterData.lightGrid.end(), 0);
-        m_clusterData.lightIndices.clear();
-
-        // Assign lights to clusters
-        assignLightsToClusters();
-
-        // Update the cluster buffer
-        updateGPUBuffers();
-
-        m_clustersDirty = false;
+        return m_clusterCuller->getClusterData();
     }
 
-    const ClusterData& LightManager::getClusterData() const
+    std::shared_ptr<ClusteredLightCuller> LightManager::getClusterCuller()
     {
-        return m_clusterData;
+        if (!m_clusterCuller)
+        {
+            throw std::runtime_error("ClusterCuller not initialized");
+        }
+        return m_clusterCuller;
     }
 
-    void LightManager::prepareShadowMaps(const RenderContext& context)
+    bool LightManager::isClusteringEnabled() const
+    {
+        return m_clusteringEnabled && m_clusterCuller && m_clusterCuller->isInitialized();
+    }
+
+    void LightManager::prepareShadowMaps(const RenderContext &context)
     {
         // Create shadow maps for all shadow-casting lights
-        for (auto& light : m_visibleLights)
+        for (auto &light : m_visibleLights)
         {
             if (light->getCastShadows())
             {
@@ -498,28 +382,28 @@ namespace PixelCraft::Rendering
         m_cascadeViewProjections.resize(m_cascadeCount);
     }
 
-    const std::vector<glm::mat4>& LightManager::getCascadeViewProjections() const
+    const std::vector<glm::mat4> &LightManager::getCascadeViewProjections() const
     {
         return m_cascadeViewProjections;
     }
 
-    const std::vector<float>& LightManager::getCascadeSplits() const
+    const std::vector<float> &LightManager::getCascadeSplits() const
     {
         return m_cascadeSplits;
     }
 
-    void LightManager::updateVisibleLights(const Utility::Frustum& frustum)
+    void LightManager::updateVisibleLights(const Utility::Frustum &frustum)
     {
         m_visibleLights.clear();
 
         // Directional lights are always visible
-        for (auto& light : m_directionalLights)
+        for (auto &light : m_directionalLights)
         {
             m_visibleLights.push_back(light);
         }
 
         // Test point lights against the frustum
-        for (auto& light : m_pointLights)
+        for (auto &light : m_pointLights)
         {
             if (frustum.testSphere(light->getPosition(), light->getRange()))
             {
@@ -528,7 +412,7 @@ namespace PixelCraft::Rendering
         }
 
         // Test spot lights against the frustum
-        for (auto& light : m_spotLights)
+        for (auto &light : m_spotLights)
         {
             if (frustum.testSphere(light->getPosition(), light->getRange()))
             {
@@ -537,196 +421,114 @@ namespace PixelCraft::Rendering
         }
 
         // Test area lights against the frustum
-        for (auto& light : m_areaLights)
+        for (auto &light : m_areaLights)
         {
-            if (frustum.testSphere(light->getPosition(), glm::length(glm::vec3(light->getAreaSize().x, light->getAreaSize().y, 0.0f))))
+            if (frustum.testSphere(light->getPosition(),
+                glm::length(glm::vec3(light->getAreaSize().x, light->getAreaSize().y, 0.0f))))
             {
                 m_visibleLights.push_back(light);
             }
         }
-
-        // Mark clusters as dirty since visible lights changed
-        m_clustersDirty = true;
     }
 
     void LightManager::updateGPUBuffers()
     {
+        if (!m_initialized)
+        {
+            Core::warn("LightManager not initialized - cannot update GPU buffers");
+            return;
+        }
+
         // Prepare light data for GPU
         std::vector<LightData> lightDataArray;
         lightDataArray.reserve(m_visibleLights.size());
 
         for (size_t i = 0; i < m_visibleLights.size(); ++i)
         {
-            auto& light = m_visibleLights[i];
+            auto &light = m_visibleLights[i];
             LightData data = light->packLightData();
 
             // Set shadow index if this light has a shadow map
             auto it = m_lightShadowIndices.find(light);
             if (it != m_lightShadowIndices.end())
             {
-                data.shadowIndex = static_cast<uint32_t>(it->second);
+                data.metadata.x = static_cast<float>(it->second);
+            }
+            else
+            {
+                data.metadata.x = -1.0f; // Invalid shadow index
             }
 
             lightDataArray.push_back(data);
         }
 
-        // In a real implementation, the light data would be uploaded to GPU buffers here
-        // For example:
-        // glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_lightDataBuffer);
-        // glBufferData(GL_SHADER_STORAGE_BUFFER, lightDataArray.size() * sizeof(LightData), lightDataArray.data(), GL_DYNAMIC_DRAW);
+        // Delegate GPU buffer updates to ForwardPlusShaderManager
+        if (m_forwardPlusShaderManager && m_forwardPlusShaderManager->isForwardPlusReady())
+        {
+            // Use the integrated forward+ buffer management
+            if (m_clusteringEnabled && m_clusterCuller)
+            {
+                // Update all forward+ buffers with cluster data
+                const auto &clusterData = m_clusterCuller->getClusterData();
+                if (!m_forwardPlusShaderManager->updateForwardPlusBuffers(lightDataArray, &clusterData))
+                {
+                    Core::error("LightManager: Failed to update forward+ buffers through ForwardPlusShaderManager");
+                }
+            }
+            else
+            {
+                // Update only visible lights buffer
+                if (!m_forwardPlusShaderManager->updateVisibleLights(lightDataArray))
+                {
+                    Core::error("LightManager: Failed to update visible lights through ForwardPlusShaderManager");
+                }
+            }
+        }
+        else
+        {
+            // Fallback: Log that forward+ integration is not available
+            Core::warn("LightManager: ForwardPlusShaderManager not available - GPU buffers not updated");
 
-        // Similarly for cluster data
-        // glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_clusterDataBuffer);
-        // ...
+            if (!lightDataArray.empty())
+            {
+                Core::info("LightManager: Would update " + std::to_string(lightDataArray.size()) + " lights");
+            }
+        }
     }
 
     uint32_t LightManager::getLightDataBuffer() const
     {
-        return m_lightDataBuffer;
+        if (m_forwardPlusShaderManager)
+        {
+            return m_forwardPlusShaderManager->getVisibleLightsBuffer();
+        }
+        return 0;
     }
 
     uint32_t LightManager::getClusterDataBuffer() const
     {
-        return m_clusterDataBuffer;
+        if (m_forwardPlusShaderManager)
+        {
+            return m_forwardPlusShaderManager->getClusterDataBuffer();
+        }
+        return 0;
     }
 
-    void LightManager::assignLightsToClusters()
+    void LightManager::setForwardPlusShaderManager(std::shared_ptr<ForwardPlusShaderManager> forwardPlusManager)
     {
-        // Grid dimensions
-        const glm::ivec3& dims = m_clusterData.dimensions;
-        const glm::vec3& minBounds = m_clusterData.minBounds;
-        const glm::vec3& maxBounds = m_clusterData.maxBounds;
-        const glm::vec3 boundsSize = maxBounds - minBounds;
+        m_forwardPlusShaderManager = forwardPlusManager;
 
-        // Cluster size
-        const glm::vec3 clusterSize = boundsSize / glm::vec3(dims);
-
-        // Reserve space for light indices (worst case: all lights affect all clusters)
-        m_clusterData.lightIndices.clear();
-
-        // For each cluster, find lights that affect it
-        const int totalClusters = dims.x * dims.y * dims.z;
-
-        for (int clusterIdx = 0; clusterIdx < totalClusters; ++clusterIdx)
+        if (m_forwardPlusShaderManager && m_clusterCuller)
         {
-            // Calculate 3D indices from flat index
-            int z = clusterIdx / (dims.x * dims.y);
-            int y = (clusterIdx - z * dims.x * dims.y) / dims.x;
-            int x = clusterIdx - z * dims.x * dims.y - y * dims.x;
-
-            // Calculate cluster bounds
-            glm::vec3 clusterMin = minBounds + glm::vec3(x, y, z) * clusterSize;
-            glm::vec3 clusterMax = clusterMin + clusterSize;
-
-            // Center of the cluster
-            glm::vec3 clusterCenter = (clusterMin + clusterMax) * 0.5f;
-
-            // Record starting index for this cluster's lights
-            uint32_t startIndex = static_cast<uint32_t>(m_clusterData.lightIndices.size());
-            uint32_t lightCount = 0;
-
-            // Add directional lights (which affect all clusters)
-            for (auto& light : m_directionalLights)
-            {
-                if (std::find(m_visibleLights.begin(), m_visibleLights.end(), light) != m_visibleLights.end())
-                {
-                    m_clusterData.lightIndices.push_back(
-                        static_cast<uint32_t>(std::distance(m_visibleLights.begin(),
-                                                            std::find(m_visibleLights.begin(), m_visibleLights.end(), light))));
-                    lightCount++;
-                }
-            }
-
-            // Check point lights
-            for (auto& light : m_pointLights)
-            {
-                if (std::find(m_visibleLights.begin(), m_visibleLights.end(), light) == m_visibleLights.end())
-                {
-                    continue;
-                }
-
-                float radius = light->getRange();
-                float radiusSq = radius * radius;
-
-                // Simplified test: distance from point to AABB
-                float distSq = 0.0f;
-
-                for (int i = 0; i < 3; i++)
-                {
-                    float v = light->getPosition()[i];
-                    if (v < clusterMin[i]) distSq += (clusterMin[i] - v) * (clusterMin[i] - v);
-                    if (v > clusterMax[i]) distSq += (v - clusterMax[i]) * (v - clusterMax[i]);
-                }
-
-                if (distSq <= radiusSq)
-                {
-                    m_clusterData.lightIndices.push_back(
-                        static_cast<uint32_t>(std::distance(m_visibleLights.begin(),
-                                                            std::find(m_visibleLights.begin(), m_visibleLights.end(), light))));
-                    lightCount++;
-                }
-            }
-
-            // Check spot lights (similar to point lights but also check direction)
-            for (auto& light : m_spotLights)
-            {
-                if (std::find(m_visibleLights.begin(), m_visibleLights.end(), light) == m_visibleLights.end())
-                {
-                    continue;
-                }
-
-                float radius = light->getRange();
-                float radiusSq = radius * radius;
-
-                // First, quick sphere test
-                float distSq = 0.0f;
-                for (int i = 0; i < 3; i++)
-                {
-                    float v = light->getPosition()[i];
-                    if (v < clusterMin[i]) distSq += (clusterMin[i] - v) * (clusterMin[i] - v);
-                    if (v > clusterMax[i]) distSq += (v - clusterMax[i]) * (v - clusterMax[i]);
-                }
-
-                if (distSq <= radiusSq)
-                {
-                    // Check if cluster center is within the spotlight cone
-                    glm::vec3 dirToCluster = glm::normalize(clusterCenter - light->getPosition());
-                    float cosAngle = glm::dot(light->getDirection(), dirToCluster);
-
-                    if (cosAngle > glm::cos(light->getType() == LightType::Spot ? glm::radians(45.0f) : glm::pi<float>()))
-                    {
-                        m_clusterData.lightIndices.push_back(
-                            static_cast<uint32_t>(std::distance(m_visibleLights.begin(),
-                                                                std::find(m_visibleLights.begin(), m_visibleLights.end(), light))));
-                        lightCount++;
-                    }
-                }
-            }
-
-            // Check area lights (simplified)
-            for (auto& light : m_areaLights)
-            {
-                if (std::find(m_visibleLights.begin(), m_visibleLights.end(), light) == m_visibleLights.end())
-                {
-                    continue;
-                }
-
-                // Simplified as sphere test
-                float extent = glm::max(light->getAreaSize().x, light->getAreaSize().y) * 0.5f;
-                float maxDist = extent + glm::length(clusterSize) * 0.5f;
-
-                if (glm::distance(light->getPosition(), clusterCenter) <= maxDist)
-                {
-                    m_clusterData.lightIndices.push_back(
-                        static_cast<uint32_t>(std::distance(m_visibleLights.begin(),
-                                                            std::find(m_visibleLights.begin(), m_visibleLights.end(), light))));
-                    lightCount++;
-                }
-            }
-
-            // Update grid entry with start index and count
-            m_clusterData.lightGrid[clusterIdx] = (startIndex & 0xFFFFFF) | (lightCount << 24);
+            // Set up integration with the cluster culler
+            m_forwardPlusShaderManager->setClusteredLightCuller(m_clusterCuller);
+            Core::info("LightManager: ForwardPlusShaderManager integration established");
         }
+    }
+
+    std::shared_ptr<ForwardPlusShaderManager> LightManager::getForwardPlusShaderManager() const
+    {
+        return m_forwardPlusShaderManager;
     }
 
     void LightManager::createShadowMapForLight(std::shared_ptr<Light> light)
@@ -743,76 +545,213 @@ namespace PixelCraft::Rendering
             return; // Shadow map already exists
         }
 
-        // Create a shadow map based on light type
-        const int resolution = light->getType() == LightType::Directional ? 2048 : 1024;
-        const bool cubemap = light->getType() == LightType::Point;
+        // Use graphics capabilities to determine appropriate shadow map settings
+        auto& capabilities = Utility::GraphicsCapabilities::getInstance();
+        if (!capabilities.initialize())
+        {
+            Core::error("LightManager: Failed to initialize graphics capabilities");
+            return;
+        }
 
-        // In a real implementation, this would create the appropriate render target
-        // with depth textures for shadow mapping
-        std::shared_ptr<RenderTarget> shadowMap = std::make_shared<RenderTarget>();
-        // shadowMap->initialize(resolution, resolution, TextureFormat::DEPTH_32F, cubemap);
+        // Check if shadow mapping is supported at all
+        if (!capabilities.supportsDepthTextures())
+        {
+            Core::warn("LightManager: Hardware does not support depth textures - disabling shadow casting for light");
+            light->setCastShadows(false);
+            return;
+        }
 
-        // Add shadow map to the list and record its index
-        size_t index = m_shadowMaps.size();
-        m_shadowMaps.push_back(shadowMap);
-        m_lightShadowIndices[light] = index;
+        // Determine shadow map characteristics based on light type and hardware capabilities
+        int baseResolution = capabilities.getRecommendedShadowMapResolution();
+        int resolution;
+        bool needsCubemap = false;
+        
+        switch (light->getType())
+        {
+        case LightType::Directional:
+            // Directional lights can use higher resolution if hardware supports it
+            resolution = capabilities.supportsAdvancedShadowMapping() ? 
+                        std::min(2048, capabilities.getMaxTextureSize()) : baseResolution;
+            break;
+        case LightType::Point:
+            resolution = baseResolution;
+            needsCubemap = true; // Point lights need cubemap for omnidirectional shadows
+            break;
+        case LightType::Spot:
+            resolution = baseResolution;
+            break;
+        case LightType::Area:
+            resolution = baseResolution;
+            break;
+        default:
+            Core::warn("LightManager: Unknown light type for shadow map creation");
+            return;
+        }
+
+        // Try multiple fallback resolutions if the preferred one fails
+        std::vector<int> fallbackResolutions = {resolution, resolution/2, resolution/4, 512, 256};
+        bool shadowMapCreated = false;
+        
+        for (int testResolution : fallbackResolutions)
+        {
+            if (testResolution <= 0 || testResolution > capabilities.getMaxTextureSize()) continue;
+            
+            // Create the shadow map render target with current test resolution
+            auto shadowMap = std::make_shared<RenderTarget>(testResolution, testResolution, false);
+            
+            if (!shadowMap->initialize())
+            {
+                Core::warn("LightManager: Failed to initialize shadow map render target with resolution " + std::to_string(testResolution));
+                continue;
+            }
+
+            // Try multiple depth formats, starting with the most preferred
+            std::vector<TextureFormat> depthFormats = {
+                TextureFormat::Depth32F,
+                TextureFormat::Depth24Stencil8,
+                TextureFormat::Depth16
+            };
+            
+            bool depthAttachmentCreated = false;
+            for (auto format : depthFormats)
+            {
+                if (shadowMap->setDepthAttachment(format))
+                {
+                    depthAttachmentCreated = true;
+                    break;
+                }
+                Core::warn("LightManager: Failed to create depth attachment with format " + std::to_string(static_cast<int>(format)));
+            }
+            
+            if (!depthAttachmentCreated)
+            {
+                Core::warn("LightManager: Could not create any depth attachment for shadow map with resolution " + std::to_string(testResolution));
+                continue;
+            }
+
+            // Validate the shadow map framebuffer
+            if (!shadowMap->validate())
+            {
+                Core::warn("LightManager: Shadow map framebuffer validation failed for resolution " + std::to_string(testResolution));
+                continue;
+            }
+
+            // Success! Add shadow map to the list and record its index
+            size_t shadowIndex = m_shadowMaps.size();
+            m_shadowMaps.push_back(shadowMap);
+            m_lightShadowIndices[light] = shadowIndex;
+
+            Core::info("LightManager: Created shadow map " + std::to_string(shadowIndex) + 
+                       " for " + (needsCubemap ? "cubemap " : "") + "light with resolution " + 
+                       std::to_string(testResolution) + "x" + std::to_string(testResolution));
+            shadowMapCreated = true;
+            break;
+        }
+        
+        if (!shadowMapCreated)
+        {
+            Core::error("LightManager: Failed to create shadow map for light after trying all fallback resolutions");
+            // Disable shadow casting for this light to prevent continued failures
+            light->setCastShadows(false);
+            Core::warn("LightManager: Disabled shadow casting for problematic light");
+        }
     }
 
-    void LightManager::calculateCascadeSplits(const RenderContext& context)
+    void LightManager::calculateCascadeSplits(const RenderContext &context)
     {
         if (m_cascadeCount <= 0 || m_directionalLights.empty())
         {
             return;
         }
 
-        // Get near and far planes from the camera
-        const float nearClip = context.getNearClip();
-        const float farClip = context.getFarClip();
-        const float clipRange = farClip - nearClip;
-        const float minZ = nearClip;
-        const float maxZ = nearClip + clipRange;
+        // Get near and far planes from the camera context
+        const float nearPlane = context.getNearPlane();
+        const float farPlane = context.getFarPlane();
+        const float clipRange = farPlane - nearPlane;
 
-        // Calculate split depths using logarithmic distribution
+        if (clipRange <= 0.0f)
+        {
+            Core::warn("LightManager: Invalid clip range for cascade calculation");
+            return;
+        }
+
+        // Calculate cascade split distances using logarithmic/uniform blend
         for (int i = 0; i <= m_cascadeCount; ++i)
         {
             float p = static_cast<float>(i) / static_cast<float>(m_cascadeCount);
-            float log = minZ * std::pow(maxZ / minZ, p);
-            float uniform = minZ + clipRange * p;
-            float d = m_cascadeSplitLambda * log + (1.0f - m_cascadeSplitLambda) * uniform;
-            m_cascadeSplits[i] = d;
+            
+            // Logarithmic distribution
+            float logSplit = nearPlane * std::pow(farPlane / nearPlane, p);
+            
+            // Uniform distribution
+            float uniformSplit = nearPlane + clipRange * p;
+            
+            // Blend between logarithmic and uniform based on lambda
+            float blendedSplit = m_cascadeSplitLambda * logSplit + (1.0f - m_cascadeSplitLambda) * uniformSplit;
+            
+            m_cascadeSplits[i] = blendedSplit;
         }
 
-        // Get the main directional light
-        auto& mainLight = m_directionalLights[0];
+        // Get the main directional light for shadow mapping
+        auto mainLight = m_directionalLights[0];
+        const glm::mat4 lightViewMatrix = mainLight->getViewMatrix();
 
-        // Get the light view matrix
-        glm::mat4 lightViewMatrix = mainLight->getViewMatrix();
-
-        // For each cascade, calculate the view-projection matrix
-        for (int i = 0; i < m_cascadeCount; ++i)
+        // Calculate view-projection matrix for each cascade
+        for (int cascadeIndex = 0; cascadeIndex < m_cascadeCount; ++cascadeIndex)
         {
-            float nearSplit = m_cascadeSplits[i];
-            float farSplit = m_cascadeSplits[i + 1];
+            float nearSplit = m_cascadeSplits[cascadeIndex];
+            float farSplit = m_cascadeSplits[cascadeIndex + 1];
 
-            // Calculate bounding sphere for this cascade
-            glm::vec3 center = glm::vec3(0.0f);
-            float radius = 0.0f;
+            // Create a temporary perspective projection matrix for this cascade
+            glm::mat4 cascadeProjection = glm::perspective(
+                glm::radians(45.0f), // Use a reasonable FOV - could be extracted from actual camera
+                1.0f, // Assume square aspect ratio for now
+                nearSplit,
+                farSplit
+            );
 
-            // In a real implementation, this would compute the bounding sphere
-            // for the view frustum between nearSplit and farSplit
+            // Create a frustum for this cascade by combining the cascade projection with camera view
+            glm::mat4 cascadeViewProjection = cascadeProjection * context.getViewMatrix();
+            
+            // Create a frustum and extract its corners
+            Utility::Frustum cascadeFrustum;
+            cascadeFrustum.update(cascadeViewProjection);
+            
+            // Get the 8 corners of the frustum for this cascade
+            const auto& frustumCorners = cascadeFrustum.getCorners();
+            
+            // Convert corners array to vector for AABB creation
+            std::vector<glm::vec3> cornerPoints(frustumCorners.begin(), frustumCorners.end());
+            
+            // Create an AABB that contains all frustum corners in world space
+            Utility::AABB worldBounds = Utility::AABB::createFromPoints(cornerPoints);
+            
+            // Transform the AABB to light view space
+            Utility::AABB lightSpaceBounds = Utility::AABB::createFromTransformedAABB(worldBounds, lightViewMatrix);
+            
+            // Get the bounds in light space
+            glm::vec3 minBounds = lightSpaceBounds.getMin();
+            glm::vec3 maxBounds = lightSpaceBounds.getMax();
+            
+            // Extend the Z bounds to include potential shadow casters outside the frustum
+            const float zExtension = glm::abs(maxBounds.z - minBounds.z);
+            minBounds.z -= zExtension;
+            maxBounds.z += zExtension * 0.5f;
 
-            // Radius of the sphere is the distance from the center to the furthest corner
-            radius = 10.0f + i * 15.0f; // Simplified for demonstration
+            // Create orthographic projection matrix for this cascade
+            glm::mat4 lightProjection = glm::ortho(
+                minBounds.x, maxBounds.x,
+                minBounds.y, maxBounds.y,
+                minBounds.z, maxBounds.z
+            );
 
-            // Create an orthographic projection for this cascade
-            glm::mat4 lightProjMatrix = glm::ortho(
-                -radius, radius,
-                -radius, radius,
-                -radius, radius);
-
-            // Store the cascade view-projection matrix
-            m_cascadeViewProjections[i] = lightProjMatrix * lightViewMatrix;
+            // Store the combined view-projection matrix for this cascade
+            m_cascadeViewProjections[cascadeIndex] = lightProjection * lightViewMatrix;
         }
+
+        Core::debug("LightManager: Calculated " + std::to_string(m_cascadeCount) + 
+                    " cascade splits from " + std::to_string(nearPlane) + 
+                    " to " + std::to_string(farPlane));
     }
 
 } // namespace PixelCraft::Rendering

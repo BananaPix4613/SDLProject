@@ -9,10 +9,11 @@
 #include <fstream>
 #include <iostream>
 
-namespace Log = PixelCraft::Core;
-
 namespace PixelCraft::Utility
 {
+
+    // Initialize static member variable
+    Profiler* Profiler::s_instance = nullptr;
 
     // Initialize thread-local storage
     thread_local Profiler::ThreadLocalStorage Profiler::tls;
@@ -80,11 +81,11 @@ namespace PixelCraft::Utility
 
         if (m_enabled)
         {
-            Log::warn("Profiler already initialized");
+            Core::warn("Profiler already initialized");
             return true;
         }
 
-        Log::info("Initializing Profiler subsystem");
+        Core::info("Initializing Profiler subsystem");
 
         m_enabled = true;
         m_displayMode = ProfilerDisplayMode::Disabled;
@@ -113,7 +114,7 @@ namespace PixelCraft::Utility
             return;
         }
 
-        Log::info("Shutting down Profiler subsystem");
+        Core::info("Shutting down Profiler subsystem");
 
         // Output final stats if requested
         if (m_outputToLog)
@@ -177,7 +178,7 @@ namespace PixelCraft::Utility
             m_threadActiveSamples.clear();
         }
 
-        Log::info(enable ? "Profiling enabled" : "Profiling disabled");
+        Core::info(enable ? "Profiling enabled" : "Profiling disabled");
     }
 
     bool Profiler::isProfilingEnabled() const
@@ -410,14 +411,14 @@ namespace PixelCraft::Utility
             return;
         }
 
-        Log::info("Profile results for frame " + std::to_string(m_frameCount));
+        Core::info("Profile results for frame " + std::to_string(m_frameCount));
         
         for (const auto& name : m_sampleNames) {
             const ProfileSample& sample = m_samples[name];
-            Log::info(formatProfileSampleLog(sample));
+            Core::info(formatProfileSampleLog(sample));
         }
         
-        Log::info("Total frame time: " + formatTime(m_frameTime));
+        Core::info("Total frame time: " + formatTime(m_frameTime));
     }
 
     void Profiler::outputToFile(const std::string& filename)
@@ -432,7 +433,7 @@ namespace PixelCraft::Utility
         std::ofstream file(filename, std::ios::out | std::ios::app);
         if (!file.is_open())
         {
-            // Logger::error("Failed to open profiler output file: " + filename);
+            Core::error("Failed to open profiler output file: " + filename);
             return;
         }
 
@@ -583,6 +584,8 @@ namespace PixelCraft::Utility
 
     void Profiler::setPerformanceMarker(const std::string& name)
     {
+        (void)name;  // Currently unused;
+
         if (!m_enabled)
         {
             return;
@@ -597,6 +600,8 @@ namespace PixelCraft::Utility
 
     void Profiler::beginPerformanceMarker(const std::string& name)
     {
+        (void)name;  // Currently unused
+
         if (!m_enabled)
         {
             return;
@@ -732,7 +737,7 @@ namespace PixelCraft::Utility
         if (timeMs < 1.0)
         {
             // Microseconds
-            ss << std::fixed << std::setprecision(2) << (timeMs * 1000.0) << " μs";
+            ss << std::fixed << std::setprecision(2) << (timeMs * 1000.0) << " us";
         }
         else if (timeMs < 1000.0)
         {
@@ -745,6 +750,17 @@ namespace PixelCraft::Utility
             ss << std::fixed << std::setprecision(2) << (timeMs / 1000.0) << " s";
         }
 
+        return ss.str();
+    }
+
+    std::string Profiler::formatProfileSampleLog(const ProfileSample& sample)
+    {
+        std::stringstream ss;
+        ss << sample.name << ": "
+           << "Avg: " << formatTime(sample.averageTime)
+           << ", Min: " << formatTime(sample.minTime)
+           << ", Max: " << formatTime(sample.maxTime)
+           << ", Calls: " << sample.callCount;
         return ss.str();
     }
 

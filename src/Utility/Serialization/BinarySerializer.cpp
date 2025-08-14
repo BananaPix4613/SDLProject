@@ -1,11 +1,10 @@
 // -------------------------------------------------------------------------
-// Utility/Serialization/BinarySerializer.cpp
+// BinarySerializer.cpp
 // -------------------------------------------------------------------------
 #include "Utility/Serialization/BinarySerializer.h"
 #include "Core/Logger.h"
-#include <cstring>
 
-namespace Log = PixelCraft::Core;
+#include <cstring>
 
 namespace PixelCraft::Utility::Serialization
 {
@@ -177,7 +176,7 @@ namespace PixelCraft::Utility::Serialization
         ArrayState& state = m_arrayStack.top();
         if (state.count != state.size)
         {
-            Log::warn("Array size mismatch: expected " + std::to_string(state.size) +
+            Core::warn("Array size mismatch: expected " + std::to_string(state.size) +
                       " elements, but wrote " + std::to_string(state.count));
         }
 
@@ -284,6 +283,51 @@ namespace PixelCraft::Utility::Serialization
         return writeRawValue(ValueType::Double, &value, sizeof(value));
     }
 
+    SerializationResult BinarySerializer::writeVec2(const glm::vec2& value)
+    {
+        return writeRawValue(ValueType::Vec2, &value, sizeof(float) * 2);
+    }
+
+    SerializationResult BinarySerializer::writeIVec2(const glm::ivec2& value)
+    {
+        return writeRawValue(ValueType::IVec2, &value, sizeof(int) * 2);
+    }
+
+    SerializationResult BinarySerializer::writeVec3(const glm::vec3& value)
+    {
+        return writeRawValue(ValueType::Vec3, &value, sizeof(float) * 3);
+    }
+
+    SerializationResult BinarySerializer::writeIVec3(const glm::ivec3& value)
+    {
+        return writeRawValue(ValueType::IVec3, &value, sizeof(int) * 3);
+    }
+
+    SerializationResult BinarySerializer::writeVec4(const glm::vec4& value)
+    {
+        return writeRawValue(ValueType::Vec4, &value, sizeof(float) * 4);
+    }
+
+    SerializationResult BinarySerializer::writeIVec4(const glm::ivec4& value)
+    {
+        return writeRawValue(ValueType::IVec4, &value, sizeof(int) * 4);
+    }
+
+    SerializationResult BinarySerializer::writeMat3(const glm::mat3& value)
+    {
+        return writeRawValue(ValueType::Mat3, &value, sizeof(float) * 9);
+    }
+
+    SerializationResult BinarySerializer::writeMat4(const glm::mat4& value)
+    {
+        return writeRawValue(ValueType::Mat4, &value, sizeof(float) * 16);
+    }
+
+    SerializationResult BinarySerializer::writeQuat(const glm::quat& value)
+    {
+        return writeRawValue(ValueType::Quat, &value, sizeof(float) * 4);
+    }
+
     SerializationResult BinarySerializer::writeString(const std::string& value)
     {
         auto result = writeValueHeader(ValueType::String, static_cast<uint32_t>(value.length()));
@@ -332,7 +376,7 @@ namespace PixelCraft::Utility::Serialization
         return SerializationResult();
     }
 
-    SerializationResult BinarySerializer::writeEntityRef(uint64_t entityId)
+    SerializationResult BinarySerializer::writeEntityRef(uint32_t entityId)
     {
         std::string entityName;
 

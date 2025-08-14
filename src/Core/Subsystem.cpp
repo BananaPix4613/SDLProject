@@ -4,6 +4,7 @@
 #include "Core/Subsystem.h"
 #include "Core/Logger.h"
 
+// In namespace PixelCraft
 namespace PixelCraft::Core
 {
 

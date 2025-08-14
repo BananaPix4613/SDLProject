@@ -3,247 +3,32 @@
 // -------------------------------------------------------------------------
 #pragma once
 
+#include "Core/Subsystem.h"
+#include "Core/Resource.h"
+#include "Rendering/RenderContext.h"
+#include "Rendering/RenderTarget.h"
+#include "Rendering/Light.h"
+#include "Rendering/ClusteredLightCuller.h"
+#include "Utility/Frustum.h"
+
 #include <memory>
 #include <vector>
 #include <string>
 #include <unordered_map>
 
-#include "Core/Subsystem.h"
-#include "Core/Resource.h"
-#include "Rendering/RenderContext.h"
-#include "Rendering/RenderTarget.h"
-#include "Utility/Frustum.h"
-
 namespace PixelCraft::Rendering
 {
-
-    /**
-     * @brief Types of light sources supported by the engine
-     */
-    enum class LightType
-    {
-        Directional,  ///< Directional light (sun, moon)
-        Point,        ///< Point light (omnidirectional)
-        Spot,         ///< Spot light (cone)
-        Area          ///< Area light (rectangular)
-    };
-
-    /**
-     * @brief Data structure for light properties optimized for GPU use
-     *
-     * This structure is designed to be directly uploaded to a GPU buffer
-     * for efficient use in shaders.
-     */
-    struct LightData
-    {
-        glm::vec3 position;    ///< World position of the light
-        float range;           ///< Maximum range/radius of the light
-        glm::vec3 color;       ///< RGB color of the light
-        float intensity;       ///< Brightness multiplier
-        glm::vec3 direction;   ///< Forward direction of directional/spot lights
-        float spotAngle;       ///< Cosine of outer spot angle (for spot lights)
-        glm::vec2 areaSize;    ///< Width and height of area lights
-        uint32_t shadowIndex;  ///< Index to shadow map in shadow array
-        LightType type;        ///< Type of light
-        bool castShadows;      ///< Whether this light casts shadows
-    };
-
-    /**
-     * @brief Light source with customizable properties
-     *
-     * Represents a single light source in the scene with properties
-     * specific to each light type (directional, point, spot, area).
-     */
-    class Light
-    {
-    public:
-        /**
-         * @brief Constructor
-         * @param type The type of light to create
-         */
-        Light(LightType type);
-
-        /**
-         * @brief Virtual destructor
-         */
-        virtual ~Light();
-
-        // Light properties
-        /**
-         * @brief Set the world position of the light
-         * @param position The new position
-         */
-        void setPosition(const glm::vec3& position);
-
-        /**
-         * @brief Set the direction the light is pointing
-         * @param direction The new direction (will be normalized)
-         */
-        void setDirection(const glm::vec3& direction);
-
-        /**
-         * @brief Set the RGB color of the light
-         * @param color The new color
-         */
-        void setColor(const glm::vec3& color);
-
-        /**
-         * @brief Set the brightness multiplier of the light
-         * @param intensity The new intensity (must be non-negative)
-         */
-        void setIntensity(float intensity);
-
-        /**
-         * @brief Set the maximum range/radius of the light
-         * @param range The new range (must be positive)
-         */
-        void setRange(float range);
-
-        /**
-         * @brief Set whether this light casts shadows
-         * @param castShadows True if the light should cast shadows
-         */
-        void setCastShadows(bool castShadows);
-
-        // Type-specific setters
-        /**
-         * @brief Set the inner and outer angles for spot lights
-         * @param innerAngle The inner cone angle in radians
-         * @param outerAngle The outer cone angle in radians
-         */
-        void setSpotAngle(float innerAngle, float outerAngle);
-
-        /**
-         * @brief Set the dimensions for area lights
-         * @param size Width and height of the area light
-         */
-        void setAreaSize(const glm::vec2& size);
-
-        // Getters
-        /**
-         * @brief Get the type of this light
-         * @return The light type
-         */
-        LightType getType() const;
-
-        /**
-         * @brief Get the world position of the light
-         * @return The light position
-         */
-        const glm::vec3& getPosition() const;
-
-        /**
-         * @brief Get the direction the light is pointing
-         * @return The normalized light direction
-         */
-        const glm::vec3& getDirection() const;
-
-        /**
-         * @brief Get the RGB color of the light
-         * @return The light color
-         */
-        const glm::vec3& getColor() const;
-
-        /**
-         * @brief Get the brightness multiplier of the light
-         * @return The light intensity
-         */
-        float getIntensity() const;
-
-        /**
-         * @brief Get the maximum range/radius of the light
-         * @return The light range
-         */
-        float getRange() const;
-
-        /**
-         * @brief Check if this light casts shadows
-         * @return True if the light casts shadows
-         */
-        bool getCastShadows() const;
-
-        /**
-         * @brief Get the area light dimensions
-         * @return Width and height of the area light
-         */
-        const glm::vec2& getAreaSize() const;
-
-        // Utility methods
-        /**
-         * @brief Get the view matrix for shadow mapping
-         * @return View matrix from the light's perspective
-         */
-        glm::mat4 getViewMatrix() const;
-
-        /**
-         * @brief Get the projection matrix for shadow mapping
-         * @return Projection matrix appropriate for the light type
-         */
-        glm::mat4 getProjectionMatrix() const;
-
-        // Shadow parameters
-        /**
-         * @brief Set the shadow bias to prevent shadow acne
-         * @param bias The shadow depth bias value
-         */
-        void setShadowBias(float bias);
-
-        /**
-         * @brief Set the resolution of this light's shadow map
-         * @param resolution The shadow map resolution (will be rounded to power of 2)
-         */
-        void setShadowResolution(int resolution);
-
-        /**
-         * @brief Pack light data for shader use
-         * @return Packed light data structure for GPU
-         */
-        LightData packLightData() const;
-
-    private:
-        LightType m_type;
-        glm::vec3 m_position;
-        glm::vec3 m_direction;
-        glm::vec3 m_color;
-        float m_intensity;
-        float m_range;
-        bool m_castShadows;
-
-        // Spot light properties
-        float m_spotInnerAngle;
-        float m_spotOuterAngle;
-
-        // Area light properties
-        glm::vec2 m_areaSize;
-
-        // Shadow properties
-        float m_shadowBias;
-        int m_shadowResolution;
-    };
-
-    /**
-     * @brief Data structure for clustered lighting
-     *
-     * Contains information about the 3D grid of clusters and the
-     * assignment of lights to each cluster.
-     */
-    struct ClusterData
-    {
-        glm::ivec3 dimensions;           ///< 3D dimensions of the cluster grid (x, y, z)
-        glm::vec3 minBounds;             ///< Minimum world bounds of the cluster volume
-        glm::vec3 maxBounds;             ///< Maximum world bounds of the cluster volume
-        std::vector<uint32_t> lightGrid;  ///< Grid data: start index and count packed into 32 bits
-        std::vector<uint32_t> lightIndices; ///< Indices into the visible lights array
-    };
+    class ForwardPlusShaderManager;
 
     /**
      * @brief Manager for light sources and shadows in the rendering system
      *
      * The LightManager handles different types of light sources (directional, point, spot, area),
-     * manages shadow mapping, implements clustered lighting for performance optimization,
-     * performs light culling against the view frustum, and provides efficient GPU buffer updates.
+     * manages shadow mapping, implements clustered lighting for performance optimization via 
+     * ClusteredLightCuller, performs light culling against the view frustum, and delegates 
+     * GPU buffer updates to ForwardPlusShaderManager for proper forward+ integration.
      */
-    class LightManager
+    class LightManager : public Core::Subsystem
     {
     public:
         /**
@@ -254,18 +39,44 @@ namespace PixelCraft::Rendering
         /**
          * @brief Destructor
          */
-        ~LightManager();
+        ~LightManager() override;
 
         /**
          * @brief Initialize the light manager
          * @return True if initialization was successful
          */
-        bool initialize();
+        bool initialize() override;
+
+        /**
+         * @brief Update the light manager
+         * @param deltaTime Time elapsed since last update
+         */
+        void update(float deltaTime) override;
+
+        /**
+         * @brief Render light-related elements
+         */
+        void render() override;
 
         /**
          * @brief Shut down the light manager and release resources
          */
-        void shutdown();
+        void shutdown() override;
+
+        /**
+         * @brief Get the name of the subsystem
+         * @return The subsystem name
+         */
+        std::string getName() const override
+        {
+            return "LightManager";
+        }
+
+        /**
+         * @brief Get dependencies required by this subsystem
+         * @return List of dependency subsystem names
+         */
+        std::vector<std::string> getDependencies() const override;
 
         /**
          * @brief Create a light of the specified type
@@ -273,6 +84,30 @@ namespace PixelCraft::Rendering
          * @return A shared pointer to the created light
          */
         std::shared_ptr<Light> createLight(LightType type);
+
+        /**
+         * @brief Create a directional light (convenience method)
+         * @return A shared pointer to the created directional light
+         */
+        std::shared_ptr<Light> createDirectionalLight();
+
+        /**
+         * @brief Create a point light (convenience method)
+         * @return A shared pointer to the created point light
+         */
+        std::shared_ptr<Light> createPointLight();
+
+        /**
+         * @brief Create a spot light (convenience method)
+         * @return A shared pointer to the created spot light
+         */
+        std::shared_ptr<Light> createSpotLight();
+
+        /**
+         * @brief Create an area light (convenience method)
+         * @return A shared pointer to the created area light
+         */
+        std::shared_ptr<Light> createAreaLight();
 
         /**
          * @brief Remove a light from the manager
@@ -293,22 +128,48 @@ namespace PixelCraft::Rendering
         const std::vector<std::shared_ptr<Light>>& getVisibleLights() const;
 
         /**
-         * @brief Setup light clustering with the specified dimensions
-         * @param dimensions The dimensions of the cluster grid (x, y, z)
+         * @brief Get the total number of lights managed by this LightManager
+         * @return The number of lights
          */
-        void setupClusters(const glm::ivec3& dimensions);
+        size_t getLightCount() const;
+
+        /**
+         * @brief Force an update of the light data for GPU buffers
+         * 
+         * This method ensures all light data is up to date and synchronized 
+         * with the GPU buffers through ForwardPlusShaderManager.
+         */
+        void updateLightData();
+
+        /**
+         * @brief Configure the clustered light culler
+         * @param config The cluster configuration to use
+         */
+        void configureClusterCuller(const ClusterConfig& config);
 
         /**
          * @brief Update the light clusters based on the current render context
          * @param context The current render context
          */
-        void updateClusters(const RenderContext& context);
+        void updateClusters(const std::shared_ptr<RenderContext> context);
 
         /**
-         * @brief Get the current cluster data
+         * @brief Get the current cluster data from the culler
          * @return The cluster data structure
          */
         const ClusterData& getClusterData() const;
+
+        /**
+         * @brief Get the clustered light culler instance
+         * @return Pointer to the cluster culler
+         */
+        std::shared_ptr<ClusteredLightCuller> getClusterCuller();
+
+        /**
+         * @brief Check if clustering is enabled and initialized
+         * @return True if clustering is available
+         */
+        bool isClusteringEnabled() const;
 
         /**
          * @brief Prepare shadow maps for all shadow-casting lights
@@ -350,31 +211,37 @@ namespace PixelCraft::Rendering
 
         /**
          * @brief Update the GPU buffers with the current light data
+         * 
+         * This method delegates to ForwardPlusShaderManager for proper forward+ buffer management.
+         * It prepares light data and coordinates with the forward+ system for efficient GPU updates.
          */
         void updateGPUBuffers();
 
         /**
-         * @brief Get the GPU buffer containing light data
-         * @return The light data buffer ID
+         * @brief Get the GPU buffer containing light data from ForwardPlusShaderManager
+         * @return The light data buffer ID, or 0 if ForwardPlusShaderManager is not available
          */
         uint32_t getLightDataBuffer() const;
 
         /**
-         * @brief Get the GPU buffer containing cluster data
-         * @return The cluster data buffer ID
+         * @brief Get the GPU buffer containing cluster data from ForwardPlusShaderManager
+         * @return The cluster data buffer ID, or 0 if ForwardPlusShaderManager is not available
          */
         uint32_t getClusterDataBuffer() const;
 
-    private:
         /**
-         * @brief Assign lights to clusters based on their positions and ranges
-         *
-         * This method performs spatial tests to determine which lights affect each
-         * cluster in the 3D grid, and builds the data structures for efficient
-         * lookup in shaders.
+         * @brief Set the ForwardPlusShaderManager for GPU buffer coordination
+         * @param forwardPlusManager The ForwardPlusShaderManager instance
          */
-        void assignLightsToClusters();
+        void setForwardPlusShaderManager(std::shared_ptr<ForwardPlusShaderManager> forwardPlusManager);
 
+        /**
+         * @brief Get the ForwardPlusShaderManager instance
+         * @return The ForwardPlusShaderManager instance, or nullptr if not set
+         */
+        std::shared_ptr<ForwardPlusShaderManager> getForwardPlusShaderManager() const;
+
+    private:
         /**
          * @brief Create or update a shadow map for the specified light
          * @param light The light that needs a shadow map
@@ -407,9 +274,12 @@ namespace PixelCraft::Rendering
         std::vector<std::shared_ptr<Light>> m_spotLights;
         std::vector<std::shared_ptr<Light>> m_areaLights;
 
-        // Clustering
-        ClusterData m_clusterData;
-        bool m_clustersDirty;
+        // Clustered light culling
+        std::shared_ptr<ClusteredLightCuller> m_clusterCuller;
+        bool m_clusteringEnabled;
+
+        // Forward+ integration
+        std::shared_ptr<ForwardPlusShaderManager> m_forwardPlusShaderManager;
 
         // Shadow mapping
         std::vector<std::shared_ptr<RenderTarget>> m_shadowMaps;
@@ -420,10 +290,6 @@ namespace PixelCraft::Rendering
         float m_cascadeSplitLambda;
         std::vector<float> m_cascadeSplits;
         std::vector<glm::mat4> m_cascadeViewProjections;
-
-        // GPU buffers
-        uint32_t m_lightDataBuffer;
-        uint32_t m_clusterDataBuffer;
 
         // Initialization state
         bool m_initialized;

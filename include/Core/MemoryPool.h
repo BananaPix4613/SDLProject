@@ -9,6 +9,7 @@
 #include <atomic>
 #include <memory>
 
+// In namespace PixelCraft
 namespace PixelCraft::Core
 {
 

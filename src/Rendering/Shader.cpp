@@ -2,21 +2,30 @@
 // Shader.cpp
 // -------------------------------------------------------------------------
 #include "Rendering/Shader.h"
+#include "Rendering/Texture.h"
 #include "Core/Logger.h"
-#include "Core/FileSystem.h"
-#include "gtc/type_ptr.hpp"
+#include "Utility/FileSystem.h"
+#include "Utility/Color.h"
 
-namespace Log = PixelCraft::Core;
+#include <glm/gtc/type_ptr.hpp>
 
 namespace PixelCraft::Rendering
 {
+
+    Shader::Shader()
+        : Core::Resource("UnnamedShader")
+        , m_programID(0)
+        , m_isValid(false)
+    {
+        Core::debug("Creating default shader");
+    }
 
     Shader::Shader(const std::string& name)
         : Core::Resource(name)
         , m_programID(0)
         , m_isValid(false)
     {
-        Log::debug("Creating shader: " + name);
+        Core::debug("Creating shader: " + name);
     }
 
     Shader::~Shader()
@@ -31,7 +40,7 @@ namespace PixelCraft::Rendering
             return true;
         }
 
-        Log::debug("Loading shader: " + getName());
+        Core::debug("Loading shader: " + getName());
 
         // Load shader source files
         for (auto& [type, filepath] : m_filePaths)
@@ -39,7 +48,7 @@ namespace PixelCraft::Rendering
             std::string source = loadShaderSource(filepath);
             if (source.empty())
             {
-                Log::error("Failed to load shader source: " + filepath);
+                Core::error("Failed to load shader source: " + filepath);
                 return false;
             }
             m_sources[type] = source;
@@ -48,7 +57,7 @@ namespace PixelCraft::Rendering
         // Compile the shader program
         if (!compile())
         {
-            Log::error("Failed to compile shader: " + getName());
+            Core::error("Failed to compile shader: " + getName());
             return false;
         }
 
@@ -63,7 +72,7 @@ namespace PixelCraft::Rendering
             return;
         }
 
-        Log::debug("Unloading shader: " + getName());
+        Core::debug("Unloading shader: " + getName());
 
         if (m_programID != 0)
         {
@@ -79,7 +88,7 @@ namespace PixelCraft::Rendering
 
     bool Shader::onReload()
     {
-        Log::debug("Reloading shader: " + getName());
+        Core::debug("Reloading shader: " + getName());
 
         // Save the old program ID in case we need to roll back
         GLuint oldProgramID = m_programID;
@@ -96,7 +105,7 @@ namespace PixelCraft::Rendering
             std::string source = loadShaderSource(filepath);
             if (source.empty())
             {
-                Log::error("Failed to reload shader source: " + filepath);
+                Core::error("Failed to reload shader source: " + filepath);
                 sourcesValid = false;
                 break;
             }
@@ -106,7 +115,7 @@ namespace PixelCraft::Rendering
         // If loading failed, restore the old program and return false
         if (!sourcesValid || !compile())
         {
-            Log::error("Failed to recompile shader: " + getName() + ", rolling back");
+            Core::error("Failed to recompile shader: " + getName() + ", rolling back");
 
             // Cleanup the new failed program if it was created
             if (m_programID != 0)
@@ -125,7 +134,7 @@ namespace PixelCraft::Rendering
             glDeleteProgram(oldProgramID);
         }
 
-        Log::info("Successfully reloaded shader: " + getName());
+        Core::info("Successfully reloaded shader: " + getName());
         return true;
     }
 
@@ -135,7 +144,7 @@ namespace PixelCraft::Rendering
         GLuint newProgram = glCreateProgram();
         if (newProgram == 0)
         {
-            Log::error("Failed to create shader program");
+            Core::error("Failed to create shader program");
             return false;
         }
 
@@ -202,7 +211,7 @@ namespace PixelCraft::Rendering
         m_isValid = true;
         extractAttributes();
 
-        Log::info("Successfully compiled and linked shader: " + getName());
+        Core::info("Successfully compiled and linked shader: " + getName());
         return true;
     }
 
@@ -222,6 +231,18 @@ namespace PixelCraft::Rendering
     bool Shader::isValid() const
     {
         return m_isValid && m_programID != 0;
+    }
+
+    bool Shader::hasUniform(const std::string& name)
+    {
+        if (!isValid())
+        {
+            return false;
+        }
+
+        // Use the silent version to check without warnings
+        GLint location = getUniformLocationSilent(name);
+        return location != -1;
     }
 
     void Shader::setSourceFile(ShaderType type, const std::string& filepath)
@@ -262,13 +283,22 @@ namespace PixelCraft::Rendering
     {
         if (!isValid())
         {
-            Log::error("Cannot dispatch compute with invalid shader: " + getName());
+            Core::error("Cannot dispatch compute with invalid shader: " + getName());
             return;
         }
 
         bind();
         glDispatchCompute(numGroupsX, numGroupsY, numGroupsZ);
         glMemoryBarrier(GL_ALL_BARRIER_BITS);
+    }
+
+    void Shader::setBool(const std::string& name, bool value)
+    {
+        GLint location = getUniformLocation(name);
+        if (location != -1)
+        {
+            glUniform1i(location, value);
+        }
     }
 
     void Shader::setFloat(const std::string& name, float value)
@@ -298,6 +328,15 @@ namespace PixelCraft::Rendering
         }
     }
 
+    void Shader::setIVec2(const std::string& name, const glm::ivec2& value)
+    {
+        GLint location = getUniformLocation(name);
+        if (location != -1)
+        {
+            glUniform2iv(location, 1, glm::value_ptr(value));
+        }
+    }
+
     void Shader::setVec3(const std::string& name, const glm::vec3& value)
     {
         GLint location = getUniformLocation(name);
@@ -307,12 +346,30 @@ namespace PixelCraft::Rendering
         }
     }
 
+    void Shader::setIVec3(const std::string& name, const glm::ivec3& value)
+    {
+        GLint location = getUniformLocation(name);
+        if (location != -1)
+        {
+            glUniform3iv(location, 1, glm::value_ptr(value));
+        }
+    }
+
     void Shader::setVec4(const std::string& name, const glm::vec4& value)
     {
         GLint location = getUniformLocation(name);
         if (location != -1)
         {
             glUniform4fv(location, 1, glm::value_ptr(value));
+        }
+    }
+
+    void Shader::setIVec4(const std::string& name, const glm::ivec4& value)
+    {
+        GLint location = getUniformLocation(name);
+        if (location != -1)
+        {
+            glUniform4iv(location, 1, glm::value_ptr(value));
         }
     }
 
@@ -343,7 +400,7 @@ namespace PixelCraft::Rendering
             case ShaderType::Geometry: return GL_GEOMETRY_SHADER;
             case ShaderType::Compute:  return GL_COMPUTE_SHADER;
             default:
-                Log::error("Unknown shader type");
+                Core::error("Unknown shader type");
                 return GL_VERTEX_SHADER;
         }
     }
@@ -361,9 +418,24 @@ namespace PixelCraft::Rendering
         GLint location = glGetUniformLocation(m_programID, name.c_str());
         if (location == -1)
         {
-            Log::warn("Uniform not found in shader: " + name);
+            Core::warn("Uniform '" + name + "' not found in shader: " + getName());
         }
 
+        m_uniformLocations[name] = location;
+        return location;
+    }
+
+    GLint Shader::getUniformLocationSilent(const std::string& name)
+    {
+        // Check if we've already cached the location
+        auto it = m_uniformLocations.find(name);
+        if (it != m_uniformLocations.end())
+        {
+            return it->second;
+        }
+
+        // Look up the location and cache it (without warnings)
+        GLint location = glGetUniformLocation(m_programID, name.c_str());
         m_uniformLocations[name] = location;
         return location;
     }
@@ -380,7 +452,7 @@ namespace PixelCraft::Rendering
         const std::string& source = sourceIt->second;
         if (source.empty())
         {
-            Log::error("Empty shader source for " + getName());
+            Core::error("Empty shader source for " + getName());
             return false;
         }
 
@@ -451,11 +523,13 @@ namespace PixelCraft::Rendering
     {
         try
         {
-            return Core::FileSystem::readFile(filepath);
+            std::string result;
+            Utility::FileSystem::readFile(filepath, result);
+            return result;
         }
         catch (const std::exception& e)
         {
-            Log::error("Failed to read shader file: " + filepath + " | " + e.what());
+            Core::error("Failed to read shader file: " + filepath + " | " + e.what());
             return "";
         }
     }
@@ -469,11 +543,11 @@ namespace PixelCraft::Rendering
         {
             std::vector<char> log(logLength);
             glGetShaderInfoLog(shader, logLength, nullptr, log.data());
-            Log::error("Shader compilation error: " + std::string(log.data()));
+            Core::error("Shader compilation error: " + std::string(log.data()));
         }
         else
         {
-            Log::error("Shader compilation failed with no info log");
+            Core::error("Shader compilation failed with no info log");
         }
     }
 
@@ -486,11 +560,102 @@ namespace PixelCraft::Rendering
         {
             std::vector<char> log(logLength);
             glGetProgramInfoLog(program, logLength, nullptr, log.data());
-            Log::error("Shader program error: " + std::string(log.data()));
+            Core::error("Shader program error: " + std::string(log.data()));
         }
         else
         {
-            Log::error("Shader program linking/validation failed with no info log");
+            Core::error("Shader program linking/validation failed with no info log");
+        }
+    }
+
+    // Template specializations for setUniform
+    template<>
+    void Shader::setUniform<float>(const std::string& name, const float& value)
+    {
+        setFloat(name, value);
+    }
+
+    template<>
+    void Shader::setUniform<int>(const std::string& name, const int& value)
+    {
+        setInt(name, value);
+    }
+
+    template<>
+    void Shader::setUniform<glm::vec2>(const std::string& name, const glm::vec2& value)
+    {
+        setVec2(name, value);
+    }
+
+    template<>
+    void Shader::setUniform<glm::ivec2>(const std::string& name, const glm::ivec2& value)
+    {
+        setIVec2(name, value);
+    }
+
+    template<>
+    void Shader::setUniform<glm::vec3>(const std::string& name, const glm::vec3& value)
+    {
+        setVec3(name, value);
+    }
+
+    template<>
+    void Shader::setUniform<glm::ivec3>(const std::string& name, const glm::ivec3& value)
+    {
+        setIVec3(name, value);
+    }
+
+    template<>
+    void Shader::setUniform<glm::vec4>(const std::string& name, const glm::vec4& value)
+    {
+        setVec4(name, value);
+    }
+
+    template<>
+    void Shader::setUniform<glm::ivec4>(const std::string& name, const glm::ivec4& value)
+    {
+        setIVec4(name, value);
+    }
+
+    template<>
+    void Shader::setUniform<glm::mat3>(const std::string& name, const glm::mat3& value)
+    {
+        setMat3(name, value);
+    }
+
+    template<>
+    void Shader::setUniform<glm::mat4>(const std::string& name, const glm::mat4& value)
+    {
+        setMat4(name, value);
+    }
+
+    template<>
+    void Shader::setUniform<Utility::Color>(const std::string& name, const Utility::Color& value)
+    {
+        // Convert Color to vec4 (RGBA)
+        setVec4(name, value.rgba());
+    }
+
+    template<>
+    void Shader::setUniform<std::shared_ptr<Texture>>(const std::string& name, const std::shared_ptr<Texture>& value)
+    {
+        static uint32_t nextTextureUnit = 0;
+
+        if (value && value->isLoaded())
+        {
+            // Bind texture to next available unit
+            value->bind(nextTextureUnit);
+
+            // Set uniform to texture unit index
+            setInt(name, static_cast<int>(nextTextureUnit));
+
+            // Increment for next texture (reset at reasonable limit)
+            nextTextureUnit = (nextTextureUnit + 1) % 32; // GL_MAX_TEXTURE_IMAGE_UNITS is typically 32+
+        }
+        else
+        {
+            // Set to invalid texture unit
+            setInt(name, -1);
         }
     }
 

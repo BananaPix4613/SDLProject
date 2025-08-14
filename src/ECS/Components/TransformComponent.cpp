@@ -4,18 +4,17 @@
 #include "ECS/Components/TransformComponent.h"
 #include "ECS/Entity.h"
 #include "ECS/Registry.h"
+#include "ECS/ComponentRegistry.h"
 #include "ECS/World.h"
 #include "Core/Logger.h"
 #include "Core/Application.h"
-#include "ECS/FlatBufferSerializer.h"
-
-namespace Log = PixelCraft::Core;
 
 namespace PixelCraft::ECS
 {
 
     TransformComponent::TransformComponent()
-        : m_parent(INVALID_ENTITY_ID), m_worldTransformDirty(true)
+        : m_parent(INVALID_ENTITY_ID)
+        , m_worldTransformDirty(true)
     {
         // Initialize the transform with identity values
         m_localTransform.setPosition(glm::vec3(0.0f));
@@ -26,6 +25,8 @@ namespace PixelCraft::ECS
     void TransformComponent::initialize()
     {
         Component::initialize();
+        m_typeId = 1;
+        m_typeName = "TransformComponent";
         m_worldTransformDirty = true;
     }
 
@@ -46,14 +47,14 @@ namespace PixelCraft::ECS
         // Don't set parent to self
         if (parent == m_owner)
         {
-            Log::warn("TransformComponent: Cannot set entity as its own parent");
+            Core::warn("TransformComponent: Cannot set entity as its own parent");
             return;
         }
 
         // Remove from previous parent if exists
         if (m_parent != INVALID_ENTITY_ID)
         {
-            auto world = Core::Application::getInstance().getSubsystem<World>();
+            auto world = Core::Application::getInstance()->getSubsystem<World>();
             if (world)
             {
                 Entity parentEntity(m_parent, world->getRegistry());
@@ -71,7 +72,7 @@ namespace PixelCraft::ECS
         // Add to new parent's children list if parent exists
         if (m_parent != INVALID_ENTITY_ID)
         {
-            auto world = Core::Application::getInstance().getSubsystem<World>();
+            auto world = Core::Application::getInstance()->getSubsystem<World>();
             if (world)
             {
                 Entity parentEntity(m_parent, world->getRegistry());
@@ -89,7 +90,7 @@ namespace PixelCraft::ECS
         // Don't add self as child
         if (child == m_owner)
         {
-            Log::warn("TransformComponent: Cannot add entity as its own child");
+            Core::warn("TransformComponent: Cannot add entity as its own child");
             return;
         }
 
@@ -103,7 +104,7 @@ namespace PixelCraft::ECS
         m_children.push_back(child);
 
         // Set this entity as the parent of the child
-        auto world = Core::Application::getInstance().getSubsystem<World>();
+        auto world = Core::Application::getInstance()->getSubsystem<World>();
         if (world)
         {
             Entity childEntity(child, world->getRegistry());
@@ -125,7 +126,7 @@ namespace PixelCraft::ECS
             m_children.erase(it);
 
             // Clear parent reference in child
-            auto world = Core::Application::getInstance().getSubsystem<World>();
+            auto world = Core::Application::getInstance()->getSubsystem<World>();
             if (world)
             {
                 Entity childEntity(child, world->getRegistry());
@@ -184,7 +185,7 @@ namespace PixelCraft::ECS
 
         if (m_parent != INVALID_ENTITY_ID)
         {
-            auto world = Core::Application::getInstance().getSubsystem<World>();
+            auto world = Core::Application::getInstance()->getSubsystem<World>();
             if (world)
             {
                 Entity parentEntity(m_parent, world->getRegistry());
@@ -217,7 +218,7 @@ namespace PixelCraft::ECS
         m_worldTransformDirty = true;
 
         // Mark all children as dirty recursively
-        auto world = Core::Application::getInstance().getSubsystem<World>();
+        auto world = Core::Application::getInstance()->getSubsystem<World>();
         if (world)
         {
             for (EntityID childID : m_children)
@@ -250,156 +251,16 @@ namespace PixelCraft::ECS
         markDirty();
     }
 
-    void TransformComponent::serialize(Serializer& serializer)
+    namespace
     {
-        // Call base class serialization first
-        Component::serialize(serializer);
-
-        // Serialize transform data
-        serializer.beginObject("transform");
-
-        // Serialize position
-        glm::vec3 position = m_localTransform.getPosition();
-        serializer.write<float>(position.x);
-        serializer.write<float>(position.y);
-        serializer.write<float>(position.z);
-
-        // Serialize rotation
-        glm::quat rotation = m_localTransform.getRotation();
-        serializer.write<float>(rotation.w);
-        serializer.write<float>(rotation.x);
-        serializer.write<float>(rotation.y);
-        serializer.write<float>(rotation.z);
-
-        // Serialize scale
-        glm::vec3 scale = m_localTransform.getScale();
-        serializer.write<float>(scale.x);
-        serializer.write<float>(scale.y);
-        serializer.write<float>(scale.z);
-
-        serializer.endObject();
-
-        // Serialize parent-child relationships
-        serializer.write<EntityID>(m_parent);
-
-        // Serialize children
-        size_t childCount = m_children.size();
-        serializer.beginArray("children", childCount);
-        for (EntityID child : m_children)
+        // Register the TransformComponent with the component registry
+        bool registerTransformComponent()
         {
-            serializer.writeEntityRef(child);
-        }
-        serializer.endArray();
-    }
-
-    void TransformComponent::deserialize(Deserializer& deserializer)
-    {
-        // Call base class deserialization first
-        Component::deserialize(deserializer);
-
-        // Deserialize transform data
-        if (deserializer.beginObject("transform"))
-        {
-            // Deserialize position
-            float x, y, z;
-            deserializer.read<float>(x);
-            deserializer.read<float>(y);
-            deserializer.read<float>(z);
-            m_localTransform.setPosition(glm::vec3(x, y, z));
-
-            // Deserialize rotation
-            float w, rx, ry, rz;
-            deserializer.read<float>(w);
-            deserializer.read<float>(rx);
-            deserializer.read<float>(ry);
-            deserializer.read<float>(rz);
-            m_localTransform.setRotation(glm::quat(w, rx, ry, rz));
-
-            // Deserialize scale
-            float sx, sy, sz;
-            deserializer.read<float>(sx);
-            deserializer.read<float>(sy);
-            deserializer.read<float>(sz);
-            m_localTransform.setScale(glm::vec3(sx, sy, sz));
-
-            deserializer.endObject();
+            ComponentRegistry::registerComponent<TransformComponent>("TransformComponent");
+            return true;
         }
 
-        // Deserialize parent
-        deserializer.read<EntityID>(m_parent);
-
-        // Deserialize children
-        m_children.clear();
-        size_t childCount;
-        if (deserializer.beginArray("children", childCount))
-        {
-            for (size_t i = 0; i < childCount; ++i)
-            {
-                EntityID childID = deserializer.readEntityRef();
-                m_children.push_back(childID);
-            }
-            deserializer.endArray();
-        }
-
-        m_worldTransformDirty = true;
-    }
-
-    std::unique_ptr<FlatBuffers::Schema> TransformComponent::createSchema()
-    {
-        // This implementation would create the FlatBuffers schema
-        // for efficient serialization of the TransformComponent
-        class TransformSchema : public FlatBuffers::Schema
-        {
-        public:
-            std::string getDefinition() const override
-            {
-                return R"(
-namespace PixelCraft.ECS;
-
-struct Vec3 {
-  x:float;
-  y:float;
-  z:float;
-}
-
-struct Quat {
-  x:float;
-  y:float;
-  z:float;
-  w:float;
-}
-
-table TransformComponentData {
-  local_position:Vec3;
-  local_rotation:Quat;
-  local_scale:Vec3;
-  parent:uint32 = 0;
-  children:[uint32];
-  world_transform_dirty:bool = true;
-}
-
-root_type TransformComponentData;
-            )";
-            }
-
-            std::string getIdentifier() const override
-            {
-                return "TRFM"; // PixelCraft Transform FlatBuffer
-            }
-
-            uint32_t getVersion() const override
-            {
-                return 1; // Initial schema version
-            }
-        };
-
-        return std::make_unique<TransformSchema>();
-    }
-
-    namespace  
-    {  
-       // Register the TransformComponent with the component registry
-       static bool registered = ComponentRegistry::registerComponentType<TransformComponent>("TransformComponent");  
+        const bool registered = registerTransformComponent();
     }
 
 } // namespace PixelCraft::ECS

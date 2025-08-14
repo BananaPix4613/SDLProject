@@ -95,7 +95,7 @@ namespace PixelCraft::Voxel
          * @param parametersId ID of the generation parameters to use (defaults to active)
          * @return Number of chunks successfully generated
          */
-        int generateRegion(const ChunkCoord& min, const ChunkCoord& max, Grid& grid, const std::string& parametersId = "");
+        int generateRegion(const ChunkCoord& min, const ChunkCoord& max, std::shared_ptr<Grid> grid, const std::string& parametersId = "");
 
         /**
          * @brief Generate chunks around a point within a radius
@@ -105,7 +105,7 @@ namespace PixelCraft::Voxel
          * @param parametersId ID of the generation parameters to use (defaults to active)
          * @return Number of chunks successfully generated
          */
-        int generateAroundPoint(const glm::vec3& center, float radius, Grid& grid, const std::string& parametersId = "");
+        int generateAroundPoint(const glm::vec3& center, float radius, std::shared_ptr<Grid> grid, const std::string& parametersId = "");
 
         /**
          * @brief Create new generation parameters
@@ -211,6 +211,18 @@ namespace PixelCraft::Voxel
         void setSeed(uint32_t seed);
 
         /**
+         * @brief Set the grid to reference
+         * @param grid The grid to reference
+         */
+        void setGrid(std::shared_ptr<Grid> grid);
+
+        /**
+         * @brief Get the current grid
+         * @return The current grid
+         */
+        std::shared_ptr<Grid> getGrid() const;
+
+        /**
          * @brief Register a custom feature generator
          * @param name Unique name for the feature
          * @param generator Function to generate the feature
@@ -304,12 +316,13 @@ namespace PixelCraft::Voxel
          * @param coord Chunk to update neighbors of
          * @param grid Grid that chunk exists in
          */
-        void updateNeighborChunks(const ChunkCoord& coord, Grid& grid);
+        void updateNeighborChunks(const ChunkCoord& coord, std::shared_ptr<Grid> grid);
 
         // Member variables
         bool m_initialized = false;
         bool m_paused = false;
         uint32_t m_seed = 12345;
+        std::shared_ptr<Grid> m_grid;
         std::string m_activeParametersId;
         std::unordered_map<std::string, std::shared_ptr<GenerationParameters>> m_parameters;
         std::unordered_map<std::string, std::shared_ptr<NoiseGenerator>> m_noiseGenerators;

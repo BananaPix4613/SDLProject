@@ -4,18 +4,34 @@
 #include "Rendering/RenderSystem.h"
 #include "Core/Logger.h"
 #include "Core/Application.h"
-#include "Core/ResourceManager.h"
-#include "Rendering/RenderContext.h"
+#include "Core/Window.h"
+#include "ECS/World.h"
 #include "Rendering/LightManager.h"
 #include "Rendering/PaletteManager.h"
-#include "Rendering/Camera/Camera.h"
-#include "Utility/LineBatchRenderer.h"
-#include "Utility/FileSystem.h"
+#include "Rendering/ShaderManager.h"
+#include "Rendering/Renderable.h"
+#include "Rendering/Shader.h"
+#include "Rendering/Texture.h"
+#include "Rendering/Material.h"
+#include "Rendering/Mesh.h"
+#include "Rendering/RenderPipeline.h"
+#include "Rendering/RenderPipelineDebugger.h"
+#include "Rendering/Stages/ClusterUpdateStage.h"
+#include "Rendering/Stages/DepthPrepassStage.h"
+#include "Rendering/Stages/ShadowStage.h"
+#include "Rendering/Stages/GeometryStage.h"
+#include "Rendering/Stages/TransparencyStage.h"
+#include "Rendering/Stages/PostProcessStage.h"
+#include "Rendering/Stages/UIStage.h"
+#include "Rendering/Cameras/OrthographicCamera.h"
+#include "Utility/Frustum.h"
+#include "Utility/DebugDraw.h"
+#include "Utility/SpatialPartitionFactory.h"
+#include "Utility/Math.h"
 
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
 #include <algorithm>
-#include <glm/gtc/matrix_transform.hpp>
-
-namespace Camera = PixelCraft::Rendering::Camera;
 
 namespace PixelCraft::Rendering
 {
@@ -23,14 +39,17 @@ namespace PixelCraft::Rendering
     RenderSystem::RenderSystem()
         : m_viewportX(0)
         , m_viewportY(0)
-        , m_viewportWidth(0)
-        , m_viewportHeight(0)
+        , m_viewportWidth(800)
+        , m_viewportHeight(600)
+        , m_isometricAngle(45.0f)
+        , m_pixelGridAlignmentEnabled(true)
+        , m_depthSortingEnabled(true)
+        , m_debugVisualizationEnabled(true)
         , m_drawCallCount(0)
         , m_triangleCount(0)
         , m_visibleObjectCount(0)
+        , m_initialized(false)
     {
-        // Constructor implementation
-        Log::debug("RenderSystem constructor called");
     }
 
     RenderSystem::~RenderSystem()
@@ -39,67 +58,90 @@ namespace PixelCraft::Rendering
         {
             shutdown();
         }
-        Log::debug("RenderSystem destroyed");
     }
 
     bool RenderSystem::initialize()
     {
+        Core::info("Initializing RenderSystem with forward+ pipeline");
+
         if (m_initialized)
         {
-            Log::warn("RenderSystem already initialized");
+            Core::warn("RenderSystem already initialized");
             return true;
         }
 
-        Log::info("Initializing RenderSystem");
+        // Initialize clustered light culler with isometric-optimized configuration
+        ClusterConfig clusterConfig;
+        clusterConfig.clusterCountX = 32;
+        clusterConfig.clusterCountY = 18;
+        clusterConfig.clusterCountZ = 24;
+        clusterConfig.nearBias = 1.3f;
+        clusterConfig.enableAdaptiveDensity = true;
+        clusterConfig.enableVerticalParallax = true;
+
+        m_clusteredLightCuller = std::make_unique<ClusteredLightCuller>(clusterConfig);
+        if (!m_clusteredLightCuller->initialize())
+        {
+            Core::error("Failed to initialize ClusteredLightCuller");
+            return false;
+        }
+
+        // Initialize spatial partitioning for isometric view
+        // Use generous bounds that can be expanded dynamically
+        m_spatialTree = std::make_shared<Utility::Quadtree>(
+            Utility::AABB2D(glm::vec2(-1000.0f), glm::vec2(1000.0f))
+        );
+
+        if (!m_spatialTree->initialize())
+        {
+            Core::error("Failed to initialize spatial partitioning quadtree");
+            return false;
+        }
 
         // Initialize subsystems
-        m_lightManager = std::make_unique<LightManager>();
+        m_lightManager = std::make_shared<LightManager>();
         if (!m_lightManager->initialize())
         {
-            Log::error("Failed to initialize LightManager");
+            Core::error("Failed to initialize LightManager");
             return false;
         }
 
-        m_paletteManager = std::make_unique<PaletteManager>();
+        m_paletteManager = std::make_shared<PaletteManager>();
         if (!m_paletteManager->initialize())
         {
-            Log::error("Failed to initialize PaletteManager");
+            Core::error("Failed to initialize PaletteManager");
             return false;
         }
 
-        // Initialize debug renderer
-        m_debugRenderer = std::make_unique<Utility::LineBatchRenderer>();
-        if (!m_debugRenderer->initialize())
+        // Create and initialize forward+ pipeline
+        m_forwardPlusPipeline = std::make_shared<RenderPipeline>();
+        if (!m_forwardPlusPipeline->initialize())
         {
-            Log::error("Failed to initialize debug renderer");
+            Core::error("Failed to initialize forward+ render pipeline");
             return false;
         }
 
-        // Set default viewport to match window size
-        int width, height;
-        Core::Application::getInstance().getWindowSize(width, height);
-        setViewport(0, 0, width, height);
+        // Configure pipeline stages with required dependencies
+        configurePipelineStages();
 
-        // Initialize render context
-        m_renderContext = RenderContext();
-        m_renderContext.updateMatrices();
+        // Setup pipeline debugging
+        setupPipelineDebugging();
+
+        // Pipeline debugging
+        quickDebugSetup();
 
         // Clear render queues
         clearRenderQueue();
 
-        // Set up default rendering pipeline
-        auto defaultPipeline = std::make_shared<RenderPipeline>();
-        if (!defaultPipeline->initialize())
-        {
-            Log::error("Failed to initialize default render pipeline");
-            return false;
-        }
-
-        createRenderPipeline("Default", defaultPipeline);
-        setActivePipeline("Default");
+        // Set initial OpenGL state
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
 
         m_initialized = true;
-        Log::info("RenderSystem initialized successfully");
+        
+        Core::info("RenderSystem initialized successfully with forward+ pipeline");
         return true;
     }
 
@@ -110,23 +152,79 @@ namespace PixelCraft::Rendering
             return;
         }
 
-        // Update light manager
-        m_lightManager->update(deltaTime);
-
-        // Update debug renderer
-        m_debugRenderer->update(deltaTime);
-
-        // Update active render pipeline
-        auto pipeline = getRenderPipeline(m_activePipeline);
-        if (pipeline)
+        // Update subsystems
+        if (m_lightManager)
         {
-            pipeline->update(deltaTime);
+            m_lightManager->update(deltaTime);
         }
+
+        if (m_paletteManager)
+        {
+            m_paletteManager->update(deltaTime);
+        }
+
+        // Update render context if camera has changed
+        if (m_mainCamera)
+        {
+            m_renderContext.setViewMatrix(m_mainCamera->getViewMatrix());
+            m_renderContext.setProjectionMatrix(m_mainCamera->getProjectionMatrix());
+            m_renderContext.setCameraPosition(m_mainCamera->getPosition());
+            m_renderContext.setCameraDirection(m_mainCamera->getForward());
+            m_renderContext.updateMatrices();
+            m_renderContext.updateFrustum();
+        }
+
+        // Update render context with current viewport
+        m_renderContext.setViewport(m_viewportX, m_viewportY, m_viewportWidth, m_viewportHeight);
+        m_renderContext.setRenderSize(m_viewportWidth, m_viewportHeight);
 
         // Clear render statistics for the new frame
         m_drawCallCount = 0;
         m_triangleCount = 0;
         m_visibleObjectCount = 0;
+
+        // Clear render queues before processing new objects
+        clearRenderQueue();
+
+        // Process registered renderables through spatial partitioning
+        auto visibleRenderables = getVisibleRenderables();
+
+        // Sort by depth if enabled
+        if (m_depthSortingEnabled)
+        {
+            sortByDepth(visibleRenderables);
+        }
+
+        // Submit each visible renderable to the render queues
+        for (const auto& renderable : visibleRenderables)
+        {
+            // Apply pixel grid alignment if enabled
+            if (m_pixelGridAlignmentEnabled)
+            {
+                applyPixelGridAlignment(renderable);
+            }
+
+            // Convert to RenderableObject and submit
+            RenderableObject obj = convertToRenderableObject(renderable);
+            submitRenderable(obj);
+        }
+
+        // Update clustered light culler with visible lights
+        if (m_clusteredLightCuller && m_lightManager && m_mainCamera)
+        {
+            const auto& frustum = m_renderContext.getFrustum();
+            m_lightManager->updateVisibleLights(frustum);
+            const auto& visibleLights = m_lightManager->getVisibleLights();
+            m_clusteredLightCuller->update(m_renderContext, visibleLights);
+        }
+
+        // Update the pipeline
+        if (m_forwardPlusPipeline)
+        {
+            m_forwardPlusPipeline->update(deltaTime);
+        }
+
+        m_visibleObjectCount = static_cast<int>(visibleRenderables.size());
     }
 
     void RenderSystem::render()
@@ -137,42 +235,30 @@ namespace PixelCraft::Rendering
         }
 
         // Set viewport
-        // In a real implementation, this would call the appropriate graphics API
-        // to set the actual viewport dimensions
+        glViewport(m_viewportX, m_viewportY, m_viewportWidth, m_viewportHeight);
 
-        // Update frustum for culling
-        m_renderContext.updateMatrices();
+        // Clear the frame buffers
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
-        // Perform frustum culling
+        // Perform frustum culling on render queues
         cullObjects();
 
         // Sort render queues for optimal rendering
         sortRenderQueues();
 
-        // Get active pipeline
-        auto pipeline = getRenderPipeline(m_activePipeline);
-        if (!pipeline)
+        // Create shared render context for pipeline
+        auto pipelineContext = std::make_shared<RenderContext>(m_renderContext);
+
+        // Execute the render pipeline
+        m_forwardPlusPipeline->render(pipelineContext);
+
+        // Debug visualization
+        if (m_debugVisualizationEnabled)
         {
-            Log::error("No active render pipeline set");
-            return;
+            renderDebugVisualization();
         }
 
-        // Configure pipeline with current render context
-        pipeline->setRenderContext(m_renderContext);
-
-        // Render opaque objects first
-        submitQueueToRenderer(m_opaqueQueue);
-
-        // Render transparent objects (back to front)
-        submitQueueToRenderer(m_transparentQueue);
-
-        // Render UI elements
-        submitQueueToRenderer(m_uiQueue);
-
-        // Render debug visualizations
-        m_debugRenderer->render(m_renderContext);
-
-        // Update render statistics
+        // Update render stats
         updateRenderStats();
     }
 
@@ -183,22 +269,33 @@ namespace PixelCraft::Rendering
             return;
         }
 
-        Log::info("Shutting down RenderSystem");
+        Core::info("Shutting down RenderSystem");
 
         // Clear render queues
         clearRenderQueue();
 
-        // Clear pipelines
-        m_pipelines.clear();
-        m_activePipeline = "";
-
-        // Shutdown subsystems in reverse order of initialization
-        if (m_debugRenderer)
+        // Clear registered renderables
+        if (m_spatialTree)
         {
-            m_debugRenderer->shutdown();
-            m_debugRenderer.reset();
+            m_spatialTree->clear();
+        }
+        m_registeredRenderables.clear();
+
+        // Shutdown pipeline
+        if (m_forwardPlusPipeline)
+        {
+            m_forwardPlusPipeline->shutdown();
+            m_forwardPlusPipeline.reset();
         }
 
+        // Shutdown clustered light culler
+        if (m_clusteredLightCuller)
+        {
+            m_clusteredLightCuller->shutdown();
+            m_clusteredLightCuller.reset();
+        }
+
+        // Shutdown subsystems
         if (m_paletteManager)
         {
             m_paletteManager->shutdown();
@@ -212,72 +309,29 @@ namespace PixelCraft::Rendering
         }
 
         m_initialized = false;
-        Log::info("RenderSystem shutdown complete");
+        Core::info("RenderSystem shutdown complete");
     }
 
     std::vector<std::string> RenderSystem::getDependencies() const
     {
-        // Return dependencies
-        return {
-            "ResourceManager",
-            "EventSystem"
-        };
-    }
-
-    void RenderSystem::createRenderPipeline(const std::string& name, std::shared_ptr<RenderPipeline> pipeline)
-    {
-        if (m_pipelines.find(name) != m_pipelines.end())
-        {
-            Log::warn("Render pipeline '" + name + "' already exists, replacing");
-        }
-
-        m_pipelines[name] = pipeline;
-        Log::debug("Created render pipeline: " + name);
-    }
-
-    std::shared_ptr<RenderPipeline> RenderSystem::getRenderPipeline(const std::string& name)
-    {
-        auto it = m_pipelines.find(name);
-        if (it == m_pipelines.end())
-        {
-            Log::warn("Render pipeline '" + name + "' not found");
-            return nullptr;
-        }
-
-        return it->second;
-    }
-
-    void RenderSystem::setActivePipeline(const std::string& name)
-    {
-        if (m_pipelines.find(name) == m_pipelines.end())
-        {
-            Log::error("Cannot set active pipeline: '" + name + "' not found");
-            return;
-        }
-
-        m_activePipeline = name;
-        Log::debug("Active pipeline set to: " + name);
-    }
-
-    const std::string& RenderSystem::getActivePipeline() const
-    {
-        return m_activePipeline;
+        return {"MemoryManager", "Window", "ShaderManager"};
     }
 
     void RenderSystem::submitRenderable(const RenderableObject& renderable)
     {
+        // Skip incomplete renderables
         if (!renderable.mesh || !renderable.material)
         {
-            // Skip incomplete renderables
             return;
         }
 
-        // Determine which queue to use based on the object's layer
+        // Determine which queue to use based on the renderable's layer and material
         if (renderable.layer & static_cast<uint32_t>(RenderLayer::UI))
         {
             m_uiQueue.push_back(renderable);
         }
-        else if (renderable.material->isTransparent())
+        else if (renderable.layer & static_cast<uint32_t>(RenderLayer::Transparent) ||
+                (renderable.material && renderable.material->getBlendMode() == BlendMode::Transparent))
         {
             m_transparentQueue.push_back(renderable);
         }
@@ -287,6 +341,70 @@ namespace PixelCraft::Rendering
         }
     }
 
+    uint64_t RenderSystem::registerRenderable(std::shared_ptr<Renderable> renderable)
+    {
+        if (!renderable)
+        {
+            Core::error("Attempted to register null renderable");
+            return 0;
+        }
+
+        // Generate a unique ID
+        static uint64_t nextId = 1;
+        uint64_t id = nextId++;
+
+        // Store renderable
+        m_registeredRenderables[id] = renderable;
+
+        // Add to spatial tree if it has valid bounds
+        if (renderable->bounds.isValid() && m_spatialTree)
+        {
+            // Create a spatial wrapper for the renderable
+            auto spatialWrapper = std::make_shared<Utility::SpatialObjectWrapper<Renderable>>(renderable, id);
+            m_spatialTree->insert(spatialWrapper);
+        }
+
+        return id;
+    }
+
+    bool RenderSystem::unregisterRenderable(uint64_t id)
+    {
+        auto it = m_registeredRenderables.find(id);
+        if (it == m_registeredRenderables.end())
+        {
+            return false;
+        }
+
+        // Remove from spatial tree
+        if (m_spatialTree)
+        {
+            m_spatialTree->remove(id);
+        }
+
+        // Remove from registered renderables
+        m_registeredRenderables.erase(it);
+
+        return true;
+    }
+
+    bool RenderSystem::updateRenderable(uint64_t id)
+    {
+        auto it = m_registeredRenderables.find(id);
+        if (it == m_registeredRenderables.end())
+        {
+            return false;
+        }
+
+        // Update renderable in spatial tree
+        auto renderable = it->second;
+        if (renderable->bounds.isValid() && m_spatialTree)
+        {
+            m_spatialTree->update(id, renderable->bounds);
+        }
+
+        return true;
+    }
+
     void RenderSystem::clearRenderQueue()
     {
         m_opaqueQueue.clear();
@@ -294,24 +412,39 @@ namespace PixelCraft::Rendering
         m_uiQueue.clear();
     }
 
-    void RenderSystem::setMainCamera(const std::shared_ptr<Camera::Camera> camera)
+    void RenderSystem::setMainCamera(const std::shared_ptr<Rendering::Cameras::Camera> camera)
     {
+        m_mainCamera = camera;
+
         // Update render context with camera information
-        m_renderContext.setViewMatrix(camera.getViewMatrix());
-        m_renderContext.setProjectionMatrix(camera.getProjectionMatrix());
-        m_renderContext.setCameraPosition(camera.getPosition());
-        m_renderContext.updateMatrices();
+        if (m_mainCamera)
+        {
+            m_renderContext.setViewMatrix(m_mainCamera->getViewMatrix());
+            m_renderContext.setProjectionMatrix(m_mainCamera->getProjectionMatrix());
+            m_renderContext.setCameraPosition(m_mainCamera->getPosition());
+            m_renderContext.setCameraDirection(m_mainCamera->getForward());
+            m_renderContext.setNearPlane(m_mainCamera->getNearPlane());
+            m_renderContext.setFarPlane(m_mainCamera->getFarPlane());
+            m_renderContext.updateMatrices();
+            m_renderContext.updateFrustum();
+
+            // If it's an orthographic camera, set up isometric view
+            auto orthoCamera = std::dynamic_pointer_cast<Rendering::Cameras::OrthographicCamera>(camera);
+            if (orthoCamera)
+            {
+                setupIsometricCamera();
+            }
+        }
     }
 
-    std::shared_ptr<Camera::Camera> RenderSystem::getMainCamera() const
+    std::shared_ptr<Rendering::Cameras::Camera> RenderSystem::getMainCamera() const
     {
-        Camera::Camera outCamera;
+        return m_mainCamera;
+    }
 
-        outCamera.setViewMatrix(m_renderContext.getViewMatrix());
-        outCamera.setProjectionMatrix(m_renderContext.getProjectionMatrix());
-        outCamera.setViewProjectionMatrix(m_renderContext.getViewProjectionMatrix());
-
-        return outCamera;
+    std::shared_ptr<RenderPipeline> RenderSystem::getRenderPipeline() const
+    {
+        return m_forwardPlusPipeline;
     }
 
     void RenderSystem::setViewport(int x, int y, int width, int height)
@@ -321,99 +454,101 @@ namespace PixelCraft::Rendering
         m_viewportWidth = width;
         m_viewportHeight = height;
 
-        // Update render context with new viewport dimensions
+        // Apply viewport immediately if rendering system is active
+        if (m_initialized)
+        {
+            glViewport(x, y, width, height);
+        }
+
+        // Update render context
+        m_renderContext.setViewport(x, y, width, height);
         m_renderContext.setRenderSize(width, height);
 
-        // In a real implementation, this would call the appropriate graphics API
-        // to set the actual viewport dimensions
-
-        Log::debug("Viewport set to: " + std::to_string(x) + ", " +
-                   std::to_string(y) + ", " + std::to_string(width) +
-                   ", " + std::to_string(height));
+        // Resize pipeline render targets
+        if (m_forwardPlusPipeline)
+        {
+            m_forwardPlusPipeline->resize(width, height);
+        }
     }
 
-    std::shared_ptr<Shader> RenderSystem::createShader(const std::string& name)
+    void RenderSystem::setIsometricAngle(float angle)
     {
-        // Get the resource manager
-        std::shared_ptr<Core::ResourceManager> resourceManager = Core::Application::getInstance().getSubsystem<Core::ResourceManager>();
-        if (!resourceManager)
-        {
-            Log::error("Failed to get ResourceManager for shader creation");
-            return nullptr;
-        }
+        m_isometricAngle = angle;
 
-        // Create or get the shader resource
-        auto shader = resourceManager->createResource<Shader>(name);
-        if (!shader)
+        if (m_initialized && m_mainCamera)
         {
-            Log::error("Failed to create shader: " + name);
-            return nullptr;
+            setupIsometricCamera();
         }
-
-        return shader;
     }
 
-    std::shared_ptr<Texture> RenderSystem::createTexture(const std::string& name)
+    float RenderSystem::getIsometricAngle() const
     {
-        // Get the resource manager
-        std::shared_ptr<Core::ResourceManager> resourceManager = Core::Application::getInstance().getSubsystem<Core::ResourceManager>();
-        if (!resourceManager)
-        {
-            Log::error("Failed to get ResourceManager for texture creation");
-            return nullptr;
-        }
+        return m_isometricAngle;
+    }
 
-        // Create or get the texture resource
-        auto texture = resourceManager->createResource<Texture>(name);
-        if (!texture)
-        {
-            Log::error("Failed to create texture: " + name);
-            return nullptr;
-        }
+    void RenderSystem::setPixelGridAlignment(bool enabled)
+    {
+        m_pixelGridAlignmentEnabled = enabled;
+    }
 
-        return texture;
+    bool RenderSystem::isPixelGridAlignmentEnabled() const
+    {
+        return m_pixelGridAlignmentEnabled;
+    }
+
+    void RenderSystem::setDepthSortingEnabled(bool enabled)
+    {
+        m_depthSortingEnabled = enabled;
+    }
+
+    bool RenderSystem::isDepthSortingEnabled() const
+    {
+        return m_depthSortingEnabled;
+    }
+
+    void RenderSystem::setDebugVisualizationEnabled(bool enabled)
+    {
+        m_debugVisualizationEnabled = enabled;
+    }
+
+    bool RenderSystem::isDebugVisualizationEnabled() const
+    {
+        return m_debugVisualizationEnabled;
+    }
+
+    void RenderSystem::toggleDebugging(bool enabled)
+    {
+        m_forwardPlusPipeline->setDebuggingEnabled(enabled);
+
+        if (enabled)
+        {
+            Core::info("Render debugging enabled - images will be saved to debug folder");
+        }
+        else
+        {
+            Core::info("Render debugging disabled");
+        }
+    }
+
+    std::shared_ptr<Shader> RenderSystem::getShader(const std::string& name)
+    {
+        // Delegate to ShaderManager
+        auto shaderManager = Core::Application::getInstance()->getSubsystem<ShaderManager>();
+        if (shaderManager)
+        {
+            return shaderManager->getShader(name);
+        }
+        return nullptr;
     }
 
     std::shared_ptr<Material> RenderSystem::createMaterial(const std::string& name)
     {
-        // Get the resource manager
-        std::shared_ptr<Core::ResourceManager> resourceManager = Core::Application::getInstance().getSubsystem<Core::ResourceManager>();
-        if (!resourceManager)
-        {
-            Log::error("Failed to get ResourceManager for material creation");
-            return nullptr;
-        }
-
-        // Create or get the material resource
-        auto material = resourceManager->createResource<Material>(name);
-        if (!material)
-        {
-            Log::error("Failed to create material: " + name);
-            return nullptr;
-        }
-
-        return material;
+        return std::make_shared<Material>(name);
     }
 
     std::shared_ptr<Mesh> RenderSystem::createMesh(const std::string& name)
     {
-        // Get the resource manager
-        std::shared_ptr<Core::ResourceManager> resourceManager = Core::Application::getInstance().getSubsystem<Core::ResourceManager>();
-        if (!resourceManager)
-        {
-            Log::error("Failed to get ResourceManager for mesh creation");
-            return nullptr;
-        }
-
-        // Create or get the mesh resource
-        auto mesh = resourceManager->createResource<Mesh>(name);
-        if (!mesh)
-        {
-            Log::error("Failed to create mesh: " + name);
-            return nullptr;
-        }
-
-        return mesh;
+        return std::make_shared<Mesh>(name);
     }
 
     LightManager& RenderSystem::getLightManager()
@@ -426,138 +561,37 @@ namespace PixelCraft::Rendering
         return *m_paletteManager;
     }
 
+    ClusteredLightCuller& RenderSystem::getClusteredLightCuller()
+    {
+        return *m_clusteredLightCuller;
+    }
+
     void RenderSystem::drawLine(const glm::vec3& start, const glm::vec3& end, const glm::vec3& color)
     {
-        if (m_debugRenderer)
+        // Delegate to DebugDraw subsystem
+        auto debugDraw = Core::Application::getInstance()->getSubsystem<Utility::DebugDraw>();
+        if (debugDraw)
         {
-            m_debugRenderer->drawLine(start, end, color);
+            debugDraw->drawLine(start, end, Utility::Color(color.r, color.g, color.b, 1.0f));
         }
     }
 
     void RenderSystem::drawBox(const Utility::AABB& box, const glm::vec3& color)
     {
-        if (m_debugRenderer)
+        auto debugDraw = Core::Application::getInstance()->getSubsystem<Utility::DebugDraw>();
+        if (debugDraw)
         {
-            // Get the min and max points of the AABB
-            const glm::vec3& min = box.getMin();
-            const glm::vec3& max = box.getMax();
-
-            // Draw the 12 edges of the box
-            // Bottom face
-            drawLine(glm::vec3(min.x, min.y, min.z), glm::vec3(max.x, min.y, min.z), color);
-            drawLine(glm::vec3(max.x, min.y, min.z), glm::vec3(max.x, min.y, max.z), color);
-            drawLine(glm::vec3(max.x, min.y, max.z), glm::vec3(min.x, min.y, max.z), color);
-            drawLine(glm::vec3(min.x, min.y, max.z), glm::vec3(min.x, min.y, min.z), color);
-
-            // Top face
-            drawLine(glm::vec3(min.x, max.y, min.z), glm::vec3(max.x, max.y, min.z), color);
-            drawLine(glm::vec3(max.x, max.y, min.z), glm::vec3(max.x, max.y, max.z), color);
-            drawLine(glm::vec3(max.x, max.y, max.z), glm::vec3(min.x, max.y, max.z), color);
-            drawLine(glm::vec3(min.x, max.y, max.z), glm::vec3(min.x, max.y, min.z), color);
-
-            // Connecting edges
-            drawLine(glm::vec3(min.x, min.y, min.z), glm::vec3(min.x, max.y, min.z), color);
-            drawLine(glm::vec3(max.x, min.y, min.z), glm::vec3(max.x, max.y, min.z), color);
-            drawLine(glm::vec3(max.x, min.y, max.z), glm::vec3(max.x, max.y, max.z), color);
-            drawLine(glm::vec3(min.x, min.y, max.z), glm::vec3(min.x, max.y, max.z), color);
+            debugDraw->drawBox(box, Utility::Color(color.r, color.g, color.b, 1.0f));
         }
     }
 
     void RenderSystem::drawSphere(const glm::vec3& center, float radius, const glm::vec3& color)
     {
-        if (m_debugRenderer)
+        auto debugDraw = Core::Application::getInstance()->getSubsystem<Utility::DebugDraw>();
+        if (debugDraw)
         {
-            // Draw a sphere using lines
-            // We'll approximate a sphere by drawing three circles in the XY, XZ, and YZ planes
-            const int segments = 32;
-            const float step = 2.0f * 3.14159f / segments;
-
-            // XY plane circle
-            for (int i = 0; i < segments; ++i)
-            {
-                float angle1 = i * step;
-                float angle2 = (i + 1) * step;
-
-                glm::vec3 p1 = center + radius * glm::vec3(std::cos(angle1), std::sin(angle1), 0.0f);
-                glm::vec3 p2 = center + radius * glm::vec3(std::cos(angle2), std::sin(angle2), 0.0f);
-                drawLine(p1, p2, color);
-            }
-
-            // XZ plane circle
-            for (int i = 0; i < segments; ++i)
-            {
-                float angle1 = i * step;
-                float angle2 = (i + 1) * step;
-
-                glm::vec3 p1 = center + radius * glm::vec3(std::cos(angle1), 0.0f, std::sin(angle1));
-                glm::vec3 p2 = center + radius * glm::vec3(std::cos(angle2), 0.0f, std::sin(angle2));
-                drawLine(p1, p2, color);
-            }
-
-            // YZ plane circle
-            for (int i = 0; i < segments; ++i)
-            {
-                float angle1 = i * step;
-                float angle2 = (i + 1) * step;
-
-                glm::vec3 p1 = center + radius * glm::vec3(0.0f, std::cos(angle1), std::sin(angle1));
-                glm::vec3 p2 = center + radius * glm::vec3(0.0f, std::cos(angle2), std::sin(angle2));
-                drawLine(p1, p2, color);
-            }
+            debugDraw->drawSphere(center, radius, Utility::Color(color.r, color.g, color.b, 1.0f));
         }
-    }
-
-    void RenderSystem::takeScreenshot(const std::string& filepath)
-    {
-        // In a real implementation, this would:
-        // 1. Read the framebuffer pixels
-        // 2. Create an image from the pixel data
-        // 3. Save the image to the specified filepath
-
-        Log::info("Taking screenshot: " + filepath);
-
-        // Placeholder implementation
-        // In a real engine, this would use the graphics API to read pixels and save them
-
-        // Example pseudo-code:
-        // unsigned char* pixels = new unsigned char[m_viewportWidth * m_viewportHeight * 4];
-        // glReadPixels(0, 0, m_viewportWidth, m_viewportHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-        // Utility::saveImage(filepath, pixels, m_viewportWidth, m_viewportHeight, 4);
-        // delete[] pixels;
-
-        Log::info("Screenshot saved to: " + filepath);
-    }
-
-    void RenderSystem::renderToTexture(std::shared_ptr<Texture> texture)
-    {
-        if (!texture)
-        {
-            Log::error("Cannot render to null texture");
-            return;
-        }
-
-        // In a real implementation, this would:
-        // 1. Create a framebuffer object
-        // 2. Attach the texture as a color attachment
-        // 3. Set the framebuffer as the render target
-        // 4. Render the scene
-        // 5. Reset to the default framebuffer
-
-        Log::debug("Rendering to texture: " + texture->getName());
-
-        // Placeholder implementation
-        // In a real engine, this would use framebuffer objects to render the scene to a texture
-
-        // Example pseudo-code:
-        // GLuint fbo;
-        // glGenFramebuffers(1, &fbo);
-        // glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-        // glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture->getTextureID(), 0);
-        // glViewport(0, 0, texture->getWidth(), texture->getHeight());
-        // render();
-        // glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        // glViewport(m_viewportX, m_viewportY, m_viewportWidth, m_viewportHeight);
-        // glDeleteFramebuffers(1, &fbo);
     }
 
     int RenderSystem::getDrawCallCount() const
@@ -575,28 +609,60 @@ namespace PixelCraft::Rendering
         return m_visibleObjectCount;
     }
 
+    std::string RenderSystem::getRenderStats() const
+    {
+        std::string stats = "Forward+ Render Stats:\n";
+        stats += "Visible Objects: " + std::to_string(m_visibleObjectCount) + "\n";
+        stats += "Draw Calls: " + std::to_string(m_drawCallCount) + "\n";
+        stats += "Triangles: " + std::to_string(m_triangleCount) + "\n";
+        stats += "Registered Objects: " + std::to_string(m_registeredRenderables.size()) + "\n";
+
+        return stats;
+    }
+
+    const RenderContext& RenderSystem::getRenderContext() const
+    {
+        return m_renderContext;
+    }
+
+    const std::vector<RenderableObject>& RenderSystem::getOpaqueQueue() const
+    {
+        return m_opaqueQueue;
+    }
+
+    const std::vector<RenderableObject>& RenderSystem::getTransparentQueue() const
+    {
+        return m_transparentQueue;
+    }
+
+    const std::vector<RenderableObject>& RenderSystem::getUIQueue() const
+    {
+        return m_uiQueue;
+    }
+
     void RenderSystem::sortRenderQueues()
     {
+        if (!m_mainCamera)
+        {
+            return;
+        }
+
+        const glm::vec3& cameraPos = m_mainCamera->getPosition();
+
         // Sort opaque objects front to back (for early z-culling)
         std::sort(m_opaqueQueue.begin(), m_opaqueQueue.end(),
-                  [this](const RenderableObject& a, const RenderableObject& b) {
-                      // Get the distance from the camera to the object centers
-                      float distA = glm::length(m_renderContext.getCameraPosition() - a.bounds.getCenter());
-                      float distB = glm::length(m_renderContext.getCameraPosition() - b.bounds.getCenter());
-
-                      // Sort front to back (smaller distance first)
-                      return distA < distB;
+                  [&cameraPos](const RenderableObject& a, const RenderableObject& b) {
+                      float distA = glm::distance(cameraPos, a.bounds.getCenter());
+                      float distB = glm::distance(cameraPos, b.bounds.getCenter());
+                      return distA < distB; // Front to back
                   });
 
         // Sort transparent objects back to front (for proper blending)
         std::sort(m_transparentQueue.begin(), m_transparentQueue.end(),
-                  [this](const RenderableObject& a, const RenderableObject& b) {
-                      // Get the distance from the camera to the object centers
-                      float distA = glm::length(m_renderContext.getCameraPosition() - a.bounds.getCenter());
-                      float distB = glm::length(m_renderContext.getCameraPosition() - b.bounds.getCenter());
-
-                      // Sort back to front (larger distance first)
-                      return distA > distB;
+                  [&cameraPos](const RenderableObject& a, const RenderableObject& b) {
+                      float distA = glm::distance(cameraPos, a.bounds.getCenter());
+                      float distB = glm::distance(cameraPos, b.bounds.getCenter());
+                      return distA > distB; // Back to front
                   });
 
         // Sort UI objects by layer
@@ -606,76 +672,13 @@ namespace PixelCraft::Rendering
                   });
     }
 
-    void RenderSystem::submitQueueToRenderer(const std::vector<RenderableObject>& queue)
-    {
-        if (queue.empty())
-        {
-            return;
-        }
-
-        // In a real implementation, this would iterate through the queue
-        // and render each object using its material and mesh
-
-        // Get the active pipeline
-        auto pipeline = getRenderPipeline(m_activePipeline);
-        if (!pipeline)
-        {
-            Log::error("No active render pipeline set");
-            return;
-        }
-
-        // Track the current material to minimize state changes
-        std::shared_ptr<Material> currentMaterial = nullptr;
-
-        // Render all objects in the queue
-        for (const auto& renderable : queue)
-        {
-            // Skip objects without mesh or material
-            if (!renderable.mesh || !renderable.material)
-            {
-                continue;
-            }
-
-            // Bind material if different from current
-            if (currentMaterial != renderable.material)
-            {
-                if (currentMaterial)
-                {
-                    currentMaterial->unbind();
-                }
-
-                renderable.material->bind();
-                currentMaterial = renderable.material;
-            }
-
-            // Set object-specific parameters
-            currentMaterial->setParameter("model", renderable.transform);
-
-            // Set shadow parameters if applicable
-            if (renderable.receiveShadows)
-            {
-                m_lightManager->bindShadowMaps(*currentMaterial);
-            }
-
-            // Bind and draw the mesh
-            renderable.mesh->bind();
-            renderable.mesh->draw();
-            renderable.mesh->unbind();
-
-            // Update statistics
-            m_drawCallCount++;
-            m_triangleCount += renderable.mesh->getTriangleCount();
-        }
-
-        // Unbind the last material
-        if (currentMaterial)
-        {
-            currentMaterial->unbind();
-        }
-    }
-
     void RenderSystem::cullObjects()
     {
+        if (!m_mainCamera)
+        {
+            return;
+        }
+
         // Get the frustum from the render context
         const Utility::Frustum& frustum = m_renderContext.getFrustum();
 
@@ -683,42 +686,389 @@ namespace PixelCraft::Rendering
         std::vector<RenderableObject> culledOpaque;
         std::vector<RenderableObject> culledTransparent;
 
-        // UI objects are not culled as they are in screen space
+        // UI objects are not culled
 
         // Cull opaque objects
-        culledOpaque.reserve(m_opaqueQueue.size());
         for (const auto& renderable : m_opaqueQueue)
         {
-            if (frustum.testAABB(renderable.bounds.getMin(), renderable.bounds.getMax()))
+            if (frustum.testAABB(renderable.bounds))
             {
                 culledOpaque.push_back(renderable);
             }
         }
 
         // Cull transparent objects
-        culledTransparent.reserve(m_transparentQueue.size());
         for (const auto& renderable : m_transparentQueue)
         {
-            if (frustum.testAABB(renderable.bounds.getMin(), renderable.bounds.getMax()))
+            if (frustum.testAABB(renderable.bounds))
             {
                 culledTransparent.push_back(renderable);
             }
         }
 
-        // Update queues with culled objects
+        // Replace the original queues with the culled ones
         m_opaqueQueue = std::move(culledOpaque);
         m_transparentQueue = std::move(culledTransparent);
-
-        // Update visible object count
-        m_visibleObjectCount = m_opaqueQueue.size() + m_transparentQueue.size() + m_uiQueue.size();
     }
 
     void RenderSystem::updateRenderStats()
     {
-        // In a real implementation, this would update engine profiling metrics
-        // or debug information for monitoring performance
+        // Reset statistics
+        m_drawCallCount = 0;
+        m_triangleCount = 0;
+        
+        // Aggregate stats from pipeline stages
+        if (m_forwardPlusPipeline)
+        {
+            for (const auto& stage : m_forwardPlusPipeline->getStages())
+            {
+                if (stage)
+                {
+                    m_drawCallCount += stage->getFrameDrawCalls();
+                    m_triangleCount += stage->getFrameTriangles();
+                }
+            }
+        }
+        
+        // Update visible object count from render queues
+        m_visibleObjectCount = static_cast<int>(m_opaqueQueue.size() +
+                                                m_transparentQueue.size() +
+                                                m_uiQueue.size());
+    }
 
-        // Example: Update FPS counter, memory usage, etc.
+    RenderableObject RenderSystem::convertToRenderableObject(const std::shared_ptr<Renderable>& renderable)
+    {
+        RenderableObject obj;
+
+        // Copy properties from Renderable to RenderableObject
+        obj.mesh = renderable->mesh;
+        obj.material = renderable->material;
+        obj.transform = renderable->transform;
+        obj.bounds = renderable->bounds;
+        obj.layer = renderable->layer;
+        obj.castShadows = renderable->castShadows;
+        obj.receiveShadows = renderable->receiveShadows;
+
+        return obj;
+    }
+
+    void RenderSystem::setupIsometricCamera()
+    {
+        auto orthoCamera = std::dynamic_pointer_cast<Rendering::Cameras::OrthographicCamera>(m_mainCamera);
+        if (!orthoCamera)
+        {
+            return;
+        }
+
+        // Convert angle to radians
+        float angleRadians = glm::radians(m_isometricAngle);
+
+        // Calculate rotation quaternion
+        // For isometric view, we typically rotate 45 degrees around Y axis and 30 degrees around X
+        glm::quat rotation = glm::angleAxis(angleRadians, glm::vec3(0.0f, 1.0f, 0.0f)) *
+                             glm::angleAxis(glm::radians(30.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+
+        // Set camera rotation
+        orthoCamera->setRotation(rotation);
+    }
+
+    std::vector<std::shared_ptr<Renderable>> RenderSystem::getVisibleRenderables()
+    {
+        std::vector<std::shared_ptr<Renderable>> visibleRenderables;
+
+        if (!m_mainCamera || !m_spatialTree)
+        {
+            return visibleRenderables;
+        }
+
+        // Get camera frustum
+        const Utility::Frustum& frustum = m_renderContext.getFrustum();
+
+        // Query spatial tree for potentially visible objects
+        auto visibleObjects = m_spatialTree->queryFrustum(frustum);
+
+        // Convert spatial objects back to renderables
+        for (const auto& obj : visibleObjects)
+        {
+            auto it = m_registeredRenderables.find(obj->getID());
+            if (it != m_registeredRenderables.end())
+            {
+                visibleRenderables.push_back(it->second);
+            }
+        }
+
+        // Fallback: If spatial tree query returns nothing but we have renderables,
+        // manually test each renderable against the frustum
+        if (visibleRenderables.empty() && !m_registeredRenderables.empty())
+        {
+            for (const auto& [id, renderable] : m_registeredRenderables)
+            {
+                if (renderable->bounds.isValid())
+                {
+                    visibleRenderables.push_back(renderable);
+                }
+            }
+        }
+
+        return visibleRenderables;
+    }
+
+    void RenderSystem::sortByDepth(std::vector<std::shared_ptr<Renderable>>& renderables)
+    {
+        if (!m_mainCamera)
+        {
+            return;
+        }
+
+        // Get camera position
+        glm::vec3 cameraPos = m_mainCamera->getPosition();
+
+        // Sort by distance from camera (back to front for transparency)
+        std::sort(renderables.begin(), renderables.end(),
+                [&cameraPos](const std::shared_ptr<Renderable>& a, const std::shared_ptr<Renderable>& b) {
+                    glm::vec3 posA = a->getPosition();
+                    glm::vec3 posB = b->getPosition();
+
+                    float distA = glm::distance(cameraPos, posA);
+                    float distB = glm::distance(cameraPos, posB);
+
+                    return distA > distB; // Further objects first (back to front)
+                }
+        );
+    }
+
+    void RenderSystem::applyPixelGridAlignment(std::shared_ptr<Renderable> renderable)
+    {
+        auto orthoCamera = std::dynamic_pointer_cast<Rendering::Cameras::OrthographicCamera>(m_mainCamera);
+        if (!orthoCamera || !renderable)
+        {
+            return;
+        }
+
+        // Get object position in world space
+        glm::vec3 position = renderable->getPosition();
+
+        // Convert to screen space
+        glm::vec2 screenPos = orthoCamera->worldToScreenPoint(position);
+
+        // Round to integer pixels
+        screenPos = glm::round(screenPos);
+
+        // Convert back to world space
+        glm::vec3 alignedPos = orthoCamera->screenToWorldPoint(screenPos);
+
+        // Update position
+        renderable->setPosition(alignedPos);
+    }
+
+    void RenderSystem::renderDebugVisualization()
+    {
+        if (!m_mainCamera)
+        {
+            return;
+        }
+
+        // Draw camera frustum
+        const Utility::Frustum& frustum = m_renderContext.getFrustum();
+
+        // Draw frustum lines
+        auto corners = frustum.getCorners();
+        for (int i = 0; i < 4; i++)
+        {
+            int j = (i + 1) % 4;
+
+            // Near plane
+            drawLine(corners[i], corners[j], glm::vec3(0.0f, 1.0f, 0.0f));
+
+            // Far plane
+            drawLine(corners[i + 4], corners[j + 4], glm::vec3(0.0f, 1.0f, 0.0f));
+
+            // Edges
+            drawLine(corners[i], corners[i + 4], glm::vec3(0.0f, 1.0f, 0.0f));
+        }
+
+        // Draw registered renderable bounds
+        for (const auto& [id, renderable] : m_registeredRenderables)
+        {
+            if (renderable->bounds.isValid())
+            {
+                drawBox(renderable->bounds, glm::vec3(1.0f, 0.5f, 0.0f));
+            }
+        }
+    }
+
+    void RenderSystem::setupPipelineDebugging()
+    {
+        // Enable global debugging
+        m_forwardPlusPipeline->setDebuggingEnabled(true);
+
+        // Get the debugger for more advanced configuration
+        auto debugger = m_forwardPlusPipeline->getDebugger();
+
+        // Set output directory for debug images
+        debugger->setOutputDirectory("debug_renders/");
+
+        // Capture only every 10th frame to avoid too many files
+        debugger->setCaptureInterval(10);
+
+        // Limit to 100 frames total
+        debugger->setMaxFramesToCapture(100);
+
+        // Enable debugging for specific stages you want to inspect
+
+        // 1. Check cluster update stage (won't capture images but will log info)
+        m_forwardPlusPipeline->enableStageDebugging("ClusterUpdateStage", false, false);
+
+        // 2. Check depth prepass - this should show white where geometry is rendered
+        m_forwardPlusPipeline->enableStageDebugging("DepthPrepassStage", false, true);  // Only depth
+
+        // 3. Check geometry stage - this should show your lit scene
+        m_forwardPlusPipeline->enableStageDebugging("GeometryStage", true, false);      // Only color
+
+        // 4. Check transparency stage if you have transparent objects
+        m_forwardPlusPipeline->enableStageDebugging("TransparencyStage", true, false);  // Only color
+
+        // 5. Check post-processing output
+        m_forwardPlusPipeline->enableStageDebugging("PostProcessStage", true, false);   // Only color
+
+        Core::info("Pipeline debugging configured - check debug_renders/ folder for output");
+    }
+
+    void RenderSystem::diagnosePipelineIssues()
+    {
+        auto debugger = m_forwardPlusPipeline->getDebugger();
+
+        // After running a few frames, check what was captured
+        Core::info(debugger->getCaptureStatistics());
+
+        // Common issues to look for:
+    
+        // 1. If DepthPrepassStage depth images are all black:
+        //    - No geometry is being rendered in depth prepass
+        //    - Check if your depth shader is working
+        //    - Check if ECS entities have valid meshes and transforms
+        
+        // 2. If GeometryStage color images are all black:
+        //    - Depth prepass might have failed (no early-Z working)
+        //    - Forward+ lighting data might not be bound correctly
+        //    - Shaders might not be receiving correct uniforms
+        //    - Materials might not be bound correctly
+        
+        // 3. If PostProcessStage input looks good but output is black:
+        //    - Post-processing shaders might have issues
+        //    - Tone mapping might be incorrect
+        //    - Final blit to screen might be failing
+    }
+
+    void RenderSystem::quickDebugSetup()
+    {
+        // Enable debugging with default settings for all major stages
+        m_forwardPlusPipeline->setDebuggingEnabled(true);
+
+        // Capture every frame for first 5 frames to see immediate results
+        auto debugger = m_forwardPlusPipeline->getDebugger();
+        debugger->setCaptureInterval(1);
+        debugger->setMaxFramesToCapture(5);
+        debugger->setOutputDirectory("quick_debug/");
+
+        // Enable all important stages
+        m_forwardPlusPipeline->enableStageDebugging("DepthPrepassStage", true, true);    // Both color and depth
+        m_forwardPlusPipeline->enableStageDebugging("GeometryStage", true, true);        // Both color and depth
+        m_forwardPlusPipeline->enableStageDebugging("TransparencyStage", true, false);   // Color only
+        m_forwardPlusPipeline->enableStageDebugging("PostProcessStage", true, false);    // Color only
+
+        Core::info("Quick debug setup complete - will capture first 5 frames");
+    }
+
+    void RenderSystem::configureAdvancedDebugging()
+    {
+        auto debugger = m_forwardPlusPipeline->getDebugger();
+
+        // Create custom configuration for a specific stage
+        StageDebugConfig customConfig;
+        customConfig.enabled = true;
+        customConfig.captureColor = true;
+        customConfig.captureDepth = true;
+        customConfig.captureStencil = false;
+        customConfig.colorAttachmentIndex = 0;  // Capture first color attachment
+        customConfig.outputPath = "custom_debug/geometry/";
+        customConfig.filenamePrefix = "geo_stage";
+
+        debugger->configureStage("GeometryStage", customConfig);
+
+        // You can also capture multiple color attachments if your render targets have them
+        StageDebugConfig mrtConfig;
+        mrtConfig.enabled = true;
+        mrtConfig.captureColor = true;
+        mrtConfig.colorAttachmentIndex = 1;  // Capture second color attachment
+        mrtConfig.outputPath = "custom_debug/geometry_mrt/";
+        mrtConfig.filenamePrefix = "geo_mrt";
+
+        debugger->configureStage("GeometryStage_MRT", mrtConfig);
+    }
+
+    void RenderSystem::collectRenderStats()
+    {
+        // Update stats
+        m_visibleObjectCount = static_cast<int>(m_opaqueQueue.size() +
+                                                m_transparentQueue.size() +
+                                                m_uiQueue.size());
+    }
+
+    void RenderSystem::configurePipelineStages()
+    {
+        // Get ECS World to access registry
+        auto ecsWorld = Core::Application::getInstance()->getSubsystem<ECS::World>();
+        auto registry = ecsWorld ? ecsWorld->getRegistry() : nullptr;
+
+        // Configure each stage with necessary dependencies
+        for (const auto& stage : m_forwardPlusPipeline->getStages())
+        {
+            // ClusterUpdateStage needs clustered light culler
+            if (auto clusterStage = std::dynamic_pointer_cast<Stages::ClusterUpdateStage>(stage))
+            {
+                clusterStage->setClusterDimensions(m_clusteredLightCuller->getClusterData().dimensions);
+                clusterStage->setLightManager(m_lightManager);
+            }
+
+            // DepthPrepassStage needs registry
+            else if (auto depthStage = std::dynamic_pointer_cast<Stages::DepthPrepassStage>(stage))
+            {
+                depthStage->setRegistry(registry);
+            }
+
+            // ShadowStage needs light manager and registry
+            else if (auto shadowStage = std::dynamic_pointer_cast<Stages::ShadowStage>(stage))
+            {
+                shadowStage->setLightManager(m_lightManager);
+                shadowStage->setRegistry(registry);
+            }
+
+            // GeometryStage needs registry and render system
+            else if (auto geoStage = std::dynamic_pointer_cast<Stages::GeometryStage>(stage))
+            {
+                geoStage->setRegistry(registry);
+                geoStage->setRenderSystem(this);
+            }
+
+            // TransparencyStage needs registry
+            else if (auto transStage = std::dynamic_pointer_cast<Stages::TransparencyStage>(stage))
+            {
+                transStage->setRegistry(registry);
+            }
+
+            // PostProcessStage needs palette manager
+            else if (auto postStage = std::dynamic_pointer_cast<Stages::PostProcessStage>(stage))
+            {
+                postStage->setPaletteManager(m_paletteManager);
+            }
+
+            // UIStage needs registry
+            else if (auto uiStage = std::dynamic_pointer_cast<Stages::UIStage>(stage))
+            {
+                uiStage->setRegistry(registry);
+            }
+        }
     }
 
 } // namespace PixelCraft::Rendering

@@ -3,31 +3,38 @@
 // -------------------------------------------------------------------------
 #include "Core/ResourceManager.h"
 #include "Core/Logger.h"
+
 #include <chrono>
 #include <vector>
 
+// In namespace PixelCraft
 namespace PixelCraft::Core
 {
 
     ResourceManager::ResourceManager()
-        : m_asyncLoadingEnabled(false), m_threadRunning(false)
+        : m_asyncLoadingEnabled(false)
+        , m_threadRunning(false)
+        , m_initialized(false)
     {
     }
 
     ResourceManager::~ResourceManager()
     {
-        shutdown();
-    }
-
-    ResourceManager& ResourceManager::getInstance()
-    {
-        static ResourceManager instance;
-        return instance;
+        if (m_initialized)
+        {
+            shutdown();
+        }
     }
 
     bool ResourceManager::initialize()
     {
-        info("Initializing ResourceManager");
+        if (m_initialized)
+        {
+            Core::warn("ResourceManager already initialized");
+            return true;
+        }
+
+        Core::info("Initializing ResourceManager");
 
         // Start async loading thread if enabled
         if (m_asyncLoadingEnabled)
@@ -36,12 +43,29 @@ namespace PixelCraft::Core
             m_loadingThread = std::thread(&ResourceManager::asyncLoadingThreadFunc, this);
         }
 
+        m_initialized = true;
         return true;
+    }
+
+    void ResourceManager::update(float deltaTime)
+    {
+        // Nothing to update for resource manager
+        (void)deltaTime;  // Currently unused
+    }
+
+    void ResourceManager::render()
+    {
+        // Nothing to render for resource manager
     }
 
     void ResourceManager::shutdown()
     {
-        info("Shutting down ResourceManager");
+        if (!m_initialized)
+        {
+            return;
+        }
+
+        Core::info("Shutting down ResourceManager");
 
         // Stop async loading thread
         if (m_threadRunning)
@@ -76,6 +100,13 @@ namespace PixelCraft::Core
         {
             resource->unload();
         }
+
+        m_initialized = false;
+    }
+
+    std::vector<std::string> ResourceManager::getDependencies() const
+    {
+        return {"MemoryManager"};
     }
 
     void ResourceManager::setAsyncLoading(bool enabled)
@@ -107,12 +138,16 @@ namespace PixelCraft::Core
 
     void ResourceManager::asyncLoadingThreadFunc()
     {
-        info("Starting async resource loading thread");
+        Core::info("Starting async resource loading thread");
 
         while (m_threadRunning)
         {
             ResourceTask task;
-            m_asyncQueue.waitAndPop(task);
+            if (!m_asyncQueue.waitAndPop(task))
+            {
+                // Queue was shut down, exit thread
+                break;
+            }
 
             // Check if we're shutting down
             if (!m_threadRunning)
@@ -140,7 +175,7 @@ namespace PixelCraft::Core
                 }
                 catch (const std::exception& e)
                 {
-                    warn("Failed to get modification time for " + task.path + ": " + e.what());
+                    Core::warn("Failed to get modification time for " + task.path + ": " + e.what());
                 }
             }
 
@@ -168,7 +203,7 @@ namespace PixelCraft::Core
             }
         }
 
-        info("Async resource loading thread stopped");
+        Core::info("Async resource loading thread stopped");
     }
 
     void ResourceManager::reloadModified()
@@ -215,7 +250,7 @@ namespace PixelCraft::Core
                     }
                     catch (const std::exception& e)
                     {
-                        warn("Failed to check modification time for " + path + ": " + e.what());
+                        Core::warn("Failed to check modification time for " + path + ": " + e.what());
                     }
                 }
             }
@@ -224,7 +259,7 @@ namespace PixelCraft::Core
         // Now reload the modified resources
         for (const auto& resource : resourcesToReload)
         {
-            info("Hot reloading resource: " + resource.first);
+            Core::info("Hot reloading resource: " + resource.first);
             resource.second->onReload();
         }
     }

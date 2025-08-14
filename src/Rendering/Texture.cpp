@@ -4,15 +4,57 @@
 #include "Rendering/Texture.h"
 #include "Rendering/PaletteManager.h"
 #include "Core/Logger.h"
+#include "Core/Application.h"
+#include "Core/MemoryManager.h"
+
 #include <glad/glad.h>
-#include <GL/glew.h>
 #include <stb_image.h>
 #include <algorithm>
+#include <functional>
 
-namespace Log = PixelCraft::Core;
+// Define S3TC/DXT constants if not provided by glad or your OpenGL headers
+#ifndef GL_COMPRESSED_RGB_S3TC_DXT1_EXT
+#define GL_COMPRESSED_RGB_S3TC_DXT1_EXT 0x83F0
+#endif
+#ifndef GL_COMPRESSED_RGBA_S3TC_DXT1_EXT
+#define GL_COMPRESSED_RGBA_S3TC_DXT1_EXT 0x83F1
+#endif
+#ifndef GL_COMPRESSED_RGBA_S3TC_DXT3_EXT
+#define GL_COMPRESSED_RGBA_S3TC_DXT3_EXT 0x83F2
+#endif
+#ifndef GL_COMPRESSED_RGBA_S3TC_DXT5_EXT
+#define GL_COMPRESSED_RGBA_S3TC_DXT5_EXT 0x83F3
+#endif
+#ifndef GL_COMPRESSED_RGBA_ASTC_4x4_KHR
+#define GL_COMPRESSED_RGBA_ASTC_4x4_KHR 0x93B0
+#endif
+#ifndef GL_COMPRESSED_RGBA_ASTC_8x8_KHR
+#define GL_COMPRESSED_RGBA_ASTC_8x8_KHR 0x93B7
+#endif
 
 namespace PixelCraft::Rendering
 {
+
+    // Debug tracking
+    static std::atomic<int> s_textureCount{0};
+
+    Texture::Texture()
+        : Core::Resource("UnnamedTexture")
+        , m_textureID(0)
+        , m_width(0)
+        , m_height(0)
+        , m_format(TextureFormat::RGBA8)
+        , m_filterMode(TextureFilterMode::Nearest)
+        , m_wrapMode(TextureWrapMode::ClampToEdge)
+        , m_hasMipmaps(false)
+        , m_pixelGridAligned(true)
+        , m_hasPixelData(false)
+        , m_channels(4)
+        , m_multisampleCount(0)
+    {
+        int count = ++s_textureCount;
+        Core::info("Texture created: " + getName() + " (Total: " + std::to_string(count) + ")");
+    }
 
     Texture::Texture(const std::string& name)
         : Core::Resource(name)
@@ -20,33 +62,88 @@ namespace PixelCraft::Rendering
         , m_width(0)
         , m_height(0)
         , m_format(TextureFormat::RGBA8)
-        , m_filterMode(TextureFilterMode::Nearest) // Default to nearest for pixel art
+        , m_filterMode(TextureFilterMode::Nearest)
         , m_wrapMode(TextureWrapMode::ClampToEdge)
         , m_hasMipmaps(false)
-        , m_pixelGridAligned(true)  // Default to pixel grid alignment for pixel art
+        , m_pixelGridAligned(true)
         , m_hasPixelData(false)
         , m_channels(4)
         , m_multisampleCount(0)
     {
+        int count = ++s_textureCount;
+        Core::info("Texture created: " + getName() + " (Total: " + std::to_string(count) + ")");
     }
 
     Texture::~Texture()
     {
+        Core::info("Texture destructor called: " + getName() + 
+                   " (Loaded: " + (m_loaded ? "true" : "false") + 
+                   ", TexID: " + std::to_string(m_textureID) + 
+                   ", HasPixelData: " + (m_hasPixelData ? "true" : "false") + ")");
+
+        // Track memory being freed
+        if (m_hasPixelData && m_pixelData)
+        {
+            size_t dataSize = static_cast<size_t>(m_width) * m_height * m_channels;
+            Core::info("Freeing pixel data: " + std::to_string(dataSize) + " bytes via MemoryManager");
+        }
+
         unload();
+
+        int count = --s_textureCount;
+        Core::info("Texture destroyed: " + getName() + " (Remaining: " + std::to_string(count) + ")");
+    }
+
+    Texture::Texture(Texture&& other) noexcept
+        : Core::Resource(std::move(other))
+        , m_textureID(0)
+        , m_width(0)
+        , m_height(0)
+        , m_format(TextureFormat::RGBA8)
+        , m_filterMode(TextureFilterMode::Nearest)
+        , m_wrapMode(TextureWrapMode::ClampToEdge)
+        , m_hasMipmaps(false)
+        , m_pixelGridAligned(true)
+        , m_hasPixelData(false)
+        , m_channels(4)
+        , m_multisampleCount(0)
+    {
+        moveFrom(std::move(other));
+    }
+
+    Texture& Texture::operator=(Texture&& other) noexcept
+    {
+        if (this != &other)
+        {
+            // Clean up current resources first
+            unload();
+
+            // Move base class
+            Core::Resource::operator=(std::move(other));
+
+            // Move our resources
+            moveFrom(std::move(other));
+        }
+        return *this;
     }
 
     bool Texture::initialize()
     {
-        if (isLoaded() || m_textureID != 0)
+        // Always delete existing texture ID if present, regardless of loaded state
+        if (m_textureID != 0)
         {
-            unload();
+            glDeleteTextures(1, &m_textureID);
+            m_textureID = 0;
         }
 
-        // Generate texture ID
+        // Clean up any existing state
+        unload();
+
+        // Generate new texture ID
         glGenTextures(1, &m_textureID);
         if (m_textureID == 0)
         {
-            Log::error("Texture::initialize - Failed to generate texture ID");
+            Core::error("Texture::initialize - Failed to generate texture ID");
             return false;
         }
 
@@ -68,11 +165,19 @@ namespace PixelCraft::Rendering
     {
         if (width <= 0 || height <= 0)
         {
-            Log::error("Texture::createEmpty - Invalid dimensions: " +
+            Core::error("Texture::createEmpty - Invalid dimensions: " +
                        std::to_string(width) + "x" + std::to_string(height));
             return false;
         }
 
+        // Always delete existing texture ID if present, regardless of loaded state
+        if (m_textureID != 0)
+        {
+            glDeleteTextures(1, &m_textureID);
+            m_textureID = 0;
+        }
+
+        // Clean up any existing state
         unload();
 
         m_width = width;
@@ -80,11 +185,11 @@ namespace PixelCraft::Rendering
         m_format = format;
         m_channels = getFormatChannelCount(format);
 
-        // Generate texture
+        // Generate new texture
         glGenTextures(1, &m_textureID);
         if (m_textureID == 0)
         {
-            Log::error("Texture::createEmpty - Failed to generate texture ID");
+            Core::error("Texture::createEmpty - Failed to generate texture ID");
             return false;
         }
 
@@ -102,10 +207,20 @@ namespace PixelCraft::Rendering
 
         glBindTexture(GL_TEXTURE_2D, 0);
 
-        // Allocate pixel data for CPU-side access
-        m_pixelData.reset(new uint8_t[width * height * m_channels]);
-        std::memset(m_pixelData.get(), 0, width * height * m_channels);
-        m_hasPixelData = true;
+        // Allocate pixel data using MemoryManager
+        auto memoryManager = Core::Application::getInstance()->getSubsystem<Core::MemoryManager>();
+        m_pixelData = memoryManager->makePixelDataUnique(width, height, m_channels);
+        if (m_pixelData)
+        {
+            std::memset(m_pixelData.get(), 0, static_cast<size_t>(width) * height * m_channels);
+            m_hasPixelData = true;
+        }
+        else
+        {
+            Core::error("Texture::initialize - Failed to allocate pixel data via MemoryManager");
+            return false;
+        }
+
         m_multisampleCount = multisampleCount;
         m_loaded = true;
 
@@ -114,13 +229,25 @@ namespace PixelCraft::Rendering
 
     bool Texture::initialize(int width, int height, TextureFormat format)
     {
+        Core::info("Initializing texture: " + getName() + " (" + 
+                   std::to_string(width) + "x" + std::to_string(height) + ")");
+
         if (width <= 0 || height <= 0)
         {
-            Log::error("Texture::createEmpty - Invalid dimensions: " +
+            Core::error("Texture::createEmpty - Invalid dimensions: " +
                        std::to_string(width) + "x" + std::to_string(height));
             return false;
         }
 
+        // Clean up existing resources first
+        if (m_textureID != 0)
+        {
+            Core::info("Deleting existing texture ID: " + std::to_string(m_textureID));
+            glDeleteTextures(1, &m_textureID);
+            m_textureID = 0;
+        }
+
+        // Clean up any existing state
         unload();
 
         m_width = width;
@@ -128,11 +255,11 @@ namespace PixelCraft::Rendering
         m_format = format;
         m_channels = getFormatChannelCount(format);
 
-        // Generate texture
+        // Generate new texture
         glGenTextures(1, &m_textureID);
         if (m_textureID == 0)
         {
-            Log::error("Texture::createEmpty - Failed to generate texture ID");
+            Core::error("Texture::createEmpty - Failed to generate texture ID");
             return false;
         }
 
@@ -143,18 +270,29 @@ namespace PixelCraft::Rendering
         convertFormat(format, internalFormat, dataFormat, dataType);
 
         // Allocate storage
-        glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, dataFormat, dataType, nullptr);
+        glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, dataFormat, dataType, 0);
 
         // Set texture parameters
         setTextureParameters();
-
         glBindTexture(GL_TEXTURE_2D, 0);
 
-        // Allocate pixel data for CPU-side access
-        m_pixelData.reset(new uint8_t[width * height * m_channels]);
-        std::memset(m_pixelData.get(), 0, width * height * m_channels);
-        m_hasPixelData = true;
-        m_loaded = true;
+        // Allocate pixel data using MemoryManager
+        auto memoryManager = Core::Application::getInstance()->getSubsystem<Core::MemoryManager>();
+        m_pixelData = memoryManager->makePixelDataUnique(width, height, m_channels);
+        if (m_pixelData)
+        {
+            std::memset(m_pixelData.get(), 0, static_cast<size_t>(width) * height * m_channels);
+            m_hasPixelData = true;
+            m_loaded = true;
+
+            Core::info("Allocated pixel data via MemoryManager: " +
+                       std::to_string(static_cast<size_t>(width) * height * m_channels) + " bytes");
+        }
+        else
+        {
+            Core::error("Texture::initialize - Failed to allocate pixel data via MemoryManager");
+            return false;
+        }
 
         return true;
     }
@@ -163,10 +301,18 @@ namespace PixelCraft::Rendering
     {
         if (width <= 0 || height <= 0 || data == nullptr)
         {
-            Log::error("Texture::createFromData - Invalid parameters");
+            Core::error("Texture::initialize - Invalid parameters");
             return false;
         }
 
+        // Always delete existing texture ID if present, regardless of loaded state
+        if (m_textureID != 0)
+        {
+            glDeleteTextures(1, &m_textureID);
+            m_textureID = 0;
+        }
+
+        // Clean up any existing state
         unload();
 
         m_width = width;
@@ -174,11 +320,11 @@ namespace PixelCraft::Rendering
         m_format = format;
         m_channels = getFormatChannelCount(format);
 
-        // Generate texture
+        // Generate new texture
         glGenTextures(1, &m_textureID);
         if (m_textureID == 0)
         {
-            Log::error("Texture::createFromData - Failed to generate texture ID");
+            Core::error("Texture::initialize - Failed to generate texture ID");
             return false;
         }
 
@@ -196,23 +342,36 @@ namespace PixelCraft::Rendering
 
         glBindTexture(GL_TEXTURE_2D, 0);
 
-        // Keep a copy of the pixel data for CPU-side access
-        m_pixelData.reset(new uint8_t[width * height * m_channels]);
-        std::memcpy(m_pixelData.get(), data, width * height * m_channels);
-        m_hasPixelData = true;
-        m_loaded = true;
+        // Keep a copy of the pixel data using MemoryManager
+        auto memoryManager = Core::Application::getInstance()->getSubsystem<Core::MemoryManager>();
+        m_pixelData = memoryManager->makePixelDataUnique(width, height, m_channels);
+        if (m_pixelData)
+        {
+            size_t dataSize = static_cast<size_t>(width) * height * m_channels;
+            std::memcpy(m_pixelData.get(), data, dataSize);
+            m_hasPixelData = true;
+            m_loaded = true;
+        }
+        else
+        {
+            Core::error("Texture::initialize - Failed to allocate pixel data via MemoryManager");
+            return false;
+        }
 
         return true;
     }
 
     void Texture::setData(const void* data)
     {
-
-
-        // Keep a copy of the pixel data for CPU-side access
-        m_pixelData.reset(new uint8_t[m_width * m_height * m_channels]);
-        std::memcpy(m_pixelData.get(), data, m_width * m_height * m_channels);
-        m_hasPixelData = true;
+        // Keep a copy of the pixel data using MemoryManager
+        auto memoryManager = Core::Application::getInstance()->getSubsystem<Core::MemoryManager>();
+        m_pixelData = memoryManager->makePixelDataUnique(m_width, m_height, m_channels);
+        if (m_pixelData)
+        {
+            size_t dataSize = static_cast<size_t>(m_width) * m_height * m_channels;
+            std::memcpy(m_pixelData.get(), data, dataSize);
+            m_hasPixelData = true;
+        }
     }
 
     bool Texture::load()
@@ -225,7 +384,7 @@ namespace PixelCraft::Rendering
         std::string filepath = getPath();
         if (filepath.empty())
         {
-            Log::error("Texture::load - Empty path for texture: " + getName());
+            Core::error("Texture::load - Empty path for texture: " + getName());
             return false;
         }
 
@@ -240,18 +399,18 @@ namespace PixelCraft::Rendering
 
     void Texture::unload()
     {
-        if (!isLoaded())
-        {
-            return;
-        }
-
         if (m_textureID != 0)
         {
             glDeleteTextures(1, &m_textureID);
             m_textureID = 0;
         }
 
-        m_pixelData.reset();
+        // Pixel data will be automatically cleaned up by the smart pointer and MemoryManager
+        if (m_pixelData)
+        {
+            m_pixelData.reset();
+        }
+
         m_hasPixelData = false;
         m_width = 0;
         m_height = 0;
@@ -283,14 +442,15 @@ namespace PixelCraft::Rendering
 
     void Texture::bind(uint32_t textureUnit)
     {
-        if (!isLoaded())
+        // Only try to load from file if we don't have a texture ID, are not loaded, and have a valid file path
+        if (m_textureID == 0 && !isLoaded() && !getPath().empty())
         {
             load();
         }
 
         if (m_textureID == 0)
         {
-            Log::warn("Texture::bind - Invalid texture ID for: " + getName());
+            Core::warn("Texture::bind - Invalid texture ID for: " + getName());
             return;
         }
 
@@ -455,7 +615,7 @@ namespace PixelCraft::Rendering
         // Validate input
         if (samples < 0)
         {
-            Log::error("Texture::setMultisampleCount - Invalid sample count: " +
+            Core::error("Texture::setMultisampleCount - Invalid sample count: " +
                                 std::to_string(samples));
             return false;
         }
@@ -474,7 +634,7 @@ namespace PixelCraft::Rendering
         if (m_width > 0 && m_height > 0)
         {
             // Multisampled textures can't have CPU-side data
-            std::unique_ptr<uint8_t[]> oldData;
+            std::unique_ptr<uint8_t[], std::function<void(uint8_t*)>> oldData;
 
             if (m_hasPixelData && oldSamples == 0 && samples == 0)
             {
@@ -492,7 +652,7 @@ namespace PixelCraft::Rendering
             glGenTextures(1, &m_textureID);
             if (m_textureID == 0)
             {
-                Log::error("Texture::setMultisampleCount - Failed to generate texture ID");
+                Core::error("Texture::setMultisampleCount - Failed to generate texture ID");
                 return false;
             }
 
@@ -529,10 +689,14 @@ namespace PixelCraft::Rendering
                 }
                 else
                 {
-                    // Create new pixel data for non-multisampled textures
-                    m_pixelData.reset(new uint8_t[m_width * m_height * m_channels]);
-                    std::memset(m_pixelData.get(), 0, m_width * m_height * m_channels);
-                    m_hasPixelData = true;
+                    // Create new pixel data for non-multisampled textures using MemoryManager
+                    auto memoryManager = Core::Application::getInstance()->getSubsystem<Core::MemoryManager>();
+                    m_pixelData = memoryManager->makePixelDataUnique(m_width, m_height, m_channels);
+                    if (m_pixelData)
+                    {
+                        std::memset(m_pixelData.get(), 0, static_cast<size_t>(m_width) * m_height * m_channels);
+                        m_hasPixelData = true;
+                    }
                 }
             }
             else
@@ -560,7 +724,7 @@ namespace PixelCraft::Rendering
         {
             if (m_multisampleCount > 0)
             {
-                Log::warn("Texture::generateMipmaps - Cannot generate mipmaps for multisampled textures");
+                Core::warn("Texture::generateMipmaps - Cannot generate mipmaps for multisampled textures");
             }
             return;
         }
@@ -583,7 +747,7 @@ namespace PixelCraft::Rendering
     {
         if (width <= 0 || height <= 0)
         {
-            Log::error("Texture::setSize - Invalid dimensions: " +
+            Core::error("Texture::setSize - Invalid dimensions: " +
                                 std::to_string(width) + "x" + std::to_string(height));
             return false;
         }
@@ -595,7 +759,7 @@ namespace PixelCraft::Rendering
         }
 
         // Store old data if needed
-        std::unique_ptr<uint8_t[]> oldData;
+        std::unique_ptr<uint8_t[], std::function<void(uint8_t*)>> oldData;
         int oldWidth = m_width;
         int oldHeight = m_height;
         int oldChannels = m_channels;
@@ -672,10 +836,14 @@ namespace PixelCraft::Rendering
         }
         else if (!m_multisampleCount)
         {
-            // Create new empty pixel data (not for multisampled textures)
-            m_pixelData.reset(new uint8_t[width * height * m_channels]);
-            std::memset(m_pixelData.get(), 0, width * height * m_channels);
-            m_hasPixelData = true;
+            // Create new empty pixel data (not for multisampled textures) using MemoryManager
+            auto memoryManager = Core::Application::getInstance()->getSubsystem<Core::MemoryManager>();
+            m_pixelData = memoryManager->makePixelDataUnique(width, height, m_channels);
+            if (m_pixelData)
+            {
+                std::memset(m_pixelData.get(), 0, static_cast<size_t>(width) * height * m_channels);
+                m_hasPixelData = true;
+            }
         }
 
         unbind();
@@ -694,7 +862,7 @@ namespace PixelCraft::Rendering
         }
 
         // Store old data if needed
-        std::unique_ptr<uint8_t[]> oldData;
+        std::unique_ptr<uint8_t[], std::function<void(uint8_t*)>> oldData;
         int oldChannels = m_channels;
 
         if (preserveData && m_hasPixelData && m_width > 0 && m_height > 0)
@@ -738,45 +906,53 @@ namespace PixelCraft::Rendering
             // Restore data if needed
             if (oldData && !m_multisampleCount)
             {
-                m_pixelData.reset(new uint8_t[m_width * m_height * m_channels]);
-                m_hasPixelData = true;
-
-                // Initialize new data to zero
-                std::memset(m_pixelData.get(), 0, m_width * m_height * m_channels);
-
-                // Convert and copy old data
-                for (int y = 0; y < m_height; ++y)
+                auto memoryManager = Core::Application::getInstance()->getSubsystem<Core::MemoryManager>();
+                m_pixelData = memoryManager->makePixelDataUnique(m_width, m_height, m_channels);
+                if (m_pixelData)
                 {
-                    for (int x = 0; x < m_width; ++x)
+                    m_hasPixelData = true;
+
+                    // Initialize new data to zero
+                    std::memset(m_pixelData.get(), 0, static_cast<size_t>(m_width) * m_height * m_channels);
+
+                    // Convert and copy old data
+                    for (int y = 0; y < m_height; ++y)
                     {
-                        int oldIndex = (y * m_width + x) * oldChannels;
-                        int newIndex = (y * m_width + x) * m_channels;
+                        for (int x = 0; x < m_width; ++x)
+                        {
+                            int oldIndex = (y * m_width + x) * oldChannels;
+                            int newIndex = (y * m_width + x) * m_channels;
 
-                        // Extract color from old format
-                        glm::vec4 color(0.0f, 0.0f, 0.0f, 1.0f);
-                        if (oldChannels >= 1) color.r = oldData[oldIndex] / 255.0f;
-                        if (oldChannels >= 2) color.g = oldData[oldIndex + 1] / 255.0f;
-                        if (oldChannels >= 3) color.b = oldData[oldIndex + 2] / 255.0f;
-                        if (oldChannels >= 4) color.a = oldData[oldIndex + 3] / 255.0f;
+                            // Extract color from old format
+                            glm::vec4 color(0.0f, 0.0f, 0.0f, 1.0f);
+                            if (oldChannels >= 1) color.r = oldData[oldIndex] / 255.0f;
+                            if (oldChannels >= 2) color.g = oldData[oldIndex + 1] / 255.0f;
+                            if (oldChannels >= 3) color.b = oldData[oldIndex + 2] / 255.0f;
+                            if (oldChannels >= 4) color.a = oldData[oldIndex + 3] / 255.0f;
 
-                        // Store color in new format
-                        if (m_channels >= 1) m_pixelData[newIndex] = static_cast<uint8_t>(color.r * 255.0f);
-                        if (m_channels >= 2) m_pixelData[newIndex + 1] = static_cast<uint8_t>(color.g * 255.0f);
-                        if (m_channels >= 3) m_pixelData[newIndex + 2] = static_cast<uint8_t>(color.b * 255.0f);
-                        if (m_channels >= 4) m_pixelData[newIndex + 3] = static_cast<uint8_t>(color.a * 255.0f);
+                            // Store color in new format
+                            if (m_channels >= 1) m_pixelData[newIndex] = static_cast<uint8_t>(color.r * 255.0f);
+                            if (m_channels >= 2) m_pixelData[newIndex + 1] = static_cast<uint8_t>(color.g * 255.0f);
+                            if (m_channels >= 3) m_pixelData[newIndex + 2] = static_cast<uint8_t>(color.b * 255.0f);
+                            if (m_channels >= 4) m_pixelData[newIndex + 3] = static_cast<uint8_t>(color.a * 255.0f);
+                        }
                     }
-                }
 
-                // Upload the restored data to GPU
-                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_width, m_height,
-                                dataFormat, dataType, m_pixelData.get());
+                    // Upload the restored data to GPU
+                    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_width, m_height,
+                                    dataFormat, dataType, m_pixelData.get());
+                }
             }
             else if (!m_multisampleCount)
             {
-                // Create new empty pixel data
-                m_pixelData.reset(new uint8_t[m_width * m_height * m_channels]);
-                std::memset(m_pixelData.get(), 0, m_width * m_height * m_channels);
-                m_hasPixelData = true;
+                // Create new empty pixel data using MemoryManager
+                auto memoryManager = Core::Application::getInstance()->getSubsystem<Core::MemoryManager>();
+                m_pixelData = memoryManager->makePixelDataUnique(m_width, m_height, m_channels);
+                if (m_pixelData)
+                {
+                    std::memset(m_pixelData.get(), 0, static_cast<size_t>(m_width) * m_height * m_channels);
+                    m_hasPixelData = true;
+                }
             }
             else
             {
@@ -800,7 +976,7 @@ namespace PixelCraft::Rendering
         {
             if (m_multisampleCount > 0)
             {
-                Log::warn("Texture::setPixel - Cannot set pixels on multisampled textures");
+                Core::warn("Texture::setPixel - Cannot set pixels on multisampled textures");
             }
             return;
         }
@@ -824,7 +1000,7 @@ namespace PixelCraft::Rendering
         {
             if (m_multisampleCount > 0)
             {
-                Log::warn("Texture::getPixel - Cannot get pixels from multisampled textures");
+                Core::warn("Texture::getPixel - Cannot get pixels from multisampled textures");
             }
             return glm::vec4(0.0f);
         }
@@ -848,7 +1024,7 @@ namespace PixelCraft::Rendering
         {
             if (m_multisampleCount > 0)
             {
-                Log::warn("Texture::update - Cannot update multisampled textures directly");
+                Core::warn("Texture::update - Cannot update multisampled textures directly");
             }
             return;
         }
@@ -945,6 +1121,50 @@ namespace PixelCraft::Rendering
         return m_format;
     }
 
+    size_t Texture::getTotalPixelDataAllocated()
+    {
+        // Get statistics from MemoryManager
+        auto memoryManager = Core::Application::getInstance()->getSubsystem<Core::MemoryManager>();
+        auto stats = memoryManager->getAllocStats();
+        return stats.pixelDataCurrentUsage;
+    }
+
+    int Texture::getTotalTextureCount()
+    {
+        return s_textureCount.load();
+    }
+
+    void Texture::moveFrom(Texture&& other) noexcept
+    {
+        // Move all member variables
+        m_textureID = other.m_textureID;
+        m_width = other.m_width;
+        m_height = other.m_height;
+        m_format = other.m_format;
+        m_filterMode = other.m_filterMode;
+        m_wrapMode = other.m_wrapMode;
+        m_hasMipmaps = other.m_hasMipmaps;
+        m_pixelGridAligned = other.m_pixelGridAligned;
+        m_hasPixelData = other.m_hasPixelData;
+        m_pixelData = std::move(other.m_pixelData);
+        m_channels = other.m_channels;
+        m_multisampleCount = other.m_multisampleCount;
+
+        // Reset other object to safe state
+        other.m_textureID = 0;
+        other.m_width = 0;
+        other.m_height = 0;
+        other.m_format = TextureFormat::RGBA8;
+        other.m_filterMode = TextureFilterMode::Nearest;
+        other.m_wrapMode = TextureWrapMode::ClampToEdge;
+        other.m_hasMipmaps = false;
+        other.m_pixelGridAligned = true;
+        other.m_hasPixelData = false;
+        other.m_channels = 4;
+        other.m_multisampleCount = 0;
+        // m_pixelData is already moved, so it's automatically reset to nullptr
+    }
+
     bool Texture::loadFromFile(const std::string& filepath)
     {
         // Use stb_image to load the file
@@ -954,7 +1174,7 @@ namespace PixelCraft::Rendering
         unsigned char* data = stbi_load(filepath.c_str(), &width, &height, &channels, 0);
         if (!data)
         {
-            Log::error("Texture::loadFromFile - Failed to load image: " + filepath);
+            Core::error("Texture::loadFromFile - Failed to load image: " + filepath);
             return false;
         }
 
@@ -1087,7 +1307,7 @@ namespace PixelCraft::Rendering
                 dataType = GL_UNSIGNED_BYTE;
                 break;
 
-                // Float formats (16-bit)
+            // Float formats (16-bit)
             case TextureFormat::R16F:
                 internalFormat = GL_R16F;
                 dataFormat = GL_RED;
@@ -1109,7 +1329,7 @@ namespace PixelCraft::Rendering
                 dataType = GL_HALF_FLOAT;
                 break;
 
-                // Float formats (32-bit)
+            // Float formats (32-bit)
             case TextureFormat::R32F:
                 internalFormat = GL_R32F;
                 dataFormat = GL_RED;
@@ -1131,7 +1351,7 @@ namespace PixelCraft::Rendering
                 dataType = GL_FLOAT;
                 break;
 
-                // Special float formats
+            // Special float formats
             case TextureFormat::R11F_G11F_B10F:
                 internalFormat = GL_R11F_G11F_B10F;
                 dataFormat = GL_RGB;
@@ -1143,7 +1363,7 @@ namespace PixelCraft::Rendering
                 dataType = GL_UNSIGNED_INT_5_9_9_9_REV;
                 break;
 
-                // Integer formats
+            // Integer formats
             case TextureFormat::R8I:
                 internalFormat = GL_R8I;
                 dataFormat = GL_RED_INTEGER;
@@ -1185,7 +1405,7 @@ namespace PixelCraft::Rendering
                 dataType = GL_SHORT;
                 break;
 
-                // Unsigned integer formats
+            // Unsigned integer formats
             case TextureFormat::R8UI:
                 internalFormat = GL_R8UI;
                 dataFormat = GL_RED_INTEGER;
@@ -1227,14 +1447,14 @@ namespace PixelCraft::Rendering
                 dataType = GL_UNSIGNED_SHORT;
                 break;
 
-                // Special formats
+            // Special formats
             case TextureFormat::RGB10_A2:
                 internalFormat = GL_RGB10_A2;
                 dataFormat = GL_RGBA;
                 dataType = GL_UNSIGNED_INT_2_10_10_10_REV;
                 break;
 
-                // sRGB formats
+            // sRGB formats
             case TextureFormat::SRGB8:
                 internalFormat = GL_SRGB8;
                 dataFormat = GL_RGB;
@@ -1246,7 +1466,7 @@ namespace PixelCraft::Rendering
                 dataType = GL_UNSIGNED_BYTE;
                 break;
 
-                // Depth/stencil formats
+            // Depth/stencil formats
             case TextureFormat::Depth16:
                 internalFormat = GL_DEPTH_COMPONENT16;
                 dataFormat = GL_DEPTH_COMPONENT;
@@ -1273,7 +1493,7 @@ namespace PixelCraft::Rendering
                 dataType = GL_UNSIGNED_INT_24_8;
                 break;
 
-                // Compressed formats - DXT
+            // Compressed formats - DXT
             case TextureFormat::DXT1_RGB:
                 internalFormat = GL_COMPRESSED_RGB_S3TC_DXT1_EXT;
                 dataFormat = GL_RGB;
@@ -1295,7 +1515,7 @@ namespace PixelCraft::Rendering
                 dataType = GL_UNSIGNED_BYTE;
                 break;
 
-                // Compressed formats - ETC2
+            // Compressed formats - ETC2
             case TextureFormat::ETC2_RGB:
                 internalFormat = GL_COMPRESSED_RGB8_ETC2;
                 dataFormat = GL_RGB;
@@ -1307,7 +1527,7 @@ namespace PixelCraft::Rendering
                 dataType = GL_UNSIGNED_BYTE;
                 break;
 
-                // Compressed formats - ASTC
+            // Compressed formats - ASTC
             case TextureFormat::ASTC_4x4:
                 internalFormat = GL_COMPRESSED_RGBA_ASTC_4x4_KHR;
                 dataFormat = GL_RGBA;

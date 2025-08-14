@@ -3,13 +3,15 @@
 // -------------------------------------------------------------------------
 #pragma once
 
-#include "Utility/Serialization/SerializationUtility.h"
 #include "ECS/ComponentTypes.h"
+#include "Utility/Serialization/SerializationUtility.h"
+//#include "Utility/Serialization/SchemaRegistry.h"
 
 #include <vector>
 #include <unordered_map>
 #include <memory>
 #include <mutex>
+#include <queue>
 
 namespace PixelCraft::ECS
 {
@@ -107,7 +109,7 @@ namespace PixelCraft::ECS
             }
 
             // Set owner entity ID
-            m_components[index].owner = entity;
+            m_components[index].setOwner(entity);
 
             // Map entity to component index
             m_entityMap[entity] = index;
@@ -120,10 +122,10 @@ namespace PixelCraft::ECS
          * @param entity Entity ID
          * @return True if component was destroyed
          */
-        bool destroy(EntityID entity) override
+        bool destroyComponent(EntityID entity) override
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            return destroyComponent(entity);
+            return destroyComponentInternal(entity);
         }
 
         /**
@@ -310,7 +312,7 @@ namespace PixelCraft::ECS
         std::unordered_map<EntityID, size_t> m_entityMap;
         std::queue<size_t> m_freeIndices;
 
-        bool destroyComponent(EntityID entity)
+        bool destroyComponentInternal(EntityID entity)
         {
             // Assumes mutex is already locked
 

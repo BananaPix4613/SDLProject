@@ -3,6 +3,11 @@
 // -------------------------------------------------------------------------
 #pragma once
 
+#include "ECS/ComponentTypes.h"
+#include "ECS/Entity.h"
+#include "ECS/ComponentRegistry.h"
+#include "Core/Logger.h"
+
 #include <bitset>
 #include <functional>
 #include <memory>
@@ -11,20 +16,11 @@
 #include <unordered_map>
 #include <vector>
 
-#include "Core/Logger.h"
-#include "ECS/Types.h"
-#include "ECS/Entity.h"
-#include "ECS/ComponentRegistry.h"
-
-namespace Log = PixelCraft::Core;
-
 namespace PixelCraft::ECS
 {
 
     // Forward declarations
     class World;
-    class Serializer;
-    class Deserializer;
 
     /**
      * @brief Base class for all ECS systems
@@ -121,21 +117,24 @@ namespace PixelCraft::ECS
         {
             // Default implementation does nothing
             // Derived systems should override this to handle specific events
+            (void)eventName;
         }
 
         /**
-         * @brief Hook called before the world is serialized
+         * @brief Serialize the system with the attached world to the serializer
          * @param world Reference to the world being serialized
          * @param serializer Reference to the serializer
+         * @return SerializationResult with success/failure status
          */
-        virtual void preSerialize(World& world, Serializer& serializer);
+        virtual Utility::Serialization::SerializationResult serialize(World& world, Utility::Serialization::Serializer& serializer);
 
         /**
-         * @brief Hook called after the world is deserialized
+         * @brief Deserialize the system with the attached world to the deserializer
          * @param world Reference to the world that was deserialized
          * @param deserializer Reference to the deserializer
+         * @return SerializationResult with success/failure status
          */
-        virtual void postDeserialize(World& world, Deserializer& deserializer);
+        virtual Utility::Serialization::SerializationResult deserialize(World& world, Utility::Serialization::Deserializer& deserializer);
 
         /**
          * @brief Determine if this system should be serialized
@@ -198,7 +197,7 @@ namespace PixelCraft::ECS
 
         /**
          * @brief Get the type index of the system
-         * @return std::type_index represeting the system type
+         * @return std::type_index representing the system type
          */
         virtual std::type_index getTypeIndex() const = 0;
 
@@ -334,7 +333,7 @@ namespace PixelCraft::ECS
         auto world = m_world.lock();
         if (!world)
         {
-            Log::error("System::each: World reference is invalid");
+            Core::error("System::each: World reference is invalid");
             return;
         }
 
@@ -370,7 +369,7 @@ namespace PixelCraft::ECS
         // Check if already registered
         if (s_systemNames.find(typeIndex) != s_systemNames.end())
         {
-            Log::warn("SystemFactory::registerSystem: System already registered: " + name);
+            Core::warn("SystemFactory::registerSystem: System already registered: " + name);
             return false;
         }
 
@@ -384,7 +383,7 @@ namespace PixelCraft::ECS
         s_systemTypeIndices[name] = typeIndex;
         s_systemFactories[typeIndex] = createFunc;
 
-        Log::info("SystemFactory::registerSystem: Registered system: " + name);
+        Core::info("SystemFactory::registerSystem: Registered system: " + name);
         return true;
     }
 

@@ -11,8 +11,6 @@
 #include <mutex>
 #include <glm/gtc/constants.hpp>
 
-namespace Log = PixelCraft::Core;
-
 namespace PixelCraft::Utility
 {
 
@@ -54,7 +52,7 @@ namespace PixelCraft::Utility
 
         // For thread-local engine, use the base seed plus a hash of the thread ID
         // to ensure different threads get different sequences
-        tl_engine.seed(seed + std::hash<std::thread::id>{}(std::this_thread::get_id()));
+        tl_engine.seed(seed + static_cast<uint32_t>(std::hash<std::thread::id>{}(std::this_thread::get_id())));
     }
 
     void Random::seedFromTime()
@@ -407,7 +405,7 @@ namespace PixelCraft::Utility
     {
         if (sides <= 0)
         {
-            Log::error("Random::roll: Cannot roll a die with non-positive number of sides");
+            Core::error("Random::roll: Cannot roll a die with non-positive number of sides");
             return 0;
         }
         return getInt(1, sides);
@@ -417,7 +415,7 @@ namespace PixelCraft::Utility
     {
         if (count <= 0 || sides <= 0)
         {
-            Log::error("Random::rollDice: Cannot roll non-positive count or sides");
+            Core::error("Random::rollDice: Cannot roll non-positive count or sides");
             return 0;
         }
 

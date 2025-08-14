@@ -38,26 +38,27 @@ namespace PixelCraft::ECS
          * @return Component type ID
          */
         template<typename T>
-        ComponentTypeID registerComponent(const std::string& name)
+        static ComponentTypeID registerComponent(const std::string name)
         {
-            std::lock_guard<std::mutex> lock(m_mutex);
+            auto& instance = getInstance();
+            std::lock_guard<std::mutex> lock(instance.m_mutex);
 
             std::type_index typeIndex(typeid(T));
 
             // Check if already registered
-            auto it = m_typeIndices.find(typeIndex);
-            if (it != m_typeIndices.end())
+            auto it = instance.m_typeIndices.find(typeIndex);
+            if (it != instance.m_typeIndices.end())
             {
                 return it->second;
             }
 
             // Register new type
-            ComponentTypeID typeID = m_nextTypeID++;
-            m_typeIndices[typeIndex] = typeID;
-            m_typeNames[typeID] = name;
+            ComponentTypeID typeID = instance.m_nextTypeID++;
+            instance.m_typeIndices[typeIndex] = typeID;
+            instance.m_typeNames[typeID] = name;
 
             // Register creation function
-            m_poolFactories[typeID] = []() -> std::shared_ptr<IComponentPool> {
+            instance.m_poolFactories[typeID] = []() -> std::shared_ptr<IComponentPool> {
                 return std::make_shared<ComponentPool<T>>();
                 };
 

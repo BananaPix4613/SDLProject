@@ -201,7 +201,7 @@ namespace PixelCraft::Voxel
         int m_compressionLevel;
 
         // Pending writes tracking
-        std::unordered_map<ChunkCoord, bool> m_pendingWrites;
+        std::unordered_map<ChunkCoord, bool, ChunkCoordHash> m_pendingWrites;
         mutable std::mutex m_pendingWritesMutex;
 
         // Metadata cache
@@ -210,7 +210,7 @@ namespace PixelCraft::Voxel
             int64_t lastModified;
             size_t size;
         };
-        mutable std::unordered_map<ChunkCoord, ChunkMetadata> m_metadataCache;
+        mutable std::unordered_map<ChunkCoord, ChunkMetadata, ChunkCoordHash> m_metadataCache;
         mutable std::mutex m_metadataCacheMutex;
         size_t m_metadataCacheSize;
 

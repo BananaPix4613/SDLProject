@@ -5,14 +5,12 @@
 
 #include "ECS/Component.h"
 #include "ECS/ComponentRegistry.h"
-#include "Rendering/Camera/Camera.h"
-//#include "Utility/Serialization/SerializationUtility.h"
+#include "Rendering/Cameras/Camera.h"
+#include "Utility/Serialization/SerializationUtility.h"
 
 #include <memory>
 #include <string>
 #include <glm/glm.hpp>
-
-namespace Camera = PixelCraft::Rendering::Camera;
 
 namespace PixelCraft::ECS
 {
@@ -150,13 +148,13 @@ namespace PixelCraft::ECS
          * @brief Get the internal camera object
          * @return Reference to the camera
          */
-        Camera::Camera& getCamera();
+        Rendering::Cameras::Camera& getCamera();
 
         /**
          * @brief Get the internal camera object (const version)
          * @return Const reference to the camera
          */
-        const Camera::Camera& getCamera() const;
+        const Rendering::Cameras::Camera& getCamera() const;
 
         /**
          * @brief Set this camera as the main camera
@@ -181,10 +179,10 @@ namespace PixelCraft::ECS
             result = serializer.beginObject("CameraComponent");
             if (!result) return result;
 
-            result = serializer.writeField("camera", m_camera);
+            result = m_camera->serialize(serializer);
             if (!result) return result;
 
-            result = serializer.writeField("cameraType", m_cameraType);
+            result = serializer.writeField("cameraType", static_cast<uint64_t>(m_cameraType));
             if (!result) return result;
 
             result = serializer.writeField("fov", m_fov);
@@ -218,11 +216,13 @@ namespace PixelCraft::ECS
             result = deserializer.beginObject("CameraComponent");
             if (!result) return result;
 
-            result = deserializer.readField("camera", m_camera);
+            result = m_camera->deserialize(deserializer);
             if (!result) return result;
 
-            result = deserializer.readField("cameraType", m_cameraType);
+            uint64_t tempCameraType;
+            result = deserializer.readField("cameraType", tempCameraType);
             if (!result) return result;
+            m_cameraType = static_cast<CameraType>(tempCameraType);
 
             result = deserializer.readField("fov", m_fov);
             if (!result) return result;
@@ -252,7 +252,7 @@ namespace PixelCraft::ECS
 
             // Add camera-specific fields
             schema.addField("camera", Utility::Serialization::ValueType::Object);
-            schema.addField("cameraType", Utility::Serialization::ValueType::Object);
+            schema.addField("cameraType", Utility::Serialization::ValueType::UInt64);
             schema.addField("fov", Utility::Serialization::ValueType::Float);
             schema.addField("orthoSize", Utility::Serialization::ValueType::Float);
             schema.addField("nearPlane", Utility::Serialization::ValueType::Float);
@@ -260,14 +260,6 @@ namespace PixelCraft::ECS
             schema.addField("aspectRatio", Utility::Serialization::ValueType::Float);
             schema.addField("isMain", Utility::Serialization::ValueType::Bool);
         }
-
-        static std::string getTypeName()
-        {
-            return "CameraComponent";
-        }
-
-        // Type identification implementation
-        DEFINE_COMPONENT_TYPE(CameraComponent, 2)
 
     private:
         /**
@@ -280,7 +272,7 @@ namespace PixelCraft::ECS
          */
         void updateMainCameraReference();
 
-        std::shared_ptr<Camera::Camera> m_camera;              ///< Internal camera object
+        std::shared_ptr<Rendering::Cameras::Camera> m_camera;  ///< Internal camera object
         CameraType m_cameraType;                               ///< Camera type (perspective/orthographic)
         float m_fov;                                           ///< Field of view (for perspective)
         float m_orthoSize;                                     ///< Orthographic size (for orthographic)

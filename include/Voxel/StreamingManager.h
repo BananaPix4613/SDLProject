@@ -8,6 +8,7 @@
 #include "Voxel/ChunkManager.h"
 #include "Voxel/Chunk.h"
 #include "Voxel/ChunkMesh.h"
+#include "Voxel/ChunkCoord.h"
 #include "Core/ResourceManager.h"
 #include "glm/glm.hpp"
 
@@ -23,9 +24,6 @@
 
 namespace PixelCraft::Voxel
 {
-
-    // Forward declarations
-    struct ChunkCoord;
 
     /**
      * @brief Priority-based streaming system for dynamic chunk loading
@@ -407,7 +405,7 @@ namespace PixelCraft::Voxel
 
         // Task management
         std::priority_queue<StreamingTask> m_taskQueue;
-        std::unordered_map<ChunkCoord, std::vector<StreamingTask*>> m_pendingTasksByChunk;
+        std::unordered_map<ChunkCoord, std::vector<StreamingTask*>, ChunkCoordHash> m_pendingTasksByChunk;
         std::vector<StreamingTask> m_activeTasks;
         mutable std::mutex m_taskMutex;
 

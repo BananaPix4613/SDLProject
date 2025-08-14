@@ -2,30 +2,28 @@
 // ProceduralGenerationSystem.cpp
 // -------------------------------------------------------------------------
 #include "Voxel/ProceduralGenerationSystem.h"
-#include "Voxel/NoiseGenerator.h"
-#include "Voxel/GenerationParameters.h"
-#include "Voxel/FeaturePlacement.h"
-#include "Voxel/DistributionControl.h"
-#include "Voxel/BiomeManager.h"
-#include "Voxel/Voxel.h"
 #include "Core/Application.h"
 #include "Core/Logger.h"
 #include "Utility/FileSystem.h"
-#include "Utility/Random.h"
 #include "Utility/Math.h"
-#include "ECS/Serializer.h"
-#include "ECS/Deserializer.h"
-#include <glm/gtx/norm.hpp>
-#include <Voxel/ChunkManager.h>
+#include "Utility/Random.h"
+#include "Utility/Serialization/SerializationUtility.h"
+#include "Voxel/BiomeManager.h"
+#include "Voxel/ChunkManager.h"
+#include "Voxel/DistributionControl.h"
+#include "Voxel/FeaturePlacement.h"
+#include "Voxel/GenerationParameters.h"
+#include "Voxel/NoiseGenerator.h"
+#include "Voxel/Voxel.h"
 
-namespace Log = PixelCraft::Core;
+#include <glm/gtx/norm.hpp>
 
 namespace PixelCraft::Voxel
 {
 
-    ProceduralGenerationSystem::ProceduralGenerationSystem() : m_shutdownThread(false)
+    ProceduralGenerationSystem::ProceduralGenerationSystem()
+        : m_shutdownThread(false)
     {
-        // Constructor implementation
     }
 
     ProceduralGenerationSystem::~ProceduralGenerationSystem()
@@ -40,11 +38,11 @@ namespace PixelCraft::Voxel
     {
         if (m_initialized)
         {
-            Log::warn("ProceduralGenerationSystem already initialized");
+            Core::warn("ProceduralGenerationSystem already initialized");
             return true;
         }
 
-        Log::info("Initializing ProceduralGenerationSystem subsystem");
+        Core::info("Initializing ProceduralGenerationSystem subsystem");
 
         // Create biome manager
         m_biomeManager = std::make_shared<BiomeManager>();
@@ -53,7 +51,7 @@ namespace PixelCraft::Voxel
         auto defaultNoise = createNoiseGenerator("default");
         if (!defaultNoise)
         {
-            Log::error("Failed to create default noise generator");
+            Core::error("Failed to create default noise generator");
             return false;
         }
 
@@ -75,7 +73,7 @@ namespace PixelCraft::Voxel
         auto defaultPlacement = createFeaturePlacement("default");
         if (!defaultPlacement)
         {
-            Log::error("Failed to create default feature placement");
+            Core::error("Failed to create default feature placement");
             return false;
         }
 
@@ -83,7 +81,7 @@ namespace PixelCraft::Voxel
         auto defaultDistribution = createDistributionControl("default");
         if (!defaultDistribution)
         {
-            Log::error("Failed to create default distribution control");
+            Core::error("Failed to create default distribution control");
             return false;
         }
 
@@ -91,14 +89,14 @@ namespace PixelCraft::Voxel
         auto defaultParams = createParameters("default");
         if (!defaultParams)
         {
-            Log::error("Failed to create default generation parameters");
+            Core::error("Failed to create default generation parameters");
             return false;
         }
 
         // Set active parameters
         if (!setActiveParameters("default"))
         {
-            Log::error("Failed to set active parameters");
+            Core::error("Failed to set active parameters");
             return false;
         }
 
@@ -114,6 +112,8 @@ namespace PixelCraft::Voxel
 
     void ProceduralGenerationSystem::update(float deltaTime)
     {
+        (void)deltaTime;  // Currently unused
+
         if (!m_initialized)
         {
             return;
@@ -139,7 +139,7 @@ namespace PixelCraft::Voxel
             return;
         }
 
-        Log::info("Shutting down ProceduralGenerationSystem subsystem");
+        Core::info("Shutting down ProceduralGenerationSystem subsystem");
 
         // Signal generation thread to stop
         m_shutdownThread = true;
@@ -176,10 +176,10 @@ namespace PixelCraft::Voxel
 
     std::vector<std::string> ProceduralGenerationSystem::getDependencies() const
     {
-        return {"ChunkManager"};
+        return {"MemoryManager", "ChunkManager"};
     }
 
-    bool ProceduralGenerationSystem::generateChunk(const ChunkCoord& coord, Chunk& chunk, const std::string& parametersId)
+    bool ProceduralGenerationSystem::generateChunk(const ChunkCoord &coord, Chunk &chunk, const std::string &parametersId)
     {
         if (!m_initialized || m_paused)
         {
@@ -192,35 +192,36 @@ namespace PixelCraft::Voxel
         // Check if context is valid
         if (!context.parameters)
         {
-            Log::error("Invalid generation parameters for chunk " + coord.toString());
+            Core::error("Invalid generation parameters for chunk " + coord.toString());
             return false;
         }
 
         // Generate terrain
         if (!generateTerrainForChunk(context, chunk))
         {
-            Log::error("Failed to generate terrain for chunk " + coord.toString());
+            Core::error("Failed to generate terrain for chunk " + coord.toString());
             return false;
         }
 
         // Generate biomes
         if (!generateBiomesForChunk(context, chunk))
         {
-            Log::error("Failed to generate biomes for chunk " + coord.toString());
+            Core::error("Failed to generate biomes for chunk " + coord.toString());
             // Continue anyway
         }
 
         // Generate features
         if (!generateFeaturesForChunk(context, chunk))
         {
-            Log::error("Failed to generate features for chunk " + coord.toString());
+            Core::error("Failed to generate features for chunk " + coord.toString());
             // Continue anyway
         }
 
         return true;
     }
 
-    int ProceduralGenerationSystem::generateRegion(const ChunkCoord& min, const ChunkCoord& max, Grid& grid, const std::string& parametersId)
+    int ProceduralGenerationSystem::generateRegion(const ChunkCoord &min, const ChunkCoord &max, std::shared_ptr<Grid> grid,
+                                                const std::string &parametersId)
     {
         if (!m_initialized || m_paused)
         {
@@ -239,15 +240,15 @@ namespace PixelCraft::Voxel
                     ChunkCoord coord(x, y, z);
 
                     // Get or create the chunk
-                    auto chunk = grid.getChunk(coord);
+                    auto chunk = grid->getChunk(coord);
                     if (!chunk)
                     {
-                        chunk = grid.createChunk(coord);
+                        chunk = grid->createChunk(coord);
                     }
 
                     if (!chunk)
                     {
-                        Log::error("Failed to create chunk at " + coord.toString());
+                        Core::error("Failed to create chunk at " + coord.toString());
                         continue;
                     }
 
@@ -266,17 +267,18 @@ namespace PixelCraft::Voxel
         return generatedCount;
     }
 
-    int ProceduralGenerationSystem::generateAroundPoint(const glm::vec3& center, float radius, Grid& grid, const std::string& parametersId)
+    int ProceduralGenerationSystem::generateAroundPoint(const glm::vec3 &center, float radius, std::shared_ptr<Grid> grid,
+                                                        const std::string &parametersId)
     {
         if (!m_initialized || m_paused)
         {
             return 0;
         }
 
-        int chunkSize = grid.getChunkSize();
+        int chunkSize = grid->getChunkSize();
         if (chunkSize <= 0)
         {
-            Log::error("Invalid chunk size");
+            Core::error("Invalid chunk size");
             return 0;
         }
 
@@ -284,17 +286,9 @@ namespace PixelCraft::Voxel
         ChunkCoord centerChunk = ChunkCoord::fromWorldPosition(center, chunkSize);
         int chunkRadius = static_cast<int>(std::ceil(radius / chunkSize)) + 1;
 
-        ChunkCoord min(
-            centerChunk.x - chunkRadius,
-            centerChunk.y - chunkRadius,
-            centerChunk.z - chunkRadius
-        );
+        ChunkCoord min(centerChunk.x - chunkRadius, centerChunk.y - chunkRadius, centerChunk.z - chunkRadius);
 
-        ChunkCoord max(
-            centerChunk.x + chunkRadius,
-            centerChunk.y + chunkRadius,
-            centerChunk.z + chunkRadius
-        );
+        ChunkCoord max(centerChunk.x + chunkRadius, centerChunk.y + chunkRadius, centerChunk.z + chunkRadius);
 
         int generatedCount = 0;
 
@@ -318,15 +312,15 @@ namespace PixelCraft::Voxel
                     }
 
                     // Get or create the chunk
-                    auto chunk = grid.getChunk(coord);
+                    auto chunk = grid->getChunk(coord);
                     if (!chunk)
                     {
-                        chunk = grid.createChunk(coord);
+                        chunk = grid->createChunk(coord);
                     }
 
                     if (!chunk)
                     {
-                        Log::error("Failed to create chunk at " + coord.toString());
+                        Core::error("Failed to create chunk at " + coord.toString());
                         continue;
                     }
 
@@ -345,11 +339,11 @@ namespace PixelCraft::Voxel
         return generatedCount;
     }
 
-    std::shared_ptr<GenerationParameters> ProceduralGenerationSystem::createParameters(const std::string& id)
+    std::shared_ptr<GenerationParameters> ProceduralGenerationSystem::createParameters(const std::string &id)
     {
         if (id.empty())
         {
-            Log::error("Parameter ID cannot be empty");
+            Core::error("Parameter ID cannot be empty");
             return nullptr;
         }
 
@@ -357,7 +351,7 @@ namespace PixelCraft::Voxel
         auto it = m_parameters.find(id);
         if (it != m_parameters.end())
         {
-            Log::warn("Generation parameters '" + id + "' already exist");
+            Core::warn("Generation parameters '" + id + "' already exist");
             return it->second;
         }
 
@@ -372,7 +366,7 @@ namespace PixelCraft::Voxel
         return params;
     }
 
-    std::shared_ptr<GenerationParameters> ProceduralGenerationSystem::getParameters(const std::string& id) const
+    std::shared_ptr<GenerationParameters> ProceduralGenerationSystem::getParameters(const std::string &id) const
     {
         auto it = m_parameters.find(id);
         if (it != m_parameters.end())
@@ -382,12 +376,12 @@ namespace PixelCraft::Voxel
         return nullptr;
     }
 
-    bool ProceduralGenerationSystem::setActiveParameters(const std::string& id)
+    bool ProceduralGenerationSystem::setActiveParameters(const std::string &id)
     {
         auto params = getParameters(id);
         if (!params)
         {
-            Log::error("Generation parameters '" + id + "' not found");
+            Core::error("Generation parameters '" + id + "' not found");
             return false;
         }
 
@@ -400,11 +394,11 @@ namespace PixelCraft::Voxel
         return getParameters(m_activeParametersId);
     }
 
-    std::shared_ptr<NoiseGenerator> ProceduralGenerationSystem::createNoiseGenerator(const std::string& id)
+    std::shared_ptr<NoiseGenerator> ProceduralGenerationSystem::createNoiseGenerator(const std::string &id)
     {
         if (id.empty())
         {
-            Log::error("Noise generator ID cannot be empty");
+            Core::error("Noise generator ID cannot be empty");
             return nullptr;
         }
 
@@ -412,7 +406,7 @@ namespace PixelCraft::Voxel
         auto it = m_noiseGenerators.find(id);
         if (it != m_noiseGenerators.end())
         {
-            Log::warn("Noise generator '" + id + "' already exists");
+            Core::warn("Noise generator '" + id + "' already exists");
             return it->second;
         }
 
@@ -423,7 +417,7 @@ namespace PixelCraft::Voxel
         return generator;
     }
 
-    std::shared_ptr<NoiseGenerator> ProceduralGenerationSystem::getNoiseGenerator(const std::string& id) const
+    std::shared_ptr<NoiseGenerator> ProceduralGenerationSystem::getNoiseGenerator(const std::string &id) const
     {
         auto it = m_noiseGenerators.find(id);
         if (it != m_noiseGenerators.end())
@@ -433,11 +427,11 @@ namespace PixelCraft::Voxel
         return nullptr;
     }
 
-    std::shared_ptr<FeaturePlacement> ProceduralGenerationSystem::createFeaturePlacement(const std::string& id)
+    std::shared_ptr<FeaturePlacement> ProceduralGenerationSystem::createFeaturePlacement(const std::string &id)
     {
         if (id.empty())
         {
-            Log::error("Feature placement ID cannot be empty");
+            Core::error("Feature placement ID cannot be empty");
             return nullptr;
         }
 
@@ -445,7 +439,7 @@ namespace PixelCraft::Voxel
         auto it = m_featurePlacements.find(id);
         if (it != m_featurePlacements.end())
         {
-            Log::warn("Feature placement '" + id + "' already exists");
+            Core::warn("Feature placement '" + id + "' already exists");
             return it->second;
         }
 
@@ -456,7 +450,7 @@ namespace PixelCraft::Voxel
         return placement;
     }
 
-    std::shared_ptr<FeaturePlacement> ProceduralGenerationSystem::getFeaturePlacement(const std::string& id) const
+    std::shared_ptr<FeaturePlacement> ProceduralGenerationSystem::getFeaturePlacement(const std::string &id) const
     {
         auto it = m_featurePlacements.find(id);
         if (it != m_featurePlacements.end())
@@ -466,11 +460,11 @@ namespace PixelCraft::Voxel
         return nullptr;
     }
 
-    std::shared_ptr<DistributionControl> ProceduralGenerationSystem::createDistributionControl(const std::string& id)
+    std::shared_ptr<DistributionControl> ProceduralGenerationSystem::createDistributionControl(const std::string &id)
     {
         if (id.empty())
         {
-            Log::error("Distribution control ID cannot be empty");
+            Core::error("Distribution control ID cannot be empty");
             return nullptr;
         }
 
@@ -478,7 +472,7 @@ namespace PixelCraft::Voxel
         auto it = m_distributionControls.find(id);
         if (it != m_distributionControls.end())
         {
-            Log::warn("Distribution control '" + id + "' already exists");
+            Core::warn("Distribution control '" + id + "' already exists");
             return it->second;
         }
 
@@ -489,7 +483,7 @@ namespace PixelCraft::Voxel
         return control;
     }
 
-    std::shared_ptr<DistributionControl> ProceduralGenerationSystem::getDistributionControl(const std::string& id) const
+    std::shared_ptr<DistributionControl> ProceduralGenerationSystem::getDistributionControl(const std::string &id) const
     {
         auto it = m_distributionControls.find(id);
         if (it != m_distributionControls.end())
@@ -499,11 +493,12 @@ namespace PixelCraft::Voxel
         return nullptr;
     }
 
-    std::shared_ptr<GenerationParameters> ProceduralGenerationSystem::loadParameters(const std::string& path, const std::string& id)
+    std::shared_ptr<GenerationParameters> ProceduralGenerationSystem::loadParameters(const std::string &path,
+                                                                                    const std::string &id)
     {
         if (path.empty() || id.empty())
         {
-            Log::error("Path or ID cannot be empty");
+            Core::error("Path or ID cannot be empty");
             return nullptr;
         }
 
@@ -517,8 +512,8 @@ namespace PixelCraft::Voxel
         // Ensure file exists
         if (!Utility::FileSystem::fileExists(path))
         {
-            Log::debug("Chunk file does not exist: " + path);
-            return false;
+            Core::debug("Chunk file does not exist: " + path);
+            return nullptr;
         }
 
         // Load from file
@@ -528,32 +523,33 @@ namespace PixelCraft::Voxel
             std::ifstream file(path, std::ios::binary);
             if (!file.is_open())
             {
-                Log::error("Failed to open chunk file for reading: " + path);
-                return false;
+                Core::error("Failed to open chunk file for reading: " + path);
+                return nullptr;
             }
 
-            // Create a deserializer
-            ECS::Deserializer deserializer(file);
+            auto result = Utility::Serialization::SerializationUtility::deserializeFromFile(*params, path);
+            if (!result)
+            {
+                Core::error("Failed to deserialize generation parameters");
+                return nullptr;
+            }
 
-            // Deserialize the params
-            params->deserialize(deserializer);
-
-            Log::info("Loaded generation parameters from " + path);
+            Core::info("Loaded generation parameters from " + path);
             return params;
         }
-        catch (const std::exception& e)
+        catch (const std::exception &e)
         {
-            Log::error("Failed to load parameters from " + path + ": " + e.what());
+            Core::error("Failed to load parameters from " + path + ": " + e.what());
             m_parameters.erase(id);
             return nullptr;
         }
     }
 
-    bool ProceduralGenerationSystem::saveParameters(const std::string& id, const std::string& path)
+    bool ProceduralGenerationSystem::saveParameters(const std::string &id, const std::string &path)
     {
         if (path.empty() || id.empty())
         {
-            Log::error("Path or ID cannot be empty");
+            Core::error("Path or ID cannot be empty");
             return false;
         }
 
@@ -561,33 +557,34 @@ namespace PixelCraft::Voxel
         auto params = getParameters(id);
         if (!params)
         {
-            Log::error("Generation parameters '" + id + "' not found");
+            Core::error("Generation parameters '" + id + "' not found");
             return false;
         }
 
         // Save to file
         try
         {
-            // Open the file
+            // Open file for writing
             std::ofstream file(path, std::ios::binary);
             if (!file.is_open())
             {
-                Log::error("Failed to open file for chunk serialization: " + path);
+                Core::error("Failed to open chunk file for writing: " + path);
                 return false;
             }
 
-            // Create a serializer
-            ECS::Serializer serializer(file);
+            auto result = Utility::Serialization::SerializationUtility::serializeToFile(*params, path);
+            if (!result)
+            {
+                Core::error("Failed to serialize generation parameters");
+                return false;
+            }
 
-            // Serialize the params
-            params->serialize(serializer);
-
-            Log::info("Saved generation parameters to " + path);
+            Core::info("Saved generation parameters to " + path);
             return true;
         }
-        catch (const std::exception& e)
+        catch (const std::exception &e)
         {
-            Log::error("Failed to save parameters to " + path + ": " + e.what());
+            Core::error("Failed to save parameters to " + path + ": " + e.what());
             return false;
         }
     }
@@ -607,35 +604,45 @@ namespace PixelCraft::Voxel
         m_seed = seed;
 
         // Update seeds in all systems
-        for (auto& [id, generator] : m_noiseGenerators)
+        for (auto &[id, generator] : m_noiseGenerators)
         {
-            generator->setSeed(seed + std::hash<std::string>{}(id));
+            generator->setSeed(seed + static_cast<uint32_t>(std::hash<std::string>{}(id)));
         }
 
-        for (auto& [id, placement] : m_featurePlacements)
+        for (auto &[id, placement] : m_featurePlacements)
         {
-            placement->setSeed(seed + std::hash<std::string>{}(id));
+            placement->setSeed(seed + static_cast<uint32_t>(std::hash<std::string>{}(id)));
         }
 
-        for (auto& [id, control] : m_distributionControls)
+        for (auto &[id, control] : m_distributionControls)
         {
-            control->setSeed(seed + std::hash<std::string>{}(id));
+            control->setSeed(seed + static_cast<uint32_t>(std::hash<std::string>{}(id)));
         }
     }
 
-    bool ProceduralGenerationSystem::registerFeatureGenerator(const std::string& name,
-                                                              std::function<bool(const GenerationContext&, Chunk&)> generator)
+    void ProceduralGenerationSystem::setGrid(std::shared_ptr<Grid> grid)
+    {
+        m_grid = grid;
+    }
+
+    std::shared_ptr<Grid> ProceduralGenerationSystem::getGrid() const
+    {
+        return m_grid;
+    }
+
+    bool ProceduralGenerationSystem::registerFeatureGenerator(
+        const std::string &name, std::function<bool(const GenerationContext &, Chunk &)> generator)
     {
         if (name.empty() || !generator)
         {
-            Log::error("Feature generator name or function cannot be empty");
+            Core::error("Feature generator name or function cannot be empty");
             return false;
         }
 
         // Check if already registered
         if (m_featureGenerators.find(name) != m_featureGenerators.end())
         {
-            Log::warn("Feature generator '" + name + "' already registered");
+            Core::warn("Feature generator '" + name + "' already registered");
             return false;
         }
 
@@ -643,7 +650,8 @@ namespace PixelCraft::Voxel
         return true;
     }
 
-    std::function<bool(const GenerationContext&, Chunk&)> ProceduralGenerationSystem::getFeatureGenerator(const std::string& name) const
+    std::function<bool(const GenerationContext &, Chunk &)>
+    ProceduralGenerationSystem::getFeatureGenerator(const std::string &name) const
     {
         auto it = m_featureGenerators.find(name);
         if (it != m_featureGenerators.end())
@@ -653,7 +661,7 @@ namespace PixelCraft::Voxel
         return nullptr;
     }
 
-    int ProceduralGenerationSystem::preGenerateChunks(const ChunkCoord& min, const ChunkCoord& max, int priority)
+    int ProceduralGenerationSystem::preGenerateChunks(const ChunkCoord &min, const ChunkCoord &max, int priority)
     {
         std::lock_guard<std::mutex> lock(m_taskMutex);
 
@@ -676,10 +684,9 @@ namespace PixelCraft::Voxel
     {
         std::lock_guard<std::mutex> lock(m_taskMutex);
 
-        for (const auto& task : m_generationTasks)
+        for (const auto &task : m_generationTasks)
         {
-            if (task.id == taskId)
-            {
+            if (task.id == taskId) {
                 return task.complete;
             }
         }
@@ -692,7 +699,7 @@ namespace PixelCraft::Voxel
     {
         std::lock_guard<std::mutex> lock(m_taskMutex);
 
-        for (auto& task : m_generationTasks)
+        for (auto &task : m_generationTasks)
         {
             if (task.id == taskId && !task.complete)
             {
@@ -714,7 +721,7 @@ namespace PixelCraft::Voxel
         return m_paused;
     }
 
-    GenerationContext ProceduralGenerationSystem::createContext(const ChunkCoord& coord, const std::string& parametersId)
+    GenerationContext ProceduralGenerationSystem::createContext(const ChunkCoord &coord, const std::string &parametersId)
     {
         GenerationContext context;
         context.chunkCoord = coord;
@@ -728,7 +735,7 @@ namespace PixelCraft::Voxel
 
         if (!context.parameters)
         {
-            Log::error("Parameters not found: " + paramsId);
+            Core::error("Parameters not found: " + paramsId);
             return context;
         }
 
@@ -738,7 +745,7 @@ namespace PixelCraft::Voxel
 
         if (!context.noiseGenerator)
         {
-            Log::warn("Noise generator not found: " + noiseId + ", using default");
+            Core::warn("Noise generator not found: " + noiseId + ", using default");
             context.noiseGenerator = getNoiseGenerator("default");
         }
 
@@ -752,7 +759,7 @@ namespace PixelCraft::Voxel
 
         if (!context.featurePlacement)
         {
-            Log::warn("Feature placement not found: " + placementId + ", using default");
+            Core::warn("Feature placement not found: " + placementId + ", using default");
             context.featurePlacement = getFeaturePlacement("default");
         }
 
@@ -766,7 +773,7 @@ namespace PixelCraft::Voxel
 
         if (!context.distributionControl)
         {
-            Log::warn("Distribution control not found: " + distributionId + ", using default");
+            Core::warn("Distribution control not found: " + distributionId + ", using default");
             context.distributionControl = getDistributionControl("default");
         }
 
@@ -776,7 +783,7 @@ namespace PixelCraft::Voxel
         return context;
     }
 
-    bool ProceduralGenerationSystem::generateTerrainForChunk(const GenerationContext& context, Chunk& chunk)
+    bool ProceduralGenerationSystem::generateTerrainForChunk(const GenerationContext &context, Chunk &chunk)
     {
         if (!context.parameters || !context.noiseGenerator)
         {
@@ -817,7 +824,7 @@ namespace PixelCraft::Voxel
         // Generate terrain based on mode
         switch (terrainMode)
         {
-            case GenerationParameters::TerrainMode::Flat:
+        case GenerationParameters::TerrainMode::Flat:
             {
                 // Flat terrain at a fixed height
                 float flatHeight = minHeight + heightRange * 0.5f; // Middle of range
@@ -864,7 +871,7 @@ namespace PixelCraft::Voxel
                 break;
             }
 
-            case GenerationParameters::TerrainMode::HeightMap:
+        case GenerationParameters::TerrainMode::HeightMap:
             {
                 // Height map based terrain
                 for (int x = 0; x < chunkSize; x++)
@@ -925,7 +932,7 @@ namespace PixelCraft::Voxel
                 break;
             }
 
-            case GenerationParameters::TerrainMode::Volumetric:
+        case GenerationParameters::TerrainMode::Volumetric:
             {
                 // Full 3D volumetric terrain with caves
                 for (int x = 0; x < chunkSize; x++)
@@ -987,7 +994,7 @@ namespace PixelCraft::Voxel
                 break;
             }
 
-            case GenerationParameters::TerrainMode::Islands:
+        case GenerationParameters::TerrainMode::Islands:
             {
                 // Floating islands
                 for (int x = 0; x < chunkSize; x++)
@@ -1002,7 +1009,8 @@ namespace PixelCraft::Voxel
                             float worldZ = chunkWorldPos.z + z;
 
                             // Get 3D noise for islands
-                            float islandNoise = context.noiseGenerator->generate(worldX * 0.05f, worldY * 0.05f, worldZ * 0.05f);
+                            float islandNoise =
+                                context.noiseGenerator->generate(worldX * 0.05f, worldY * 0.05f, worldZ * 0.05f);
 
                             // Create floating island effect
                             float heightFactor = std::abs(worldY - (minHeight + heightRange * 0.5f)) / (heightRange * 0.5f);
@@ -1036,7 +1044,7 @@ namespace PixelCraft::Voxel
                 break;
             }
 
-            case GenerationParameters::TerrainMode::Mountains:
+        case GenerationParameters::TerrainMode::Mountains:
             {
                 // Mountainous terrain
                 for (int x = 0; x < chunkSize; x++)
@@ -1053,7 +1061,7 @@ namespace PixelCraft::Voxel
 
                         // Adjust for more dramatic mountains
                         float mountainFactor = (baseNoise + 1.0f) * 0.5f; // [0, 1]
-                        mountainFactor = std::pow(mountainFactor, 3.0f); // Steeper mountains
+                        mountainFactor = std::pow(mountainFactor, 3.0f);  // Steeper mountains
 
                         float terrainHeight = minHeight + (mountainFactor + detailNoise) * heightRange;
 
@@ -1111,10 +1119,10 @@ namespace PixelCraft::Voxel
                 break;
             }
 
-            default:
+        default:
             {
                 // Default to height map if not implemented
-                Log::warn("Unsupported terrain mode, falling back to height map");
+                Core::warn("Unsupported terrain mode, falling back to height map");
                 return generateTerrainForChunk(context, chunk);
             }
         }
@@ -1122,7 +1130,7 @@ namespace PixelCraft::Voxel
         return true;
     }
 
-    bool ProceduralGenerationSystem::generateFeaturesForChunk(const GenerationContext& context, Chunk& chunk)
+    bool ProceduralGenerationSystem::generateFeaturesForChunk(const GenerationContext &context, Chunk &chunk)
     {
         if (!context.parameters || !context.featurePlacement || !context.distributionControl)
         {
@@ -1137,20 +1145,14 @@ namespace PixelCraft::Voxel
             return true;
         }
 
-        // Create a grid reference for feature placement constraints
-        // This would be obtained from the application in a real implementation
-        Grid* grid = nullptr;
-        auto app = Core::Application::getInstance();
-        grid = app->getSubsystem<ChunkManager>()->getGrid();
-
-        if (!grid)
+        if (!m_grid)
         {
-            Log::warn("No grid available for feature placement");
+            Core::warn("No grid available for feature placement");
             return false;
         }
 
         // For each feature type
-        for (const auto& featureType : featureTypes)
+        for (const auto &featureType : featureTypes)
         {
             // Check if feature type is enabled
             if (!context.parameters->isFeatureTypeEnabled(featureType))
@@ -1166,11 +1168,11 @@ namespace PixelCraft::Voxel
             maxCount = std::max(1, maxCount); // At least 1
 
             // Find valid placements
-            std::vector<glm::vec3> placements = context.featurePlacement->findPlacementsInChunk(
-                context.chunkCoord, featureType, maxCount, context, *grid);
+            std::vector<glm::vec3> placements =
+                context.featurePlacement->findPlacementsInChunk(context.chunkCoord, featureType, maxCount, context, m_grid);
 
             // Generate features at valid positions
-            for (const auto& pos : placements)
+            for (const auto &pos : placements)
             {
                 context.featurePlacement->placeFeature(pos, featureType, context, chunk);
             }
@@ -1179,7 +1181,7 @@ namespace PixelCraft::Voxel
         return true;
     }
 
-    bool ProceduralGenerationSystem::generateBiomesForChunk(const GenerationContext& context, Chunk& chunk)
+    bool ProceduralGenerationSystem::generateBiomesForChunk(const GenerationContext &context, Chunk &chunk)
     {
         if (!context.parameters || !context.biomeManager)
         {
@@ -1215,11 +1217,13 @@ namespace PixelCraft::Voxel
 
                 // Find the highest priority task
                 auto it = std::min_element(m_generationTasks.begin(), m_generationTasks.end(),
-                                           [](const GenerationTask& a, const GenerationTask& b) {
-                                               if (a.complete || a.canceled) return false;
-                                               if (b.complete || b.canceled) return true;
-                                               return a.priority < b.priority;
-                                           });
+                                        [](const GenerationTask &a, const GenerationTask &b) {
+                                            if (a.complete || a.canceled)
+                                                return false;
+                                            if (b.complete || b.canceled)
+                                                return true;
+                                            return a.priority < b.priority;
+                                        });
 
                 if (it == m_generationTasks.end() || it->complete || it->canceled)
                 {
@@ -1230,17 +1234,13 @@ namespace PixelCraft::Voxel
             }
 
             // Process the task
-            Grid* grid = nullptr;
-            auto app = Core::Application::getInstance();
-            grid = app->getSubsystem<ChunkManager>()->getGrid();
-
-            if (!grid)
+            if (!m_grid)
             {
-                Log::error("No grid available for pre-generation");
+                Core::error("No grid available for pre-generation");
 
                 // Mark task as complete
                 std::lock_guard<std::mutex> lock(m_taskMutex);
-                for (auto& task : m_generationTasks)
+                for (auto &task : m_generationTasks)
                 {
                     if (task.id == currentTask.id)
                     {
@@ -1253,12 +1253,12 @@ namespace PixelCraft::Voxel
             }
 
             // Generate chunks in the region
-            generateRegion(currentTask.min, currentTask.max, *grid, currentTask.parametersId);
+            generateRegion(currentTask.min, currentTask.max, m_grid, currentTask.parametersId);
 
             // Mark task as complete
             {
                 std::lock_guard<std::mutex> lock(m_taskMutex);
-                for (auto& task : m_generationTasks)
+                for (auto &task : m_generationTasks)
                 {
                     if (task.id == currentTask.id)
                     {
@@ -1270,21 +1270,16 @@ namespace PixelCraft::Voxel
         }
     }
 
-    void ProceduralGenerationSystem::updateNeighborChunks(const ChunkCoord& coord, Grid& grid)
+    void ProceduralGenerationSystem::updateNeighborChunks(const ChunkCoord &coord, std::shared_ptr<Grid> grid)
     {
         // Check all 6 neighbors and update them if needed
-        ChunkCoord neighbors[6] = {
-            ChunkCoord(coord.x + 1, coord.y, coord.z),
-            ChunkCoord(coord.x - 1, coord.y, coord.z),
-            ChunkCoord(coord.x, coord.y + 1, coord.z),
-            ChunkCoord(coord.x, coord.y - 1, coord.z),
-            ChunkCoord(coord.x, coord.y, coord.z + 1),
-            ChunkCoord(coord.x, coord.y, coord.z - 1)
-        };
+        ChunkCoord neighbors[6] = {ChunkCoord(coord.x + 1, coord.y, coord.z), ChunkCoord(coord.x - 1, coord.y, coord.z),
+                                ChunkCoord(coord.x, coord.y + 1, coord.z), ChunkCoord(coord.x, coord.y - 1, coord.z),
+                                ChunkCoord(coord.x, coord.y, coord.z + 1), ChunkCoord(coord.x, coord.y, coord.z - 1)};
 
-        for (const auto& neighborCoord : neighbors)
+        for (const auto &neighborCoord : neighbors)
         {
-            auto chunk = grid.getChunk(neighborCoord);
+            auto chunk = grid->getChunk(neighborCoord);
             if (chunk)
             {
                 // Update mesh or notify chunk of neighbor change

@@ -60,7 +60,7 @@ namespace PixelCraft::Utility
          */
         AABB getBounds() const override
         {
-            return m_object->getBounds();
+            return m_object->bounds;
         }
 
         /**

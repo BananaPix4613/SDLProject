@@ -1,19 +1,34 @@
 // -------------------------------------------------------------------------
 // Application.h
 // -------------------------------------------------------------------------
-#pragma core
+#pragma once
 
-#include <memory>
-#include <unordered_map>
-#include <vector>
-#include <typeindex>
-#include <string>
-#include <mutex>
-#include <set>
-
-#include "Core/Subsystem.h"
 #include "Core/ConfigManager.h"
 #include "Core/Logger.h"
+#include "Core/Subsystem.h"
+
+#include <memory>
+#include <mutex>
+#include <set>
+#include <string>
+#include <typeindex>
+#include <unordered_map>
+#include <vector>
+
+namespace PixelCraft::Rendering
+{
+    class RenderSystem;
+    namespace Cameras
+    {
+        class OrthographicCamera;
+    }
+}
+
+namespace PixelCraft::Voxel
+{
+    class Grid;
+    class VoxelRenderer;
+}
 
 namespace PixelCraft::Core
 {
@@ -28,17 +43,17 @@ namespace PixelCraft::Core
          * @brief Get the singleton instance of the Application
          * @return Reference to the Application instance
          */
-        static Application* getInstance();
+        static Application *getInstance();
 
         /**
          * @brief Deleted copy constructor to enforce singleton
          */
-        Application(const Application&) = delete;
+        Application(const Application &) = delete;
 
         /**
          * @brief Deleted assignment operator to enforce singleton
          */
-        Application& operator=(const Application&) = delete;
+        Application &operator=(const Application &) = delete;
 
         /**
          * @brief Initialize the application and still unregistered subsystems
@@ -83,8 +98,7 @@ namespace PixelCraft::Core
          * @tparam T Type of subsystem to retrieve
          * @return Shared pointer to the requested subsystem
          */
-        template<typename T>
-        std::shared_ptr<T> getSubsystem()
+        template <typename T> std::shared_ptr<T> getSubsystem()
         {
             static_assert(std::is_base_of<Subsystem, T>::value, "T must derive from Subsystem");
 
@@ -104,8 +118,7 @@ namespace PixelCraft::Core
          * @param subsystem Shared pointer to the subsystem
          * @return True if registration was successful
          */
-        template<typename T>
-        bool registerSubsystem(std::shared_ptr<T> subsystem)
+        template <typename T> bool registerSubsystem(std::shared_ptr<T> subsystem)
         {
             static_assert(std::is_base_of<Subsystem, T>::value, "T must derive from Subsystem");
 
@@ -123,7 +136,6 @@ namespace PixelCraft::Core
             }
 
             m_subsystems[typeIndex] = subsystem;
-            m_subsystemInitOrder.push_back(typeIndex);
             info("Registered subsystem: " + subsystem->getName());
             return true;
         }
@@ -152,19 +164,65 @@ namespace PixelCraft::Core
          * @param initializedSystems Set of already initialized subsystems
          * @return True if initialization was successful
          */
-        bool initializeSubsystem(const std::type_index& typeIndex, std::set<std::type_index>& initializedSystems);
+        bool initializeSubsystem(const std::type_index &typeIndex, std::set<std::type_index> &initializedSystems);
 
-        // Singleton instance
-        static Application* s_instance;
+        /**
+         * @brief Setup the isometric rendering pipeline for pixel-perfect isometric rendering
+         * @return True if setup was successful
+         */
+        bool setupIsometricRenderingPipeline();
+
+        /**
+         * @brief Setup the camera for isometric rendering
+         * @return True if setup was successful
+         */
+        bool setupCamera();
+
+        /**
+         * @brief Setup the test voxel world
+         * @return True if the voxel world was set up successfully
+         */
+        bool setupTestVoxelWorld();
+
+        /**
+         * @brief Create basic materials for rendering
+         */
+        void createBasicMaterials();
+
+        /**
+         * @brief Create basic shaders for rendering
+         * @return True if shaders were created successfully
+         */
+        bool createBasicShaders();
+
+        /**
+         * @brief Debug utility for subsystem initialization order
+         */
+        void debugInitializationOrder();
+
+        /**
+         * @brief Debug utility for rendering pipeline
+         */
+        void debugRenderingPipeline();
+
+        /**
+         * @brief Debug utility for voxel renderer
+         */
+        void debugVoxelRenderer();
 
         // Member variables
-        std::unordered_map<std::type_index, std::shared_ptr<Subsystem>> m_subsystems;
-        std::vector<std::type_index> m_subsystemInitOrder;
         bool m_isRunning = false;
         float m_deltaTime = 0.0f;
-        bool m_initialized = false;
-        std::shared_ptr<ConfigManager> m_config;
+        std::unordered_map<std::type_index, std::shared_ptr<Subsystem>> m_subsystems;
+        std::vector<std::type_index> m_initializationOrder; // Sorted order of subsystems based on dependencies
+
+        // Singleton management
+        static Application *s_instance;
         static std::mutex m_instanceMutex;
+
+        // World variables
+        std::shared_ptr<Voxel::Grid> m_voxelGrid;
+        std::shared_ptr<Rendering::Cameras::OrthographicCamera> m_camera;
     };
 
 } // namespace PixelCraft::Core

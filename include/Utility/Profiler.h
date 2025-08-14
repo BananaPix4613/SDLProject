@@ -297,6 +297,13 @@ namespace PixelCraft::Utility
          */
         std::string formatTime(double timeMs);
 
+        /**
+         * @brief Format a profile sample for logging
+         * @param sample The profile sample to format
+         * @return Formatted string representation of the sample
+         */
+        std::string formatProfileSampleLog(const ProfileSample& sample);
+
         // Singleton instance
         static Profiler* s_instance;
 

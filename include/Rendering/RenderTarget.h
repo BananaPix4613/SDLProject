@@ -38,6 +38,12 @@ namespace PixelCraft::Rendering
     {
     public:
         /**
+         * @brief Default constructor
+         * Creates a render target with default dimensions (1024x1024) and no multisampling
+         */
+        RenderTarget();
+
+        /**
          * @brief Constructor
          * @param width Width of the render target in pixels
          * @param height Height of the render target in pixels
@@ -81,6 +87,19 @@ namespace PixelCraft::Rendering
          * @return True if successful
          */
         bool setDepthAttachment(TextureFormat format = TextureFormat::Depth24);
+
+        /**
+         * @brief Add a depth renderbuffer attachment (fallback for unsupported depth textures)
+         * @param format Texture format to use for the depth attachment
+         * @return True if successful
+         */
+        bool setDepthRenderbuffer(TextureFormat format = TextureFormat::Depth24);
+
+        /**
+         * @brief Set a shared depth texture for this render target
+         * @param sharedDepthTexture The shared depth texture to use
+         */
+        void setSharedDepthTexture(std::shared_ptr<Texture> sharedDepthTexture);
 
         /**
          * @brief Add a stencil attachment to the render target

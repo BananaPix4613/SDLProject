@@ -4,8 +4,6 @@
 #include "ECS/Component.h"
 #include "Core/Logger.h"
 
-namespace Log = PixelCraft::Core;
-
 namespace PixelCraft::ECS
 {
 

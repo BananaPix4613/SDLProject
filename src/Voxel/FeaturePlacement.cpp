@@ -15,8 +15,6 @@
 #include <random>
 #include <cmath>
 
-namespace Log = PixelCraft::Core;
-
 namespace PixelCraft::Voxel
 {
 
@@ -31,26 +29,26 @@ namespace PixelCraft::Voxel
     }
 
     bool FeaturePlacement::canPlaceFeature(const glm::vec3& position, const std::string& featureType,
-                                           const GenerationContext& context, const Grid& grid) const
+                                           const GenerationContext& context, const std::shared_ptr<Grid> grid) const
     {
         // Check if feature type is registered
         auto it = m_featureTypes.find(featureType);
         if (it == m_featureTypes.end())
         {
-            Log::error("Feature type '" + featureType + "' not registered");
+            Core::error("Feature type '" + featureType + "' not registered");
             return false;
         }
 
-        const auto& featureInfo = it->second;
+        auto& feature = it->second;
 
         // Check spacing from existing features
-        if (featureInfo.spacing > 0.0f && isNearExistingFeature(position, featureType, featureInfo.spacing))
+        if (feature.spacing > 0.0f && isNearExistingFeature(position, featureType, feature.spacing))
         {
             return false;
         }
 
         // Check standard constraints
-        for (const auto& constraint : featureInfo.constraints)
+        for (const auto& constraint : feature.constraints)
         {
             if (!checkConstraint(constraint, position, context, grid))
             {
@@ -59,7 +57,7 @@ namespace PixelCraft::Voxel
         }
 
         // Check custom constraints
-        for (const auto& customConstraint : featureInfo.customConstraints)
+        for (const auto& customConstraint : feature.customConstraints)
         {
             if (!customConstraint.func(position, context, grid))
             {
@@ -77,7 +75,7 @@ namespace PixelCraft::Voxel
         auto it = m_featureTypes.find(featureType);
         if (it == m_featureTypes.end())
         {
-            Log::error("Feature type '" + featureType + "' not registered");
+            Core::error("Feature type '" + featureType + "' not registered");
             return false;
         }
 
@@ -85,7 +83,7 @@ namespace PixelCraft::Voxel
         const auto& generator = it->second.generator;
         if (!generator)
         {
-            Log::error("No generator function for feature type '" + featureType + "'");
+            Core::error("No generator function for feature type '" + featureType + "'");
             return false;
         }
 
@@ -105,13 +103,13 @@ namespace PixelCraft::Voxel
                                                                    const std::string& featureType,
                                                                    int maxCount,
                                                                    const GenerationContext& context,
-                                                                   const Grid& grid) const
+                                                                   const std::shared_ptr<Grid> grid) const
     {
         // Check if feature type is registered
         auto it = m_featureTypes.find(featureType);
         if (it == m_featureTypes.end())
         {
-            Log::error("Feature type '" + featureType + "' not registered");
+            Core::error("Feature type '" + featureType + "' not registered");
             return {};
         }
 
@@ -141,28 +139,28 @@ namespace PixelCraft::Voxel
     {
         if (featureType.empty())
         {
-            Log::error("Feature type name cannot be empty");
+            Core::error("Feature type name cannot be empty");
             return false;
         }
 
         if (!generator)
         {
-            Log::error("Generator function cannot be null");
+            Core::error("Generator function cannot be null");
             return false;
         }
 
         // Check if already registered
         if (m_featureTypes.find(featureType) != m_featureTypes.end())
         {
-            Log::warn("Feature type '" + featureType + "' already registered");
+            Core::warn("Feature type '" + featureType + "' already registered");
             return false;
         }
 
         // Create new feature type info
-        FeatureTypeInfo info;
-        info.generator = generator;
+        FeatureType type;
+        type.generator = generator;
 
-        m_featureTypes[featureType] = info;
+        m_featureTypes[featureType] = type;
         return true;
     }
 
@@ -189,7 +187,7 @@ namespace PixelCraft::Voxel
         auto it = m_featureTypes.find(featureType);
         if (it == m_featureTypes.end())
         {
-            Log::error("Feature type '" + featureType + "' not registered");
+            Core::error("Could not add constraint to missing feature type '" + featureType + "'");
             return false;
         }
 
@@ -208,7 +206,7 @@ namespace PixelCraft::Voxel
         auto it = m_featureTypes.find(featureType);
         if (it == m_featureTypes.end())
         {
-            Log::error("Feature type '" + featureType + "' not registered");
+            Core::error("Could not remove constraint from missing feature type '" + featureType + "'");
             return false;
         }
 
@@ -218,7 +216,7 @@ namespace PixelCraft::Voxel
 
         if (constraintIt == constraints.end())
         {
-            Log::warn("Constraint not found for feature type '" + featureType + "'");
+            Core::warn("Constraint not found for feature type '" + featureType + "'");
             return false;
         }
 
@@ -231,7 +229,7 @@ namespace PixelCraft::Voxel
         auto it = m_featureTypes.find(featureType);
         if (it == m_featureTypes.end())
         {
-            Log::error("Feature type '" + featureType + "' not registered");
+            Core::error("Could not clear constraint from missing feature type '" + featureType + "'");
             return false;
         }
 
@@ -244,6 +242,7 @@ namespace PixelCraft::Voxel
         auto it = m_featureTypes.find(featureType);
         if (it == m_featureTypes.end())
         {
+            Core::error("Could not get constraints from missing feature type '" + featureType + "'");
             return {};
         }
 
@@ -261,6 +260,7 @@ namespace PixelCraft::Voxel
         auto it = m_featureTypes.find(featureType);
         if (it == m_featureTypes.end())
         {
+            Core::error("Could not get constraint params from missing feature type '" + featureType + "'");
             return {};
         }
 
@@ -276,18 +276,18 @@ namespace PixelCraft::Voxel
     }
 
     bool FeaturePlacement::addCustomConstraint(const std::string& featureType, const std::string& name,
-                                               std::function<bool(const glm::vec3&, const GenerationContext&, const Grid&)> constraint)
+        std::function<bool(const glm::vec3&, const GenerationContext&, const std::shared_ptr<Grid>)> constraint)
     {
         if (name.empty() || !constraint)
         {
-            Log::error("Constraint name or function cannot be empty");
+            Core::error("Constraint name or function cannot be empty");
             return false;
         }
 
         auto it = m_featureTypes.find(featureType);
         if (it == m_featureTypes.end())
         {
-            Log::error("Feature type '" + featureType + "' not registered");
+            Core::error("Could not add custom constraint to missing feature type '" + featureType + "'");
             return false;
         }
 
@@ -298,7 +298,7 @@ namespace PixelCraft::Voxel
 
         if (existingIt != customConstraints.end())
         {
-            Log::warn("Custom constraint '" + name + "' already exists for feature type '" + featureType + "'");
+            Core::warn("Custom constraint '" + name + "' already exists for feature type '" + featureType + "'");
             return false;
         }
 
@@ -316,7 +316,7 @@ namespace PixelCraft::Voxel
         auto it = m_featureTypes.find(featureType);
         if (it == m_featureTypes.end())
         {
-            Log::error("Feature type '" + featureType + "' not registered");
+            Core::error("Could not remove custom constraint from missing feature type '" + featureType + "'");
             return false;
         }
 
@@ -326,12 +326,37 @@ namespace PixelCraft::Voxel
 
         if (constraintIt == customConstraints.end())
         {
-            Log::warn("Custom constraint '" + name + "' not found for feature type '" + featureType + "'");
+            Core::warn("Custom constraint '" + name + "' not found for feature type '" + featureType + "'");
             return false;
         }
 
         customConstraints.erase(constraintIt);
         return true;
+    }
+
+    bool FeaturePlacement::setFeatureSpacing(const std::string& featureType, float spacing)
+    {
+        auto it = m_featureTypes.find(featureType);
+        if (it == m_featureTypes.end())
+        {
+            Core::error("Could not set spacing to missing feature type '" + featureType + "'");
+            return false;
+        }
+
+        it->second.spacing = spacing;
+        return true;
+    }
+
+    float FeaturePlacement::getFeatureSpacing(const std::string& featureType) const
+    {
+        auto it = m_featureTypes.find(featureType);
+        if (it == m_featureTypes.end())
+        {
+            Core::error("Could not get spacing from missing feature type '" + featureType + "'");
+            return 0.0f;
+        }
+
+        return it->second.spacing;
     }
 
     bool FeaturePlacement::registerPointOfInterest(const glm::vec3& position, const std::string& type, float radius)
@@ -389,29 +414,6 @@ namespace PixelCraft::Voxel
         m_pointsOfInterest.clear();
     }
 
-    void FeaturePlacement::setFeatureSpacing(const std::string& featureType, float spacing)
-    {
-        auto it = m_featureTypes.find(featureType);
-        if (it == m_featureTypes.end())
-        {
-            Log::error("Feature type '" + featureType + "' not registered");
-            return;
-        }
-
-        it->second.spacing = spacing;
-    }
-
-    float FeaturePlacement::getFeatureSpacing(const std::string& featureType) const
-    {
-        auto it = m_featureTypes.find(featureType);
-        if (it == m_featureTypes.end())
-        {
-            return 0.0f;
-        }
-
-        return it->second.spacing;
-    }
-
     void FeaturePlacement::setSeed(uint32_t seed)
     {
         m_seed = seed;
@@ -422,150 +424,258 @@ namespace PixelCraft::Voxel
         return m_seed;
     }
 
-    void FeaturePlacement::serialize(ECS::Serializer& serializer) const
+    Utility::Serialization::SerializationResult FeaturePlacement::serialize(Utility::Serialization::Serializer& serializer) const
     {
+        auto result = serializer.beginObject(getTypeName());
+        if (!result) return result;
+
         // Serialize basic properties
-        serializer.write(m_seed);
+        result =  serializer.writeField("seed", m_seed);
+        if (!result) return result;
 
         // Serialize feature types
-        serializer.beginArray("featureTypes", m_featureTypes.size());
+        result = serializer.beginArray("featureTypes", m_featureTypes.size());
+        if (!result) return result;
+
         for (const auto& [typeName, typeInfo] : m_featureTypes)
         {
-            serializer.beginObject("Feature");
+            // Begin serializing the entity
+            result = serializer.beginObject("Feature");
+            if (!result) return result;
 
-            // Feature spacing
-            serializer.write(typeInfo.spacing);
+            result = serializer.writeField("name", typeName);
+            if (!result) return result;
 
-            serializer.beginArray("constraints", typeInfo.constraints.size());
+            result = serializer.writeField("spacing", typeInfo.spacing);
+            if (!result) return result;
+
+            // Serialize constraints as an array
+            result = serializer.beginArray("constraints", typeInfo.constraints.size());
+            if (!result) return result;
+
             for (size_t i = 0; i < typeInfo.constraints.size(); i++)
             {
                 const auto& constraint = typeInfo.constraints[i];
-                serializer.beginObject("Constraint");
+                result = serializer.beginObject("Constraint");
+                if (!result) return result;
 
-                serializer.write(static_cast<int>(constraint.type));
+                result = serializer.writeField("type", static_cast<int>(constraint.type));
+                if (!result) return result;
 
                 // Serialize params
-                serializer.beginArray("params", constraint.params.size());
+                result = serializer.beginArray("params", constraint.params.size());
+                if (!result) return result;
+
                 for (size_t j = 0; j < constraint.params.size(); j++)
                 {
-                    serializer.write(constraint.params[j]);
+                    result = serializer.writeField("param", constraint.params[j]);
+                    if (!result) return result;
                 }
-                serializer.endArray();
-                serializer.endObject();
-            }
-            serializer.endArray();
 
-            // Custom contraints cannot be serialized (functions)
-            // Just serialize their names for reference
-            serializer.beginArray("customConstraints", typeInfo.customConstraints.size());
+                result = serializer.endArray();
+                if (!result) return result;
+
+                result = serializer.endObject();
+                if (!result) return result;
+            }
+
+            result = serializer.endArray();
+            if (!result) return result;
+
+            // Serialize custom constraints as an array
+            result = serializer.beginArray("customConstraints", typeInfo.customConstraints.size());
+            if (!result) return result;
+
             for (size_t i = 0; i < typeInfo.customConstraints.size(); i++)
             {
-                serializer.writeString(typeInfo.customConstraints[i].name);
+                result = serializer.writeField("name", typeInfo.customConstraints[i].name);
             }
-            serializer.endArray();
-            serializer.endObject();
+
+            result = serializer.endArray();
+            if (!result) return result;
+
+            result = serializer.endObject();
+            if (!result) return result;
         }
-        serializer.endArray();
+
+        result = serializer.endArray();
+        if (!result) return result;
 
         // Serialize points of interest
-        serializer.beginArray("pointsOfInterest", m_pointsOfInterest.size());
+        result = serializer.beginArray("pointsOfInterest", m_pointsOfInterest.size());
+        if (!result) return result;
+
         for (size_t i = 0; i < m_pointsOfInterest.size(); i++)
         {
             const auto& poi = m_pointsOfInterest[i];
-            serializer.beginObject("POI");
+            result = serializer.beginObject("POI");
+            if (!result) return result;
 
-            serializer.writeVec3(poi.position);
-            serializer.writeString(poi.type);
-            serializer.write(poi.radius);
+            result = serializer.writeField("position", poi.position);
+            if (!result) return result;
 
-            serializer.endObject();
+            result = serializer.writeField("type", poi.type);
+            if (!result) return result;
+
+            result = serializer.writeField("radius", poi.radius);
+            if (!result) return result;
+
+            result = serializer.endObject();
+            if (!result) return result;
         }
-        serializer.endArray();
+
+        result = serializer.endArray();
+        if (!result) return result;
 
         // Placed features are not serialized (runtime state)
+        return serializer.endObject();
     }
 
-    void FeaturePlacement::deserialize(ECS::Deserializer& deserializer)
+    Utility::Serialization::SerializationResult FeaturePlacement::deserialize(Utility::Serialization::Deserializer& deserializer)
     {
         // Clear existing data
         m_featureTypes.clear();
         m_pointsOfInterest.clear();
         m_placedFeatures.clear();
 
-        // Deserialize basic properties
-        deserializer.read(m_seed);
+        auto result = deserializer.beginObject(getTypeName());
+        if (!result) return result;
 
-        //// Serialize feature types
-        //size_t featureArraySize;
-        //deserializer.beginArray("featureTypes", featureArraySize);
-        //for (const auto& [typeName, typeInfo] : m_featureTypes)
-        //{
-        //    deserializer.beginObject("Feature");
+        // Serialize basic properties
+        result = deserializer.readField("seed", m_seed);
+        if (!result) return result;
 
-        //    // Feature spacing
-        //    deserializer.read(typeInfo.spacing);
+        // Serialize feature types
+        size_t featureSize;
+        result = deserializer.beginArray("featureTypes", featureSize);
+        if (!result) return result;
 
-        //    size_t constraintsArraySize;
-        //    deserializer.beginArray("constraints", constraintsArraySize);
-        //    for (size_t i = 0; i < typeInfo.constraints.size(); i++)
-        //    {
-        //        const FeatureConstraint& constraint;
-        //        deserializer.beginObject("Constraint");
+        for (size_t i = 0; i < featureSize; i++)
+        {
+            std::string typeName;
+            FeatureType typeInfo;
 
-        //        int type;
-        //        deserializer.read(type);
-        //        constraint.type = static_cast<ConstraintType>(type);
+            // Begin deserializing the feature type
+            result = deserializer.beginObject("FeatureType");
+            if (!result) return result;
 
-        //        // Serialize params
-        //        size_t paramsArraySize;
-        //        deserializer.beginArray("params", paramsArraySize);
-        //        for (size_t j = 0; j < constraint.params.size(); j++)
-        //        {
-        //            deserializer.read(constraint.params[j]);
-        //        }
-        //        deserializer.endArray();
-        //        deserializer.endObject();
-        //    }
-        //    deserializer.endArray();
+            result = deserializer.readField("name", typeName);
+            if (!result) return result;
 
-        //    // Custom contraints cannot be serialized (functions)
-        //    // Just serialize their names for reference
-        //    size_t customArraySize;
-        //    deserializer.beginArray("customConstraints", customArraySize);
-        //    for (size_t i = 0; i < typeInfo.customConstraints.size(); i++)
-        //    {
-        //        deserializer.readString(typeInfo.customConstraints[i].name);
-        //    }
-        //    deserializer.endArray();
-        //    deserializer.endObject();
-        //}
-        //deserializer.endArray();
+            result = deserializer.readField("spacing", typeInfo.spacing);
+            if (!result) return result;
+
+            size_t constraintsSize;
+            // Deserialize constraints as an array
+            result = deserializer.beginArray("constraints", constraintsSize);
+            if (!result) return result;
+
+            for (size_t j = 0; j < constraintsSize; j++)
+            {
+                FeatureConstraint constraint;
+                result = deserializer.beginObject("Constraint");
+                if (!result) return result;
+
+                int32_t constraintType;
+                result = deserializer.readField("type", constraintType);
+                if (!result) return result;
+                constraint.type = static_cast<ConstraintType>(constraintType);
+
+                // Deserialize params
+                size_t paramsSize;
+                result = deserializer.beginArray("params", paramsSize);
+                if (!result) return result;
+
+                for (size_t k = 0; k < paramsSize; k++)
+                {
+                    result = deserializer.readField("param", constraint.params[k]);
+                    if (!result) return result;
+                }
+
+                result = deserializer.endArray();
+                if (!result) return result;
+
+                result = deserializer.endObject();
+                if (!result) return result;
+
+                typeInfo.constraints[j] = constraint;
+            }
+
+            result = deserializer.endArray();
+            if (!result) return result;
+
+            // Deserialize custom constraints as an array (only func names
+            result = deserializer.beginArray("customConstraints", constraintsSize);
+            if (!result) return result;
+
+            for (size_t j = 0; j < constraintsSize; j++)
+            {
+                result = deserializer.readField("name", typeInfo.customConstraints[j].name);
+                if (!result) return result;
+            }
+
+            result = deserializer.endArray();
+            if (!result) return result;
+
+            m_featureTypes[typeName] = typeInfo;
+
+            result = deserializer.endObject();
+            if (!result) return result;
+        }
+
+        result = deserializer.endArray();
+        if (!result) return result;
 
         // Serialize points of interest
-        size_t poiArraySize;
-        deserializer.beginArray("pointsOfInterest", poiArraySize);
-        for (size_t i = 0; i < poiArraySize; i++)
+        size_t poiSize;
+        result = deserializer.beginArray("pointsOfInterest", poiSize);
+        if (!result) return result;
+
+        for (size_t i = 0; i < poiSize; i++)
         {
             PointOfInterest poi;
-            deserializer.beginObject("POI");
+            result = deserializer.beginObject("POI");
+            if (!result) return result;
 
-            deserializer.readVec3(poi.position);
-            deserializer.readString(poi.type);
-            deserializer.read(poi.radius);
+            result = deserializer.readField("position", poi.position);
+            if (!result) return result;
 
-            deserializer.endObject();
-            m_pointsOfInterest.push_back(poi);
+            result = deserializer.readField("type", poi.type);
+            if (!result) return result;
+
+            result = deserializer.readField("radius", poi.radius);
+            if (!result) return result;
+
+            result = deserializer.endObject();
+            if (!result) return result;
+
+            m_pointsOfInterest[i] = poi;
         }
-        deserializer.endArray();
+
+        result = deserializer.endArray();
+        if (!result) return result;
 
         // Feature types and constraints need to be registered at runtime
         // because generator and constraint functions cannot be serialized
+        return deserializer.endObject();
+    }
+
+    void FeaturePlacement::defineSchema(Utility::Serialization::Schema& schema)
+    {
+        schema.addField("seed", Utility::Serialization::ValueType::UInt32, true);
+        schema.addArrayField("featureTypes", Utility::Serialization::ValueType::Object, true);
+        schema.addArrayField("pointsOfInterest", Utility::Serialization::ValueType::Object, true);
+    }
+
+    std::string FeaturePlacement::getTypeName()
+    {
+        return "FeaturePlacement";
     }
 
     // Private helper methods
 
     bool FeaturePlacement::checkConstraint(const FeatureConstraint& constraint, const glm::vec3& position,
-                                           const GenerationContext& context, const Grid& grid) const
+                                           const GenerationContext& context, const std::shared_ptr<Grid> grid) const
     {
         switch (constraint.type)
         {
@@ -652,10 +762,10 @@ namespace PixelCraft::Voxel
                 glm::vec3 p3 = position + glm::vec3(0.0f, 0.0f, sampleDist);
                 glm::vec3 p4 = position + glm::vec3(0.0f, 0.0f, -sampleDist);
 
-                Voxel v1 = grid.getVoxel(p1);
-                Voxel v2 = grid.getVoxel(p2);
-                Voxel v3 = grid.getVoxel(p3);
-                Voxel v4 = grid.getVoxel(p4);
+                Voxel v1 = grid->getVoxel(p1);
+                Voxel v2 = grid->getVoxel(p2);
+                Voxel v3 = grid->getVoxel(p3);
+                Voxel v4 = grid->getVoxel(p4);
 
                 // Calculate height differences
                 float dx = (v1.type == 0 ? -1.0f : 1.0f) - (v2.type == 0 ? -1.0f : 1.0f);
@@ -686,7 +796,7 @@ namespace PixelCraft::Voxel
                     for (float dz = -maxDistance; dz <= maxDistance; dz += 1.0f)
                     {
                         glm::vec3 checkPos = position + glm::vec3(dx, 0.0f, dz);
-                        Voxel voxel = grid.getVoxel(checkPos);
+                        Voxel voxel = grid->getVoxel(checkPos);
 
                         // Water type is 3
                         if (voxel.type == 3)
@@ -715,7 +825,7 @@ namespace PixelCraft::Voxel
                     for (float dz = -minDistance; dz <= minDistance; dz += 1.0f)
                     {
                         glm::vec3 checkPos = position + glm::vec3(dx, 0.0f, dz);
-                        Voxel voxel = grid.getVoxel(checkPos);
+                        Voxel voxel = grid->getVoxel(checkPos);
 
                         // Water is type 3
                         if (voxel.type == 3)
@@ -806,7 +916,7 @@ namespace PixelCraft::Voxel
 
             case ConstraintType::NoiseThreshold:
             {
-                // Requires params: [theshold, cutoff]
+                // Requires params: [threshold, cutoff]
                 if (constraint.params.size() < 2)
                 {
                     return true; // Invalid constraint params, allow placement

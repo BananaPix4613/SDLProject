@@ -285,16 +285,30 @@ namespace PixelCraft::Voxel
         std::string getActiveCustomDistribution() const;
 
         /**
-         * @brief Serialize the distribution configuration
-         * @param serializer Serializer to serialize with
+         * @brief Serialize the distribution configuration to the given serializer
+         * @param serializer The serializer to use
+         * @return SerializationResult with success/failure status
          */
-        void serialize(ECS::Serializer& serializer) const;
+        Utility::Serialization::SerializationResult serialize(Utility::Serialization::Serializer& serializer) const;
 
         /**
-         * @brief Deserialize the distribution configuration
-         * @param deserializer Deserializer to deserialize with
+         * @brief Deserialize the distribution configuration from the given deserializer
+         * @param deserializer The deserializer to use
+         * @return SerializationResult with success/failure status
          */
-        void deserialize(ECS::Deserializer& deserializer);
+        Utility::Serialization::SerializationResult deserialize(Utility::Serialization::Deserializer& deserializer);
+
+        /**
+         * @brief Define the schema for distribution configuration serialization
+         * @param schema The schema to define
+         */
+        static void defineSchema(Utility::Serialization::Schema& schema);
+
+        /**
+         * @brief Get the type name for serialization
+         * @return The type name string
+         */
+        static std::string getTypeName();
 
     private:
         // Internal structures

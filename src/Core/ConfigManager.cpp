@@ -3,7 +3,7 @@
 // -------------------------------------------------------------------------
 #include "Core/ConfigManager.h"
 #include "Core/Logger.h"
-//#include "Events/EventSystem.h"
+#include "Core/EventSystem.h"
 #include "Core/Application.h"
 
 #include <fstream>
@@ -20,33 +20,19 @@
 
 namespace fs = std::filesystem;
 
+// In namespace PixelCraft
 namespace PixelCraft::Core
 {
 
-    // Initialize static members
-    std::unique_ptr<ConfigManager> ConfigManager::s_instance = nullptr;
-    std::once_flag ConfigManager::s_onceFlag;
-
-    /*ConfigManager& ConfigManager::getInstance()
-    {
-        std::call_once(s_onceFlag, [] {
-            s_instance = std::unique_ptr<ConfigManager>(new ConfigManager());
-                       });
-        return *s_instance;
-    }*/
-
-    ConfigManager::ConfigManager() : m_fileWatcher(std::make_unique<FileWatcher>())
+    ConfigManager::ConfigManager() : m_fileWatcher(std::make_unique<FileWatcher>()), m_shuttingDown(false)
     {
         // Constructor - nothing to do here
     }
 
-    /*ConfigManager::~ConfigManager()
+    ConfigManager::~ConfigManager()
     {
-        if (m_fileWatcher)
-        {
-            m_fileWatcher.reset();
-        }
-    }*/
+        shutdown();
+    }
 
     bool ConfigManager::initialize()
     {
@@ -54,6 +40,7 @@ namespace PixelCraft::Core
 
         // Initialize file watcher
         m_fileWatcher = std::make_unique<FileWatcher>();
+        m_shuttingDown = false;
 
         // Load default engine configuration
         std::string engineConfigPath = "config/engine.json";
@@ -77,6 +64,12 @@ namespace PixelCraft::Core
 
     void ConfigManager::update(float deltaTime)
     {
+        // Early exit if shutting down
+        if (m_shuttingDown.load())
+        {
+            return;
+        }
+
         // Accumulate time since last check
         m_lastCheckTime += deltaTime;
 
@@ -88,15 +81,23 @@ namespace PixelCraft::Core
         }
     }
 
+    void ConfigManager::render()
+    {
+        // Nothing to render for the config manager
+    }
+
     void ConfigManager::shutdown()
     {
+        // Signal shutdown to prevent new operations
+        m_shuttingDown = true;
+
         info("Shutting down ConfigManager subsystem");
 
-        // Stop watching all files
+        // Stop watching all files first
         m_watchedFiles.clear();
         m_fileWatcher.reset();
 
-        // Clear all configuration values
+        // Clear all configuration values and callbacks under lock
         std::lock_guard<std::mutex> lock(m_configMutex);
         m_configValues.clear();
         m_configFiles.clear();
@@ -106,11 +107,16 @@ namespace PixelCraft::Core
 
     std::vector<std::string> ConfigManager::getDependencies() const
     {
-        return {"EventSystem"};
+        return {"MemoryManager", "EventSystem"};
     }
 
     bool ConfigManager::loadConfig(const std::string& filename, const std::string& section)
     {
+        if (m_shuttingDown.load())
+        {
+            return false;
+        }
+
         if (!fs::exists(filename))
         {
             error("Configuration file not found: " + filename);
@@ -122,21 +128,24 @@ namespace PixelCraft::Core
             std::string format = getFileFormat(filename);
 
             // Track which file this section comes from
-            std::lock_guard<std::mutex> lock(m_configMutex);
-
-            if (!section.empty())
             {
-                m_configFiles[section] = filename;
-                m_fileSections[filename].push_back(section);
-            }
-            else
-            {
-                // Use filename as default section
-                std::string defaultSection = fs::path(filename).stem().string();
-                m_configFiles[defaultSection] = filename;
-                m_fileSections[filename].push_back(defaultSection);
+                std::lock_guard<std::mutex> lock(m_configMutex);
+
+                if (!section.empty())
+                {
+                    m_configFiles[section] = filename;
+                    m_fileSections[filename].push_back(section);
+                }
+                else
+                {
+                    // Use filename as default section
+                    std::string defaultSection = fs::path(filename).stem().string();
+                    m_configFiles[defaultSection] = filename;
+                    m_fileSections[filename].push_back(defaultSection);
+                }
             }
 
+            // Parse the config file without holding the lock
             parseConfigFile(filename, section);
             return true;
         }
@@ -149,6 +158,11 @@ namespace PixelCraft::Core
 
     bool ConfigManager::saveConfig(const std::string& filename, const std::string& section)
     {
+        if (m_shuttingDown.load())
+        {
+            return false;
+        }
+
         try
         {
             std::string format = getFileFormat(filename);
@@ -354,12 +368,22 @@ namespace PixelCraft::Core
 
     bool ConfigManager::hasKey(const std::string& key) const
     {
+        if (m_shuttingDown.load())
+        {
+            return false;
+        }
+
         std::lock_guard<std::mutex> lock(m_configMutex);
         return m_configValues.find(key) != m_configValues.end();
     }
 
     void ConfigManager::watch(const std::string& filename, bool enable)
     {
+        if (m_shuttingDown.load())
+        {
+            return;
+        }
+
         if (!fs::exists(filename))
         {
             warn("Cannot watch non-existant file: " + filename);
@@ -369,20 +393,26 @@ namespace PixelCraft::Core
         if (enable)
         {
             m_watchedFiles.insert(filename);
-            m_fileWatcher->addWatch(filename);
-            debug("Started watching configuration file: " + filename);
+            if (m_fileWatcher)
+            {
+                m_fileWatcher->addWatch(filename);
+                debug("Started watching configuration file: " + filename);
+            }
         }
         else
         {
             m_watchedFiles.erase(filename);
-            m_fileWatcher->removeWatch(filename);
-            debug("Stopped watching configuration file: " + filename);
+            if (m_fileWatcher)
+            {
+                m_fileWatcher->removeWatch(filename);
+                debug("Stopped watching configuration file: " + filename);
+            }
         }
     }
 
     uint64_t ConfigManager::registerChangeCallback(const ConfigChangeCallback& callback)
     {
-        if (!callback)
+        if (!callback || m_shuttingDown.load())
         {
             return 0;
         }
@@ -406,7 +436,7 @@ namespace PixelCraft::Core
 
     void ConfigManager::checkWatchedFiles()
     {
-        if (!m_fileWatcher)
+        if (m_shuttingDown.load() || !m_fileWatcher)
         {
             return;
         }
@@ -414,6 +444,12 @@ namespace PixelCraft::Core
         auto changedFiles = m_fileWatcher->checkChanges();
         for (const auto& filename : changedFiles)
         {
+            // Check again in case we're shutting down
+            if (m_shuttingDown.load())
+            {
+                break;
+            }
+
             debug("Detected change in configuration file: " + filename);
 
             // Get all sections associated with this file
@@ -430,15 +466,24 @@ namespace PixelCraft::Core
             // Reload all sections from this file
             for (const auto& section : sections)
             {
+                if (m_shuttingDown.load())
+                {
+                    break;
+                }
+
                 parseConfigFile(filename, section);
 
-                // Nofity about changes to all configs in this section
+                // Notify about changes to all configs in this section
                 std::lock_guard<std::mutex> lock(m_configMutex);
                 for (const auto& [key, _] : m_configValues)
                 {
                     if (key.find(section + ".") == 0)
                     {
-                        notifyConfigChange(key, section);
+                        // Check once more before notifying
+                        if (!m_shuttingDown.load())
+                        {
+                            notifyConfigChange(key, section);
+                        }
                     }
                 }
             }
@@ -447,6 +492,11 @@ namespace PixelCraft::Core
 
     void ConfigManager::parseConfigFile(const std::string& filename, const std::string& section)
     {
+        if (m_shuttingDown.load())
+        {
+            return;
+        }
+
         std::string format = getFileFormat(filename);
         std::string effectiveSection = section.empty() ? fs::path(filename).stem().string() : section;
         std::string prefix = effectiveSection.empty() ? "" : effectiveSection + ".";
@@ -470,10 +520,19 @@ namespace PixelCraft::Core
                 // Process all key-value pairs
                 std::function<void(const nlohmann::json&, const std::string&)> processJson;
                 processJson = [this, &prefix, &processJson](const nlohmann::json& j, const std::string& path) {
+                    if (m_shuttingDown.load())
+                    {
+                        return;
+                    }
+
                     if (j.is_object())
                     {
                         for (auto it = j.begin(); it != j.end(); it++)
                         {
+                            if (m_shuttingDown.load())
+                            {
+                                break;
+                            }
                             std::string newPath = path.empty() ? it.key() : path + "." + it.key();
                             processJson(it.value(), newPath);
                         }
@@ -543,10 +602,19 @@ namespace PixelCraft::Core
                 // Process all key-value pairs
                 std::function<void(const YAML::Node&, const std::string&)> processYaml;
                 processYaml = [this, &prefix, &processYaml](const YAML::Node& node, const std::string& path) {
+                    if (m_shuttingDown.load())
+                    {
+                        return;
+                    }
+
                     if (node.IsMap())
                     {
                         for (auto it = node.begin(); it != node.end(); it++)
                         {
+                            if (m_shuttingDown.load())
+                            {
+                                break;
+                            }
                             std::string key = it->first.as<std::string>();
                             std::string newPath = path.empty() ? key : path + "." + key;
                             processYaml(it->second, newPath);
@@ -634,37 +702,69 @@ namespace PixelCraft::Core
         }
     }
 
-    //void ConfigManager::notifyConfigChange(const std::string& key, const std::string& section)
-    //{
-    //    // Create event for the change
-    //    ConfigChangeEvent event(key, section);
+    void ConfigManager::notifyConfigChange(const std::string& key, const std::string& section)
+    {
+        // Don't notify during shutdown
+        if (m_shuttingDown.load())
+        {
+            return;
+        }
 
-    //    // Notify local callbacks
-    //    std::unordered_map<uint64_t, ConfigChangeCallback> callbacks;
-    //    {
-    //        std::lock_guard<std::mutex> lock(m_configMutex);
-    //        callbacks = m_changeCallbacks;
-    //    }
+        // Create event for the change
+        ConfigChangeEvent event(key, section);
 
-    //    for (const auto& [id, callback] : callbacks)
-    //    {
-    //        callback(event);
-    //    }
+        // Notify local callbacks
+        std::unordered_map<uint64_t, ConfigChangeCallback> callbacks;
+        {
+            std::lock_guard<std::mutex> lock(m_configMutex);
+            callbacks = m_changeCallbacks;
+        }
 
-    //    // Dispatch through the event system if available
-    //    auto eventSystem = Application::getInstance().getSubsystem<Events::EventSystem>();
-    //    if (eventSystem)
-    //    {
-    //        eventSystem->dispatch(event);
-    //    }
-    //}
+        for (const auto& [id, callback] : callbacks)
+        {
+            if (m_shuttingDown.load())
+            {
+                break;
+            }
+            try
+            {
+                callback(event);
+            }
+            catch (const std::exception& e)
+            {
+                warn("Exception in config change callback: " + std::string(e.what()));
+            }
+        }
+
+        // Dispatch through the event system if available and not shutting down
+        if (!m_shuttingDown.load())
+        {
+            try
+            {
+                auto app = Application::getInstance();
+                if (app)
+                {
+                    auto eventSystem = app->getSubsystem<EventSystem>();
+                    if (eventSystem)
+                    {
+                        eventSystem->dispatch(event);
+                    }
+                }
+            }
+            catch (const std::exception& e)
+            {
+                // Silently ignore exceptions during shutdown
+                debug("Exception dispatching config event during shutdown: " + std::string(e.what()));
+            }
+        }
+    }
 
     std::string ConfigManager::getFileFormat(const std::string& filename) const
     {
         fs::path path(filename);
         std::string extension = path.extension().string();
 
-        if (extension == "json")
+        if (extension == ".json")
         {
             return "json";
         }
@@ -712,7 +812,7 @@ namespace PixelCraft::Core
         {
             std::istringstream iss(value);
             float x, y, z, w;
-            iss >> x >> y >> z >> z;
+            iss >> x >> y >> z >> w;
             return glm::vec4(x, y, z, w);
         }
         else
@@ -726,6 +826,11 @@ namespace PixelCraft::Core
     template<>
     int ConfigManager::get<int>(const std::string& key, const int& defaultValue) const
     {
+        if (m_shuttingDown.load())
+        {
+            return defaultValue;
+        }
+
         std::lock_guard<std::mutex> lock(m_configMutex);
 
         auto it = m_configValues.find(key);
@@ -755,6 +860,11 @@ namespace PixelCraft::Core
     template<>
     float ConfigManager::get<float>(const std::string& key, const float& defaultValue) const
     {
+        if (m_shuttingDown.load())
+        {
+            return defaultValue;
+        }
+
         std::lock_guard<std::mutex> lock(m_configMutex);
 
         auto it = m_configValues.find(key);
@@ -784,6 +894,11 @@ namespace PixelCraft::Core
     template<>
     bool ConfigManager::get<bool>(const std::string& key, const bool& defaultValue) const
     {
+        if (m_shuttingDown.load())
+        {
+            return defaultValue;
+        }
+
         std::lock_guard<std::mutex> lock(m_configMutex);
 
         auto it = m_configValues.find(key);
@@ -805,6 +920,11 @@ namespace PixelCraft::Core
     template<>
     std::string ConfigManager::get<std::string>(const std::string& key, const std::string & defaultValue) const
     {
+        if (m_shuttingDown.load())
+        {
+            return defaultValue;
+        }
+
         std::lock_guard<std::mutex> lock(m_configMutex);
 
         auto it = m_configValues.find(key);
@@ -816,87 +936,6 @@ namespace PixelCraft::Core
         try
         {
             return std::get<std::string>(it->second);
-        }
-        catch (const std::bad_variant_access&)
-        {
-            try
-            {
-                // Try converting from other types
-                return std::visit([](const auto& value) -> std::string {
-                    using T = std::decay_t<decltype(value)>;
-                    if constexpr (std::is_same_v<T, int>)
-                    {
-                        return std::to_string(value);
-                    }
-                    else if constexpr (std::is_same_v<T, float>)
-                    {
-                        return std::to_string(value);
-                    }
-                    else if constexpr (std::is_same_v<T, bool>)
-                    {
-                        return value ? "true" : "false";
-                    }
-                    else if constexpr (std::is_same_v<T, glm::vec2>)
-                    {
-                        return std::to_string(value.x) + " " + std::to_string(value.y);
-                    }
-                    else if constexpr (std::is_same_v<T, glm::vec3>)
-                    {
-                        return std::to_string(value.x) + " " + std::to_string(value.y) + " " + std::to_string(value.z);
-                    }
-                    else if constexpr (std::is_same_v<T, glm::vec4>)
-                    {
-                        return std::to_string(value.x) + " " + std::to_string(value.y) + " "
-                            + std::to_string(value.z) + " " + std::to_string(value.w);
-                    }
-                    else
-                    {
-                        return "";
-                    }
-                                  }, it->second);
-            }
-            catch (...)
-            {
-                return defaultValue;
-            }
-        }
-    }
-
-    template<>
-    glm::vec2 ConfigManager::get<glm::vec2>(const std::string& key, const glm::vec2& defaultValue) const
-    {
-        std::lock_guard<std::mutex> lock(m_configMutex);
-
-        auto it = m_configValues.find(key);
-        if (it == m_configValues.end())
-        {
-            return defaultValue;
-        }
-
-        try
-        {
-            return std::get<glm::vec2>(it->second);
-        }
-        catch (const std::bad_variant_access&)
-        {
-            return defaultValue;
-        }
-    }
-
-    template<>
-    glm::vec3 ConfigManager::get<glm::vec3>(const std::string& key, const glm::vec3& defaultValue) const
-    {
-        std::lock_guard<std::mutex> lock(m_configMutex);
-
-        auto it = m_configValues.find(key);
-        if (it == m_configValues.end())
-        {
-            return defaultValue;
-        }
-
-        try
-        {
-            return std::get<glm::vec3>(it->second);
         }
         catch (const std::bad_variant_access&)
         {
@@ -918,6 +957,58 @@ namespace PixelCraft::Core
         try
         {
             return std::get<glm::vec4>(it->second);
+        }
+        catch (const std::bad_variant_access&)
+        {
+            return defaultValue;
+        }
+    }
+
+    template<>
+    glm::vec2 ConfigManager::get<glm::vec2>(const std::string& key, const glm::vec2& defaultValue) const
+    {
+        if (m_shuttingDown.load())
+        {
+            return defaultValue;
+        }
+
+        std::lock_guard<std::mutex> lock(m_configMutex);
+
+        auto it = m_configValues.find(key);
+        if (it == m_configValues.end())
+        {
+            return defaultValue;
+        }
+
+        try
+        {
+            return std::get<glm::vec2>(it->second);
+        }
+        catch (const std::bad_variant_access&)
+        {
+            return defaultValue;
+        }
+    }
+
+    template<>
+    glm::vec3 ConfigManager::get<glm::vec3>(const std::string& key, const glm::vec3& defaultValue) const
+    {
+        if (m_shuttingDown.load())
+        {
+            return defaultValue;
+        }
+
+        std::lock_guard<std::mutex> lock(m_configMutex);
+
+        auto it = m_configValues.find(key);
+        if (it == m_configValues.end())
+        {
+            return defaultValue;
+        }
+
+        try
+        {
+            return std::get<glm::vec3>(it->second);
         }
         catch (const std::bad_variant_access&)
         {

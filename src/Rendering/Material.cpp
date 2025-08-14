@@ -8,10 +8,18 @@
 #include "Core/ResourceManager.h"
 #include "Core/Application.h"
 
-namespace Log = PixelCraft::Core;
-
 namespace PixelCraft::Rendering
 {
+
+    Material::Material()
+        : Core::Resource("UnnamedMaterial")
+        , m_blendMode(BlendMode::Opaque)
+        , m_cullMode(CullMode::Back)
+        , m_depthTest(true)
+        , m_depthWrite(true)
+    {
+        Core::debug("Creating default material");
+    }
 
     Material::Material(const std::string& name)
         : Core::Resource(name)
@@ -20,13 +28,26 @@ namespace PixelCraft::Rendering
         , m_depthTest(true)
         , m_depthWrite(true)
     {
-        Log::debug("Creating material: " + name);
+        Core::debug("Creating material: " + name);
     }
 
     Material::~Material()
     {
-        Log::debug("Destroying material: " + getName());
-        unload();
+        Core::debug("Destroying material: " + getName());
+        
+        // Add exception handling to prevent unhandled exceptions during destruction
+        try
+        {
+            unload();
+        }
+        catch (const std::exception& e)
+        {
+            Core::error("Material destructor: Exception during unload: " + std::string(e.what()));
+        }
+        catch (...)
+        {
+            Core::error("Material destructor: Unknown exception during unload");
+        }
     }
 
     bool Material::load()
@@ -36,26 +57,39 @@ namespace PixelCraft::Rendering
             return true;
         }
 
-        Log::debug("Loading material: " + getName());
+        Core::debug("Loading material: " + getName());
 
-        // Load any textures that have been set
-        for (auto& [slot, texture] : m_textures)
+        try
         {
-            if (texture && !texture->isLoaded())
+            // Load any textures that have been set
+            for (auto& [slot, texture] : m_textures)
             {
-                texture->load();
+                if (texture && !texture->isLoaded())
+                {
+                    texture->load();
+                }
             }
-        }
 
-        for (auto& [name, texture] : m_customTextures)
+            for (auto& [name, texture] : m_customTextures)
+            {
+                if (texture && !texture->isLoaded())
+                {
+                    texture->load();
+                }
+            }
+
+            return true;
+        }
+        catch (const std::exception& e)
         {
-            if (texture && !texture->isLoaded())
-            {
-                texture->load();
-            }
+            Core::error("Material::load: Exception loading material '" + getName() + "': " + e.what());
+            return false;
         }
-
-        return true;
+        catch (...)
+        {
+            Core::error("Material::load: Unknown exception loading material '" + getName() + "'");
+            return false;
+        }
     }
 
     void Material::unload()
@@ -65,35 +99,74 @@ namespace PixelCraft::Rendering
             return;
         }
 
-        Log::debug("Unloading material: " + getName());
+        Core::debug("Unloading material: " + getName());
 
-        // No need to unload textures as they are managed by ResourceManager
+        try
+        {
+            // Clear all references safely
+            
+            // Clear shader reference
+            if (m_shader)
+            {
+                m_shader.reset();
+            }
 
-        m_shader.reset();
+            // Clear texture references - but don't unload them as they might be shared
+            // The ResourceManager will handle texture cleanup
+            m_textures.clear();
+            m_customTextures.clear();
+
+            // Clear parameters
+            m_parameters.clear();
+
+            // Clear parent reference
+            m_parent.reset();
+        }
+        catch (const std::exception& e)
+        {
+            Core::error("Material::unload: Exception during unload: " + std::string(e.what()));
+        }
+        catch (...)
+        {
+            Core::error("Material::unload: Unknown exception during unload");
+        }
     }
 
     bool Material::onReload()
     {
-        Log::debug("Reloading material: " + getName());
+        Core::debug("Reloading material: " + getName());
 
-        // Reload textures if needed
-        for (auto& [slot, texture] : m_textures)
+        try
         {
-            if (texture)
+            // Reload textures if needed
+            for (auto& [slot, texture] : m_textures)
             {
-                texture->onReload();
+                if (texture)
+                {
+                    texture->onReload();
+                }
             }
-        }
 
-        for (auto& [name, texture] : m_customTextures)
+            for (auto& [name, texture] : m_customTextures)
+            {
+                if (texture)
+                {
+                    texture->onReload();
+                }
+            }
+
+            return true;
+        }
+        catch (const std::exception& e)
         {
-            if (texture)
-            {
-                texture->onReload();
-            }
+            Core::error("Material::onReload: Exception reloading material '" + getName() + "': " + e.what());
+            return false;
         }
-
-        return true;
+        catch (...)
+        {
+            Core::error("Material::onReload: Unknown exception reloading material '" + getName() + "'");
+            return false;
+        }
     }
 
     void Material::setShader(std::shared_ptr<Shader> shader)
@@ -294,7 +367,7 @@ namespace PixelCraft::Rendering
         {
             if (check.get() == this)
             {
-                Log::error("Circular material inheritance detected: " + getName());
+                Core::error("Circular material inheritance detected: " + getName());
                 return;
             }
             check = check->getParent();
@@ -308,9 +381,16 @@ namespace PixelCraft::Rendering
         return m_parent.lock();
     }
 
+    bool Material::isSameParent(const std::weak_ptr<Material>& other_parent) const
+    {
+        auto my_parent = m_parent.lock();
+        auto their_parent = other_parent.lock();
+        return my_parent && their_parent && (my_parent == their_parent);
+    }
+
     std::shared_ptr<Material> Material::clone() const
     {
-        auto newMaterial = std::make_shared<Material>(getName() + "_Clone");
+        auto newMaterial = Core::makeShared<Material>(getName() + "_Clone");
 
         // Copy all properties
         newMaterial->m_shader = m_shader;
@@ -328,26 +408,71 @@ namespace PixelCraft::Rendering
         return newMaterial;
     }
 
+    bool Material::operator==(const Material& other) const
+    {
+        // Check all properties
+        if (m_shader != other.m_shader) return false;
+        if (m_parameters != other.m_parameters) return false;
+        if (m_textures != other.m_textures) return false;
+        if (m_customTextures != other.m_customTextures) return false;
+        if (m_blendMode != other.m_blendMode) return false;
+        if (m_cullMode != other.m_cullMode) return false;
+        if (m_depthTest != other.m_depthTest) return false;
+        if (m_depthWrite != other.m_depthWrite) return false;
+
+        // Check parent weak_ptr
+        if (!isSameParent(other.m_parent)) return false;
+
+        return true;
+    }
+
+    bool Material::operator!=(const Material& other) const
+    {
+        return !(*this == other);
+    }
+
     void Material::bind()
     {
         if (!m_shader)
         {
-            Log::warn("Material::bind: No shader assigned to material: " + getName());
+            Core::warn("Material::bind: No shader assigned to material: " + getName());
             return;
         }
 
-        m_shader->bind();
+        try
+        {
+            m_shader->bind();
 
-        bindRenderState();
-        bindParameters();
-        bindTextures();
+            bindRenderState();
+            bindParameters();
+            bindTextures();
+        }
+        catch (const std::exception& e)
+        {
+            Core::error("Material::bind: Exception binding material '" + getName() + "': " + e.what());
+        }
+        catch (...)
+        {
+            Core::error("Material::bind: Unknown exception binding material '" + getName() + "'");
+        }
     }
 
     void Material::unbind()
     {
-        if (m_shader)
+        try
         {
-            m_shader->unbind();
+            if (m_shader)
+            {
+                m_shader->unbind();
+            }
+        }
+        catch (const std::exception& e)
+        {
+            Core::error("Material::unbind: Exception unbinding material '" + getName() + "': " + e.what());
+        }
+        catch (...)
+        {
+            Core::error("Material::unbind: Unknown exception unbinding material '" + getName() + "'");
         }
     }
 
@@ -418,40 +543,76 @@ namespace PixelCraft::Rendering
             return;
         }
 
-        // Process all parameters in this material
-        for (const auto& [name, paramValue] : m_parameters)
+        // Helper lambda to safely set uniforms
+        auto safeSetUniform = [this](const std::string& name, const auto& value)
         {
-            std::visit([this, &name](const auto& value) {
+            try
+            {
                 using T = std::decay_t<decltype(value)>;
 
                 if constexpr (std::is_same_v<T, int>)
                 {
-                    m_shader->setUniform(name, value);
+                    if (m_shader->hasUniform(name))
+                    {
+                        m_shader->setUniform(name, value);
+                    }
                 }
                 else if constexpr (std::is_same_v<T, float>)
                 {
-                    m_shader->setUniform(name, value);
+                    if (m_shader->hasUniform(name))
+                    {
+                        m_shader->setUniform(name, value);
+                    }
                 }
                 else if constexpr (std::is_same_v<T, glm::vec2>)
                 {
-                    m_shader->setUniform(name, value);
+                    if (m_shader->hasUniform(name))
+                    {
+                        m_shader->setUniform(name, value);
+                    }
                 }
                 else if constexpr (std::is_same_v<T, glm::vec3>)
                 {
-                    m_shader->setUniform(name, value);
+                    if (m_shader->hasUniform(name))
+                    {
+                        m_shader->setUniform(name, value);
+                    }
                 }
                 else if constexpr (std::is_same_v<T, glm::vec4>)
                 {
-                    m_shader->setUniform(name, value);
+                    if (m_shader->hasUniform(name))
+                    {
+                        m_shader->setUniform(name, value);
+                    }
                 }
                 else if constexpr (std::is_same_v<T, glm::mat4>)
                 {
-                    m_shader->setUniform(name, value);
+                    if (m_shader->hasUniform(name))
+                    {
+                        m_shader->setUniform(name, value);
+                    }
                 }
-                       }, paramValue.value);
+            }
+            catch (const std::exception& e)
+            {
+                // Log the exception but don't crash
+                Core::error("Material::bindParameters: Exception setting uniform '" + name + "': " + e.what());
+            }
+            catch (...) {
+                // Catch any other exceptions
+                Core::error("Material::bindParameters: Unknown exception setting uniform '" + name + "'");
+            }
+        };
+
+        // Process all parameters in this material
+        for (const auto& [name, paramValue] : m_parameters)
+        {
+            std::visit([&safeSetUniform, &name](const auto& value) {
+                safeSetUniform(name, value);
+            }, paramValue.value);
         }
 
-        // Process parent parameters not overridden by this material
+        // Process parent parameters not overriden by this material
         auto parent = m_parent.lock();
         if (parent)
         {
@@ -463,34 +624,9 @@ namespace PixelCraft::Rendering
                     continue;
                 }
 
-                std::visit([this, &name](const auto& value) {
-                    using T = std::decay_t<decltype(value)>;
-
-                    if constexpr (std::is_same_v<T, int>)
-                    {
-                        m_shader->setUniform(name, value);
-                    }
-                    else if constexpr (std::is_same_v<T, float>)
-                    {
-                        m_shader->setUniform(name, value);
-                    }
-                    else if constexpr (std::is_same_v<T, glm::vec2>)
-                    {
-                        m_shader->setUniform(name, value);
-                    }
-                    else if constexpr (std::is_same_v<T, glm::vec3>)
-                    {
-                        m_shader->setUniform(name, value);
-                    }
-                    else if constexpr (std::is_same_v<T, glm::vec4>)
-                    {
-                        m_shader->setUniform(name, value);
-                    }
-                    else if constexpr (std::is_same_v<T, glm::mat4>)
-                    {
-                        m_shader->setUniform(name, value);
-                    }
-                           }, paramValue.value);
+                std::visit([&safeSetUniform, &name](const auto& value) {
+                    safeSetUniform(name, value);
+                }, paramValue.value);
             }
         }
     }
@@ -504,87 +640,11 @@ namespace PixelCraft::Rendering
 
         int textureUnit = 0;
 
-        // Process standard texture slots
-        for (const auto& [slot, texture] : m_textures)
+        try
         {
-            if (!texture)
+            // Process standard texture slots
+            for (const auto& [slot, texture] : m_textures)
             {
-                continue;
-            }
-
-            // Map texture slot to uniform name
-            std::string uniformName;
-            switch (slot)
-            {
-                case TextureSlot::Albedo:
-                    uniformName = "albedoMap";
-                    break;
-                case TextureSlot::Normal:
-                    uniformName = "normalMap";
-                    break;
-                case TextureSlot::Metallic:
-                    uniformName = "metallicMap";
-                    break;
-                case TextureSlot::Roughness:
-                    uniformName = "roughnessMap";
-                    break;
-                case TextureSlot::AmbientOcclusion:
-                    uniformName = "aoMap";
-                    break;
-                case TextureSlot::Emissive:
-                    uniformName = "emissiveMap";
-                    break;
-                case TextureSlot::Height:
-                    uniformName = "heightMap";
-                    break;
-                case TextureSlot::User0:
-                    uniformName = "userMap0";
-                    break;
-                case TextureSlot::User1:
-                    uniformName = "userMap1";
-                    break;
-                case TextureSlot::User2:
-                    uniformName = "userMap2";
-                    break;
-                case TextureSlot::User3:
-                    uniformName = "userMap3";
-                    break;
-            }
-
-            texture->bind(textureUnit);
-            m_shader->setUniform(uniformName, textureUnit);
-            textureUnit++;
-        }
-
-        // Process custom textures
-        for (const auto& [name, texture] : m_customTextures)
-        {
-            if (!texture)
-            {
-                continue;
-            }
-
-            texture->bind(textureUnit);
-            m_shader->setUniform(name, textureUnit);
-            textureUnit++;
-        }
-
-        // Process parent textures not overridden by this material
-        auto parent = m_parent.lock();
-        if (parent)
-        {
-            // Process standard texture slots from parent
-            for (int i = 0; i < static_cast<int>(TextureSlot::User3) + 1; i++)
-            {
-                TextureSlot slot = static_cast<TextureSlot>(i);
-
-                // Skip if this material already has this texture
-                if (m_textures.find(slot) != m_textures.end())
-                {
-                    continue;
-                }
-
-                auto texture = parent->getTexture(slot);
                 if (!texture)
                 {
                     continue;
@@ -633,6 +693,93 @@ namespace PixelCraft::Rendering
                 m_shader->setUniform(uniformName, textureUnit);
                 textureUnit++;
             }
+
+            // Process custom textures
+            for (const auto& [name, texture] : m_customTextures)
+            {
+                if (!texture)
+                {
+                    continue;
+                }
+
+                texture->bind(textureUnit);
+                m_shader->setUniform(name, textureUnit);
+                textureUnit++;
+            }
+
+            // Process parent textures not overridden by this material
+            auto parent = m_parent.lock();
+            if (parent)
+            {
+                // Process standard texture slots from parent
+                for (int i = 0; i < static_cast<int>(TextureSlot::User3) + 1; i++)
+                {
+                    TextureSlot slot = static_cast<TextureSlot>(i);
+
+                    // Skip if this material already has this texture
+                    if (m_textures.find(slot) != m_textures.end())
+                    {
+                        continue;
+                    }
+
+                    auto texture = parent->getTexture(slot);
+                    if (!texture)
+                    {
+                        continue;
+                    }
+
+                    // Map texture slot to uniform name
+                    std::string uniformName;
+                    switch (slot)
+                    {
+                        case TextureSlot::Albedo:
+                            uniformName = "albedoMap";
+                            break;
+                        case TextureSlot::Normal:
+                            uniformName = "normalMap";
+                            break;
+                        case TextureSlot::Metallic:
+                            uniformName = "metallicMap";
+                            break;
+                        case TextureSlot::Roughness:
+                            uniformName = "roughnessMap";
+                            break;
+                        case TextureSlot::AmbientOcclusion:
+                            uniformName = "aoMap";
+                            break;
+                        case TextureSlot::Emissive:
+                            uniformName = "emissiveMap";
+                            break;
+                        case TextureSlot::Height:
+                            uniformName = "heightMap";
+                            break;
+                        case TextureSlot::User0:
+                            uniformName = "userMap0";
+                            break;
+                        case TextureSlot::User1:
+                            uniformName = "userMap1";
+                            break;
+                        case TextureSlot::User2:
+                            uniformName = "userMap2";
+                            break;
+                        case TextureSlot::User3:
+                            uniformName = "userMap3";
+                            break;
+                    }
+
+                    texture->bind(textureUnit);
+                    m_shader->setUniform(uniformName, textureUnit);
+                    textureUnit++;
+                }
+            }
+        }
+        catch (const std::exception& e)
+        {
+            Core::error("Material::bindTextures: Exception binding textures: " + std::string(e.what()));
+        }
+        catch (...)
+        {
+            Core::error("Material::bindTextures: Unknown exception binding textures");
         }
     }
 
@@ -674,91 +821,6 @@ namespace PixelCraft::Rendering
         }
 
         return false;
-    }
-
-    // Template specializations for getParameter
-    template<>
-    int Material::getParameter<int>(const std::string& name, const int& defaultValue) const
-    {
-        ParameterValue value;
-        if (findParameter(name, value))
-        {
-            if (std::holds_alternative<int>(value.value))
-            {
-                return std::get<int>(value.value);
-            }
-        }
-        return defaultValue;
-    }
-
-    template<>
-    float Material::getParameter<float>(const std::string& name, const float& defaultValue) const
-    {
-        ParameterValue value;
-        if (findParameter(name, value))
-        {
-            if (std::holds_alternative<float>(value.value))
-            {
-                return std::get<float>(value.value);
-            }
-        }
-        return defaultValue;
-    }
-
-    template<>
-    glm::vec2 Material::getParameter<glm::vec2>(const std::string& name, const glm::vec2& defaultValue) const
-    {
-        ParameterValue value;
-        if (findParameter(name, value))
-        {
-            if (std::holds_alternative<glm::vec2>(value.value))
-            {
-                return std::get<glm::vec2>(value.value);
-            }
-        }
-        return defaultValue;
-    }
-
-    template<>
-    glm::vec3 Material::getParameter<glm::vec3>(const std::string& name, const glm::vec3& defaultValue) const
-    {
-        ParameterValue value;
-        if (findParameter(name, value))
-        {
-            if (std::holds_alternative<glm::vec3>(value.value))
-            {
-                return std::get<glm::vec3>(value.value);
-            }
-        }
-        return defaultValue;
-    }
-
-    template<>
-    glm::vec4 Material::getParameter<glm::vec4>(const std::string& name, const glm::vec4& defaultValue) const
-    {
-        ParameterValue value;
-        if (findParameter(name, value))
-        {
-            if (std::holds_alternative<glm::vec4>(value.value))
-            {
-                return std::get<glm::vec4>(value.value);
-            }
-        }
-        return defaultValue;
-    }
-
-    template<>
-    glm::mat4 Material::getParameter<glm::mat4>(const std::string& name, const glm::mat4& defaultValue) const
-    {
-        ParameterValue value;
-        if (findParameter(name, value))
-        {
-            if (std::holds_alternative<glm::mat4>(value.value))
-            {
-                return std::get<glm::mat4>(value.value);
-            }
-        }
-        return defaultValue;
     }
 
 } // namespace PixelCraft::Rendering

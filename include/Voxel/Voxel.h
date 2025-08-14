@@ -66,13 +66,11 @@ namespace PixelCraft::Voxel
             return !(*this == other);
         }
 
-        // Serialization methods
-        static void defineSchema(Utility::Serialization::Schema& schema)
-        {
-            schema.addField("type", Utility::Serialization::ValueType::UInt16);
-            schema.addField("data", Utility::Serialization::ValueType::UInt16);
-        }
-
+        /**
+         * @brief Serialize the voxel to the given serializer
+         * @param serializer The serializer to use
+         * @return SerializationResult with success/failure status
+         */
         Utility::Serialization::SerializationResult serialize(Utility::Serialization::Serializer& serializer) const
         {
             auto result = serializer.beginObject("Voxel");
@@ -87,6 +85,11 @@ namespace PixelCraft::Voxel
             return serializer.endObject();
         }
 
+        /**
+         * @brief Deserialize the voxel from the given deserializer
+         * @param deserializer The deserializer to use
+         * @return SerializationResult with success/failure status
+         */
         Utility::Serialization::SerializationResult deserialize(Utility::Serialization::Deserializer& deserializer)
         {
             auto result = deserializer.beginObject("Voxel");
@@ -101,6 +104,20 @@ namespace PixelCraft::Voxel
             return deserializer.endObject();
         }
 
+        /**
+         * @brief Define the schema for Voxel serialization
+         * @param schema The schema to define
+         */
+        static void defineSchema(Utility::Serialization::Schema& schema)
+        {
+            schema.addField("type", Utility::Serialization::ValueType::UInt16, true);
+            schema.addField("data", Utility::Serialization::ValueType::UInt16, true);
+        }
+
+        /**
+         * @brief Get the type name for serialization
+         * @return The type name string
+         */
         static std::string getTypeName()
         {
             return "Voxel";

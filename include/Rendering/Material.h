@@ -68,6 +68,11 @@ namespace PixelCraft::Rendering
     {
     public:
         /**
+         * @brief Default constructor
+         */
+        Material();
+
+        /**
          * @brief Constructor
          * @param name Name of the material
          */
@@ -325,10 +330,31 @@ namespace PixelCraft::Rendering
         std::shared_ptr<Material> getParent() const;
 
         /**
+         * @brief Check if parents are the same
+         * @param other_parent Other parent to compare with
+         * @return True if parents are the same
+         */
+        bool isSameParent(const std::weak_ptr<Material>& other_parent) const;
+
+        /**
          * @brief Create a clone of this material
          * @return New material instance with same properties
          */
         std::shared_ptr<Material> clone() const;
+
+        /**
+         * @brief Does equal operator for materials
+         * @param other Other material to check against
+         * @return True if passed material is equal to this material
+         */
+        bool operator==(const Material& other) const;
+
+        /**
+         * @brief Does not equal operator for materials
+         * @param material Other material to check against
+         * @return True if passed material is not equal to this material
+         */
+        bool operator!=(const Material& other) const;
 
         // Binding
         /**
@@ -348,6 +374,16 @@ namespace PixelCraft::Rendering
         struct ParameterValue
         {
             std::variant<int, float, glm::vec2, glm::vec3, glm::vec4, glm::mat4> value = {};
+
+            bool operator==(const ParameterValue& other) const
+            {
+                return value == other.value;
+            }
+            
+            bool operator!=(const ParameterValue& other) const
+            {
+                return value != other.value;
+            }
         };
 
         std::unordered_map<std::string, ParameterValue> m_parameters;
@@ -391,5 +427,124 @@ namespace PixelCraft::Rendering
          */
         bool findTexture(TextureSlot slot, std::shared_ptr<Texture>& outTexture) const;
     };
+
+    template<>
+    inline int Material::getParameter<int>(const std::string& name, const int& defaultValue) const
+    {
+        ParameterValue value;
+        if (findParameter(name, value))
+        {
+            if (std::holds_alternative<int>(value.value))
+            {
+                return std::get<int>(value.value);
+            }
+        }
+        return defaultValue;
+    }
+
+    template<>
+    inline float Material::getParameter<float>(const std::string& name, const float& defaultValue) const
+    {
+        ParameterValue value;
+        if (findParameter(name, value))
+        {
+            if (std::holds_alternative<float>(value.value))
+            {
+                return std::get<float>(value.value);
+            }
+        }
+        return defaultValue;
+    }
+
+    template<>
+    inline glm::vec2 Material::getParameter<glm::vec2>(const std::string& name, const glm::vec2& defaultValue) const
+    {
+        ParameterValue value;
+        if (findParameter(name, value))
+        {
+            if (std::holds_alternative<glm::vec2>(value.value))
+            {
+                return std::get<glm::vec2>(value.value);
+            }
+        }
+        return defaultValue;
+    }
+
+    template<>
+    inline glm::vec3 Material::getParameter<glm::vec3>(const std::string& name, const glm::vec3& defaultValue) const
+    {
+        ParameterValue value;
+        if (findParameter(name, value))
+        {
+            if (std::holds_alternative<glm::vec3>(value.value))
+            {
+                return std::get<glm::vec3>(value.value);
+            }
+        }
+        return defaultValue;
+    }
+
+    template<>
+    inline glm::vec4 Material::getParameter<glm::vec4>(const std::string& name, const glm::vec4& defaultValue) const
+    {
+        ParameterValue value;
+        if (findParameter(name, value))
+        {
+            if (std::holds_alternative<glm::vec4>(value.value))
+            {
+                return std::get<glm::vec4>(value.value);
+            }
+        }
+        return defaultValue;
+    }
+
+    template<>
+    inline glm::mat4 Material::getParameter<glm::mat4>(const std::string& name, const glm::mat4& defaultValue) const
+    {
+        ParameterValue value;
+        if (findParameter(name, value))
+        {
+            if (std::holds_alternative<glm::mat4>(value.value))
+            {
+                return std::get<glm::mat4>(value.value);
+            }
+        }
+        return defaultValue;
+    }
+
+    template<typename T>
+    T Material::getParameter(const std::string& name, const T& defaultValue) const
+    {
+        // Default implementation handles most common cases
+        // Specialized implementations are in Material.cpp
+        ParameterValue value;
+        if (findParameter(name, value))
+        {
+            if (std::holds_alternative<T>(value.value))
+            {
+                return std::get<T>(value.value);
+            }
+        }
+        return defaultValue;
+    }
+
+    template<typename T>
+    void Material::setParameter(const std::string& name, const T& value)
+    {
+        // Use compile-time errors to limit to supported types
+        static_assert(
+            std::is_same_v<T, int> ||
+            std::is_same_v<T, float> ||
+            std::is_same_v<T, glm::vec2> ||
+            std::is_same_v<T, glm::vec3> ||
+            std::is_same_v<T, glm::vec4> ||
+            std::is_same_v<T, glm::mat4>,
+            "Unsupported parameter type"
+            );
+
+        ParameterValue param;
+        param.value = value;
+        m_parameters[name] = param;
+    }
 
 } // namespace PixelCraft::Rendering

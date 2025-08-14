@@ -4,8 +4,6 @@
 #include "Voxel/Chunk.h"
 #include "Voxel/ChunkMesh.h"
 #include "Voxel/Voxel.h"
-#include "ECS/Serializer.h"
-#include "ECS/Deserializer.h"
 #include "Core/Logger.h"
 #include "Utility/StringUtils.h"
 #include "Utility/Profiler.h"
@@ -15,7 +13,6 @@
 #include <cstring>
 
 using StringUtils = PixelCraft::Utility::StringUtils;
-namespace Log = PixelCraft::Core;
 
 namespace PixelCraft::Voxel
 {
@@ -90,13 +87,13 @@ namespace PixelCraft::Voxel
     {
         if (m_initialized)
         {
-            Log::warn("Chunk already initialized");
+            Core::warn("Chunk already initialized");
             return true;
         }
 
         if (chunkSize <= 0)
         {
-            Log::error("Invalid chunk size: " + chunkSize);
+            Core::error("Invalid chunk size: " + chunkSize);
             return false;
         }
 
@@ -143,7 +140,7 @@ namespace PixelCraft::Voxel
         size_t index = voxelIndex(x, y, z);
 
         // Check if the voxel is actually changing
-        if (memcmp(&m_voxels[index], &voxel, sizeof(Voxel)) == 0)
+        if (m_voxels[index] == voxel)
         {
             return false; // No change
         }
@@ -291,108 +288,6 @@ namespace PixelCraft::Voxel
 
         Utility::Profiler::getInstance()->endSample();
         return success;
-    }
-
-    bool Chunk::serialize(ECS::Serializer& serializer) const
-    {
-        if (!m_initialized)
-        {
-            return false;
-        }
-
-        Utility::Profiler::getInstance()->beginSample("Chunk::serialize");
-
-        // Begin chunk object
-        serializer.beginObject("Chunk");
-
-        // Write basic properties
-        serializer.write(m_size);
-        serializer.writeVec3(glm::vec3(m_coord.x, m_coord.y, m_coord.z));
-        serializer.write(m_empty);
-
-        // Write voxel data (skip if empty)
-        if (!m_empty)
-        {
-            size_t voxelCount = static_cast<size_t>(m_size * m_size * m_size);
-            serializer.beginArray("voxels", voxelCount);
-
-            // Write all voxels
-            for (size_t i = 0; i < voxelCount; i++)
-            {
-                serializer.write(m_voxels[i].type);
-                serializer.write(m_voxels[i].data);
-            }
-
-            serializer.endArray();
-        }
-
-        // End chunk object
-        serializer.endObject();
-
-        Utility::Profiler::getInstance()->endSample();
-        return true;
-    }
-
-    bool Chunk::deserialize(ECS::Deserializer& deserializer)
-    {
-        if (!deserializer.beginObject("Chunk"))
-        {
-            return false;
-        }
-
-        Utility::Profiler::getInstance()->beginSample("Chunk::deserialize");
-
-        // Read basic properties
-        int size;
-        deserializer.read(size);
-
-        // Read empty flag
-        bool isEmpty;
-        deserializer.read(isEmpty);
-
-        // Read voxel data
-        if (!isEmpty)
-        {
-            size_t voxelCount;
-            if (deserializer.beginArray("voxels", voxelCount))
-            {
-                // Ensure array size matches what we expect
-                if (voxelCount != static_cast<size_t>(m_size * m_size * m_size))
-                {
-                    deserializer.endArray();
-                    deserializer.endObject();
-                    return false;
-                }
-
-                // Read all voxels
-                for (size_t i = 0; i < voxelCount; i++)
-                {
-                    deserializer.read(m_voxels[i].type);
-                    deserializer.read(m_voxels[i].data);
-                }
-
-                deserializer.endArray();
-            }
-        }
-        else
-        {
-            // Fill with empty voxels
-            fill(Voxel(0, 0));
-        }
-
-        // End chunk object
-        deserializer.endObject();
-
-        // Update state
-        updateEmptyState();
-        m_dirty = false;
-        m_meshDirty = true;
-
-        // Update bounds
-        updateBounds();
-
-        Utility::Profiler::getInstance()->endSample();
-        return true;
     }
 
     size_t Chunk::getMemoryUsage() const

@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "ECS/Registry.h"
+#include "ECS/ComponentRegistry.h"
 
 namespace PixelCraft::ECS
 {
@@ -36,7 +37,7 @@ namespace PixelCraft::ECS
             : m_registry(registry)
         {
             // Create component mask for the requested component types
-            (m_componentMask.set(Registry::registerComponentType<Components>()), ...);
+            (m_componentMask.set(ComponentRegistry::getComponentTypeID<Components>()), ...);
         }
 
         /**
@@ -47,22 +48,24 @@ namespace PixelCraft::ECS
          */
         class Iterator
         {
+            friend class View<Components...>;
         public:
+            Iterator() = default;
+
             /**
              * @brief Constructor
              * @param registry Reference to the registry
-             * @param entityIt Current position in the entity set
-             * @param entityEnd End position in the entity set
+             * @param entityIt Current position in the entity container
+             * @param entityEnd End position in the entity container
              * @param componentMask Mask of required components
              */
-            Iterator(Registry& registry, std::unordered_set<EntityID>::const_iterator entityIt,
-                     std::unordered_set<EntityID>::const_iterator entityEnd, const ComponentMask& componentMask)
+            Iterator(Registry& registry, std::vector<EntityID>::const_iterator entityIt,
+                     std::vector<EntityID>::const_iterator entityEnd, const ComponentMask& componentMask)
                 : m_registry(registry)
                 , m_entityIt(entityIt)
                 , m_entityEnd(entityEnd)
                 , m_componentMask(componentMask)
             {
-                // Find the first valid entity that matches the component mask
                 findNext();
             }
 
@@ -93,7 +96,7 @@ namespace PixelCraft::ECS
              */
             std::tuple<EntityID, Components*...> operator*() const
             {
-                return std::make_tuple(*m_entityIt, m_registry.getComponent<Components>(*m_entityIt)...);
+                return std::make_tuple(*m_entityIt, &m_registry.getComponent<Components>(*m_entityIt)...);
             }
 
         private:
@@ -106,15 +109,15 @@ namespace PixelCraft::ECS
             void findNext()
             {
                 while (m_entityIt != m_entityEnd &&
-                       (m_registry.getComponentMask(*m_entityIt) & m_componentMask) != m_componentMask)
+                       (m_registry.getEntityMask(*m_entityIt) & m_componentMask) != m_componentMask)
                 {
                     ++m_entityIt;
                 }
             }
 
             Registry& m_registry;
-            std::unordered_set<EntityID>::const_iterator m_entityIt;
-            std::unordered_set<EntityID>::const_iterator m_entityEnd;
+            std::vector<EntityID>::const_iterator m_entityIt;
+            std::vector<EntityID>::const_iterator m_entityEnd;
             ComponentMask m_componentMask;
         };
 
@@ -122,28 +125,18 @@ namespace PixelCraft::ECS
          * @brief Get an iterator to the beginning of the view
          * @return Iterator pointing to the first matching entity
          */
-        Iterator begin()
+        Iterator begin() const
         {
-            return Iterator(
-                m_registry,
-                m_registry.getEntities().begin(),
-                m_registry.getEntities().end(),
-                m_componentMask
-            );
+            return Iterator{m_registry, m_registry.getEntities().begin(), m_registry.getEntities().end(), m_componentMask};
         }
 
         /**
          * @brief Get an iterator to the end of the view
          * @return Iterator pointing past the last entity
          */
-        Iterator end()
+        Iterator end() const
         {
-            return Iterator(
-                m_registry,
-                m_registry.getEntities().end(),
-                m_registry.getEntities().end(),
-                m_componentMask
-            );
+            return Iterator{m_registry, m_registry.getEntities().end(), m_registry.getEntities().end(), m_componentMask};
         }
 
         /**
@@ -160,6 +153,20 @@ namespace PixelCraft::ECS
             {
                 std::apply(std::forward<Func>(func), *it);
             }
+        }
+
+        /**
+         * @brief Get the number of entities in this view
+         * @return Number of entities that match the component requirements
+         */
+        size_t size() const
+        {
+            size_t count = 0;
+            for (auto it = begin(); it != end(); ++it)
+            {
+                ++count;
+            }
+            return count;
         }
 
     private:

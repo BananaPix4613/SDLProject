@@ -2,10 +2,8 @@
 // Entity.cpp
 // -------------------------------------------------------------------------
 #include "ECS/Entity.h"
-#include "ECS/Registry.h"
-#include "Core/Logger.h"
-
-namespace Log = PixelCraft::Core;
+#include "ECS/UUID.h"
+#include "Utility/Serialization/SerializationUtility.h"
 
 namespace PixelCraft::ECS
 {
@@ -55,28 +53,109 @@ namespace PixelCraft::ECS
         return registry->getEntityMask(m_id);
     }
 
-    void Entity::serialize(Serializer& serializer)
+    Utility::Serialization::SerializationResult Entity::serialize(Utility::Serialization::Serializer& serializer) const
     {
         auto registry = m_registry.lock();
         if (!registry)
         {
-            Log::error("Entity::serialize: Registry is invalid");
-            return;
+            return Utility::Serialization::SerializationResult("Entity::serialize: Registry is invalid");
         }
 
-        registry->serialize(m_id, serializer);
+        // Begin serializing the entity
+        auto result = serializer.beginObject(getTypeName());
+        if (!result) return result;
+
+        // Write entity ID
+        result = serializer.writeField("id", m_id);
+        if (!result) return result;
+
+        // Write UUID
+        result = serializer.writeField("uuid", getUUID());
+        if (!result) return result;
+
+        // Write name
+        result = serializer.writeField("name", getName());
+        if (!result) return result;
+
+        // Write active state
+        result = serializer.writeField("active", isActive());
+        if (!result) return result;
+
+        // Write parent relationship
+        EntityID parentID = registry->getEntityParent(m_id);
+        result = serializer.writeField("parent", parentID);
+        if (!result) return result;
+
+        // Write components section
+        result = registry->serialize(m_id, serializer);
+        if (!result) return result;
+
+        // End entity object
+        return serializer.endObject();
     }
 
-    void Entity::deserialize(Deserializer& deserializer)
+    Utility::Serialization::SerializationResult Entity::deserialize(Utility::Serialization::Deserializer& deserializer)
     {
         auto registry = m_registry.lock();
         if (!registry)
         {
-            Log::error("Entity::deserialize: Registry is invalid");
-            return;
+            return Utility::Serialization::SerializationResult("Entity::deserialize: Registry is invalid");
         }
 
-        registry->deserialize(m_id, deserializer);
+        // Begin deserializing the entity
+        auto result = deserializer.beginObject(getTypeName());
+        if (!result) return result;
+
+        // Read entity ID (but don't overwrite our own)
+        EntityID storedID;
+        result = deserializer.readField("id", storedID);
+        if (!result) return result;
+
+        // Read UUID
+        UUID uuid;
+        result = deserializer.readField("uuid", uuid);
+        if (!result) return result;
+        setUUID(uuid);
+
+        // Read name
+        std::string name;
+        result = deserializer.readField("name", name);
+        if (!result) return result;
+        setName(name);
+
+        // Read active state
+        bool active;
+        result = deserializer.readField("active", active);
+        if (!result) return result;
+        setActive(active);
+
+        // Read parent relationship
+        EntityID parentID;
+        result = deserializer.readField("parent", parentID);
+        if (!result) return result;
+        // Don't set parent immediately - done in a post-processing pass
+
+        // Read components
+        result = registry->deserialize(m_id, deserializer);
+        if (!result) return result;
+
+        // End entity object
+        return deserializer.endObject();
+    }
+
+    void Entity::defineSchema(Utility::Serialization::Schema& schema)
+    {
+        schema.addField("id", Utility::Serialization::ValueType::UInt64);
+        schema.addField("uuid", Utility::Serialization::ValueType::UUID);
+        schema.addField("name", Utility::Serialization::ValueType::String);
+        schema.addField("active", Utility::Serialization::ValueType::Bool);
+        schema.addField("parent", Utility::Serialization::ValueType::EntityRef);
+        schema.addField("components", Utility::Serialization::ValueType::Object);
+    }
+
+    std::string Entity::getTypeName()
+    {
+        return "Entity";
     }
 
     UUID Entity::getUUID() const

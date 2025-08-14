@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+// In namespace PixelCraft
 namespace PixelCraft::Core
 {
 
@@ -73,10 +74,7 @@ namespace PixelCraft::Core
          * @brief Get the name of the subsystem
          * @return The subsystem name as a string
          */
-        virtual std::string getName() const = 0
-        {
-            return "";
-        }
+        virtual std::string getName() const = 0;
 
         /**
          * @brief Get the dependencies of this subsystem

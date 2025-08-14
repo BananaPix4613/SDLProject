@@ -366,6 +366,64 @@ namespace PixelCraft::Utility
          * @return True if the directory exists or was created
          */
         static bool ensureDirectoryExists(const std::string& path);
+
+        // Internal versions that assume mutex is already locked
+        /**
+         * @brief Internal version of fileExists (assumes mutex is locked)
+         * @param path The path to check
+         * @return True if the file exists, false otherwise
+         */
+        static bool fileExistsInternal(const std::string& path);
+
+        /**
+         * @brief Internal version of directoryExists (assumes mutex is locked)
+         * @param path The path to check
+         * @return True if the directory exists, false otherwise
+         */
+        static bool directoryExistsInternal(const std::string& path);
+
+        /**
+         * @brief Internal version of createDirectory (assumes mutex is locked)
+         * @param path The path of the directory to create
+         * @return True if the directory was created, false otherwise
+         */
+        static bool createDirectoryInternal(const std::string& path);
+
+        /**
+         * @brief Internal version of getDirectoryPath (assumes mutex is locked)
+         * @param path The file path
+         * @return The directory part of the path
+         */
+        static std::string getDirectoryPathInternal(const std::string& path);
+
+        /**
+         * @brief Internal version of getFileSize (assumes mutex is locked)
+         * @param path The path to the file
+         * @return The size of the file in bytes, or 0 if the file doesn't exist
+         */
+        static size_t getFileSizeInternal(const std::string& path);
+
+        /**
+         * @brief Internal version of getFileModificationTime (assumes mutex is locked)
+         * @param path The path to the file
+         * @return The last modification time as a time_t value, or 0 if the file doesn't exist
+         */
+        static time_t getFileModificationTimeInternal(const std::string& path);
+
+        /**
+         * @brief Internal version of ensureDirectoryExists (assumes mutex is locked)
+         * @param path The directory path
+         * @return True if the directory exists or was created
+         */
+        static bool ensureDirectoryExistsInternal(const std::string& path);
+
+        /**
+         * @brief Internal version of checkFileAccess (assumes mutex is locked)
+         * @param path The path to check
+         * @param mode The access mode to check
+         * @return Result indicating if the file is accessible
+         */
+        static FileResult checkFileAccessInternal(const std::string& path, FileMode mode);
     };
 
 } // namespace PixelCraft::Utility

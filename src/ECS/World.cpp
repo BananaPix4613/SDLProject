@@ -6,9 +6,9 @@
 #include "ECS/System.h"
 #include "ECS/Scene.h"
 #include "ECS/Entity.h"
+#include "Utility/Serialization/Serializer.h"
+#include "Utility/Serialization/Deserializer.h"
 #include "Core/Logger.h"
-
-namespace Log = PixelCraft::Core;
 
 namespace PixelCraft::ECS
 {
@@ -17,6 +17,10 @@ namespace PixelCraft::ECS
     {
         // Create the registry
         m_registry = std::make_shared<Registry>();
+        
+        // Initialize Subsystem base class members
+        m_initialized = false;
+        m_active = true;
     }
 
     World::~World()
@@ -56,11 +60,12 @@ namespace PixelCraft::ECS
         {
             if (!system->initialize())
             {
-                Log::error("Failed to initialize system: " + system->getTypeName());
+                Core::error("Failed to initialize system: " + system->getTypeName());
                 success = false;
             }
         }
 
+        m_initialized = success;
         return success;
     }
 
@@ -120,6 +125,41 @@ namespace PixelCraft::ECS
         }
     }
 
+    void World::shutdown()
+    {
+        // Shut down the background save thread if it's running
+        if (m_threadRunning)
+        {
+            m_threadRunning = false;
+            m_saveQueue.shutdown();
+
+            // Wait for the thread to finish
+            if (m_saveThread.joinable())
+            {
+                m_saveThread.join();
+            }
+        }
+
+        // Acquire exclusive lock for cleanup
+        std::unique_lock lock(m_worldMutex);
+
+        // Clear all systems
+        m_systems.clear();
+        m_systemsByType.clear();
+
+        // Clear the active scene and registry
+        m_activeScene.reset();
+        m_registry.reset();
+
+        m_initialized = false;
+        m_active = false;
+    }
+
+    std::vector<std::string> World::getDependencies() const
+    {
+        return {"MemoryManager"};
+    }
+
     EntityID World::createEntity(const std::string& name)
     {
         // Delegate to Registry
@@ -161,7 +201,7 @@ namespace PixelCraft::ECS
 
         if (!system)
         {
-            Log::error("World::registerSystem: Null system pointer");
+            Core::error("World::registerSystem: Null system pointer");
             return;
         }
 
@@ -178,7 +218,7 @@ namespace PixelCraft::ECS
         // Re-sort systems based on dependencies
         sortSystems();
 
-        Log::info("Registered system: " + system->getTypeName());
+        Core::info("Registered system: " + system->getTypeName());
     }
 
     Entity World::getEntity(EntityID id)
@@ -204,7 +244,7 @@ namespace PixelCraft::ECS
         // Load the scene from file
         if (!scene->load(path))
         {
-            Log::error("Failed to load scene: " + path);
+            Core::error("Failed to load scene: " + path);
             return nullptr;
         }
 
@@ -228,7 +268,7 @@ namespace PixelCraft::ECS
 
         if (!scene)
         {
-            Log::error("World::saveScene: No active scene to save");
+            Core::error("World::saveScene: No active scene to save");
             return false;
         }
 
@@ -246,41 +286,110 @@ namespace PixelCraft::ECS
         return scene->save(path);
     }
 
-    void World::serializeWorld(Serializer& serializer)
+    Utility::Serialization::SerializationResult World::serialize(Utility::Serialization::Serializer& serializer) const
     {
         std::shared_lock lock(m_worldMutex);
 
-        // Call preSerialize on all systems
+        // Begin serializing the world
+        auto result = serializer.beginObject(getTypeName());
+        if (!result) return result;
+
+        // Write version info
+        result = serializer.writeField("version", m_version);
+        if (!result) return result;
+
+        // Write active scene reference
+        result = serializer.writeField("activeScenePath", m_activeScene->getPath());
+        if (!result) return result;
+
+        // Serialize the registry with all entities and components
+        result = m_registry->serializeAll(serializer);
+        if (!result) return result;
+
+        result = serializer.beginArray("systems", m_systems.size());
+        if (!result) return result;
+
+        // Call serialize on all systems
         for (auto& system : m_systems)
         {
-            if (system->shouldSerialize())
+            if (system && system->shouldSerialize())
             {
-                system->preSerialize(*this, serializer);
+                system->serialize(const_cast<World&>(*this), serializer);
             }
         }
 
-        // Serialize all entities and components
-        m_registry->serializeAll(serializer);
+        result = serializer.endArray();
+        if (!result) return result;
+
+        // End world object
+        return serializer.endObject();
     }
 
-    void World::deserializeWorld(Deserializer& deserializer)
+    Utility::Serialization::SerializationResult World::deserialize(Utility::Serialization::Deserializer& deserializer)
     {
         std::unique_lock lock(m_worldMutex);
 
-        // First deserialize all entities and components
-        m_registry->deserializeAll(deserializer);
+        // Begin deserializing the world
+        auto result = deserializer.beginObject(getTypeName());
+        if (!result) return result;
 
-        // Then deserialize system-specific data
+        // Read version info
+        result = deserializer.readField("version", m_version);
+        if (!result) return result;
+
+        // Deserialize active scene path
+        std::string scenePath;
+        result = deserializer.readField("activeScenePath", scenePath);
+        if (!result) return result;
+
+        // Deserialize the registry with all entities and components
+        result = m_registry->deserializeAll(deserializer);
+        if (!result) return result;
+
+        size_t arraySize;
+        // Begin deserializing systems
+        result = deserializer.beginArray("systems", arraySize);
+        if (!result) return result;
+
+        // Deserialize system-specific data
         for (auto& system : m_systems)
         {
-            if (system->shouldSerialize())
+            if (system && system->shouldSerialize())
             {
-                system->postDeserialize(*this, deserializer);
+                system->deserialize(*this, deserializer);
             }
         }
 
+        result = deserializer.endArray();
+        if (!result) return result;
+
+        // Load active scene if path is not empty
+        if (!scenePath.empty())
+        {
+            loadScene(scenePath);
+        }
+
+        // End world object
+        result = deserializer.endObject();
+        if (!result) return result;
+
         // Notify systems about world deserialization
         notifySystems("worldDeserialized");
+
+        return result;
+    }
+
+    void World::defineSchema(Utility::Serialization::Schema& schema)
+    {
+        schema.addField("version", Utility::Serialization::ValueType::UInt32);
+        schema.addField("activeScenePath", Utility::Serialization::ValueType::String);
+        schema.addField("registry", Utility::Serialization::ValueType::Object);
+        schema.addArrayField("systems", Utility::Serialization::ValueType::Object);
+    }
+
+    std::string World::getTypeName()
+    {
+        return "World";
     }
 
     void World::enableBackgroundSaving(bool enable)
@@ -320,7 +429,7 @@ namespace PixelCraft::ECS
 
     void World::backgroundSaveThread()
     {
-        Log::info("Background save thread started");
+        Core::info("Background save thread started");
 
         while (m_threadRunning)
         {
@@ -368,7 +477,7 @@ namespace PixelCraft::ECS
             }
         }
 
-        Log::info("Background save thread stopped");
+        Core::info("Background save thread stopped");
     }
 
     void World::sortSystems()
@@ -376,7 +485,7 @@ namespace PixelCraft::ECS
         // Check for cyclic dependencies first
         if (hasCyclicDependencies())
         {
-            Log::error("Cyclic dependencies detected in systems");
+            Core::error("Cyclic dependencies detected in systems");
             return;
         }
 

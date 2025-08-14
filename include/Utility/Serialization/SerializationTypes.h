@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <type_traits>
 
 namespace PixelCraft::Utility::Serialization
 {
@@ -34,7 +35,17 @@ namespace PixelCraft::Utility::Serialization
         Binary = 15,
         UUID = 16,
         EntityRef = 17,
-        ResourceRef = 18
+        ResourceRef = 18,
+        // --- GLM types ---
+        Vec2 = 19,
+        IVec2 = 20,
+        Vec3 = 21,
+        IVec3 = 22,
+        Vec4 = 23,
+        IVec4 = 24,
+        Mat3 = 25,
+        Mat4 = 26,
+        Quat = 27
     };
 
     /**
@@ -83,5 +94,16 @@ namespace PixelCraft::Utility::Serialization
             return major == other.major && minor >= other.minor;
         }
     };
+
+    // Trait to detect T::getTypeName()
+    template<typename, typename = std::void_t<>>
+    struct has_getTypeName : std::false_type {};
+
+    template<typename T>
+    struct has_getTypeName<T, std::void_t<decltype(T::getTypeName())>> : std::true_type {};
+
+    // Helper to trigger a static_assert with type info
+    template<typename T>
+    struct dependent_false : std::false_type {};
 
 } // namespace PixelCraft::Utility::Serialization
